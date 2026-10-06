@@ -2,6 +2,8 @@
 import type { DropdownMenuItem } from "@/components/ui/SDropdownMenu.vue";
 import { useStatusStore } from "@/stores/status";
 import { useSettingsStore } from "@/stores/settings";
+import { useTogetherStore } from "@/stores/together";
+import { useUserStore } from "@/stores/user";
 import * as player from "@/core/player";
 import IconLucideSliders from "~icons/lucide/sliders-horizontal";
 import IconLucideGauge from "~icons/lucide/gauge";
@@ -9,6 +11,7 @@ import IconLucideMoreVertical from "~icons/lucide/more-vertical";
 import IconLucideClock from "~icons/lucide/clock";
 import IconLucideRepeat2 from "~icons/lucide/repeat-2";
 import IconLucideRadio from "~icons/lucide/radio";
+import IconLucideUsers from "~icons/lucide/users";
 import IconLucideAudioWaveform from "~icons/lucide/audio-waveform";
 
 const props = withDefaults(
@@ -60,6 +63,13 @@ const speedOpen = ref(false);
 const autoCloseOpen = ref(false);
 const abLoopOpen = ref(false);
 const fmModeOpen = ref(false);
+const togetherOpen = ref(false);
+
+/** 一起听入口：仅在网易云登录后可用，房间入口属于播放控制而非通用设置 */
+const togetherStore = useTogetherStore();
+const user = useUserStore();
+const togetherVisible = computed(() => user.isLoggedIn);
+const togetherActive = computed(() => togetherStore.inRoom);
 
 const moreMenuItems = computed<DropdownMenuItem[]>(() => [
   { key: "audioInfo", label: t("quality.outputInfo"), icon: IconLucideAudioWaveform },
@@ -67,6 +77,10 @@ const moreMenuItems = computed<DropdownMenuItem[]>(() => [
   { key: "speed", label: t("speed.title"), icon: IconLucideGauge },
   { key: "abLoop", label: t("abLoop.title"), icon: IconLucideRepeat2 },
   { key: "autoClose", label: t("autoClose.title"), icon: IconLucideClock },
+  // 全屏播放器工具栏空间有限，一起听收进更多菜单
+  ...(togetherVisible.value && props.cover
+    ? [{ key: "together", label: t("player.together.title"), icon: IconLucideUsers }]
+    : []),
 ]);
 
 const onMoreMenuSelect = (key: string): void => {
@@ -75,6 +89,7 @@ const onMoreMenuSelect = (key: string): void => {
   else if (key === "speed") speedOpen.value = true;
   else if (key === "abLoop") abLoopOpen.value = true;
   else if (key === "autoClose") autoCloseOpen.value = true;
+  else if (key === "together") togetherOpen.value = true;
 };
 </script>
 
@@ -126,6 +141,19 @@ const onMoreMenuSelect = (key: string): void => {
       @click="toggleDesktopLyric"
     >
       <template #icon><IconLucideCaptions /></template>
+    </SButton>
+    <!-- 一起听房间入口，窄屏交给更多菜单 -->
+    <SButton
+      v-if="togetherVisible && !cover"
+      :type="togetherActive ? 'primary' : buttonType"
+      :variant="togetherOpen ? 'tertiary' : 'ghost'"
+      circle
+      size="large"
+      :class="togetherOpen || togetherActive ? undefined : mutedClass"
+      :title="t('player.together.tooltip')"
+      @click="togetherOpen = true"
+    >
+      <template #icon><IconLucideUsers /></template>
     </SButton>
     <!-- 私人 FM 模式调整 -->
     <SButton
@@ -192,5 +220,6 @@ const onMoreMenuSelect = (key: string): void => {
     <AbLoopDialog v-model:open="abLoopOpen" />
     <AutoCloseDialog v-model:open="autoCloseOpen" />
     <FmModeDialog v-model:open="fmModeOpen" />
+    <TogetherDialog v-model:open="togetherOpen" />
   </div>
 </template>

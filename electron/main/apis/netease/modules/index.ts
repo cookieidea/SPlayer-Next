@@ -106,6 +106,17 @@ import album_sublist from "./album_sublist";
 import artist_sub from "./artist_sub";
 import artist_sublist from "./artist_sublist";
 
+// 一起听
+import listen_together_room_create from "./listen_together_room_create";
+import listen_together_status from "./listen_together_status";
+import listen_together_room_check from "./listen_together_room_check";
+import listen_together_invitation_accept from "./listen_together_invitation_accept";
+import listen_together_sync_playlist_get from "./listen_together_sync_playlist_get";
+import listen_together_sync_list_report from "./listen_together_sync_list_report";
+import listen_together_play_command_report from "./listen_together_play_command_report";
+import listen_together_heartbeat from "./listen_together_heartbeat";
+import listen_together_end from "./listen_together_end";
+
 export const modules: Record<string, NeteaseModule> = {
   captcha_sent,
   captcha_verify,
@@ -196,4 +207,14 @@ export const modules: Record<string, NeteaseModule> = {
   album_sublist,
   artist_sub,
   artist_sublist,
+
+  listen_together_room_create,
+  listen_together_status,
+  listen_together_room_check,
+  listen_together_invitation_accept,
+  listen_together_sync_playlist_get,
+  listen_together_sync_list_report,
+  listen_together_play_command_report,
+  listen_together_heartbeat,
+  listen_together_end,
 };

@@ -32,6 +32,8 @@ import {
   setShuffleMode,
   trySmartTransition,
 } from "./index";
+import { countTogetherAction } from "@/services/togetherCounter";
+import { isTogetherActive } from "@/services/listenTogether";
 
 /** 防止 ended 事件重入 */
 let endedGuard = false;
@@ -42,6 +44,9 @@ const finishCurrentTrack = async (): Promise<void> => {
   if (endedGuard) return;
   endedGuard = true;
   try {
+    // 一起听期间由房间决定谁推进下一首：本机整曲播完只上报，不自行播下一曲
+    countTogetherAction("ended");
+    if (isTogetherActive()) return;
     const stopByTimer = autoClose.onTrackEnded();
     // FM 模式跳过
     const repeatOne = status.repeatMode === "one" && !status.fmMode;

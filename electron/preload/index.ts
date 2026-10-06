@@ -26,6 +26,7 @@ import type {
   PlaylistUpdateInput,
 } from "@shared/types/playlist";
 import type { CjkTransformMode } from "@shared/types/opencc";
+import type { TogetherLocalState, TogetherSyncEvent } from "@shared/types/listenTogether";
 
 /** 订阅主进程推送的事件 */
 const subscribe = <T>(channel: string, callback: (data: T) => void): (() => void) => {
@@ -426,6 +427,24 @@ const api = {
     // 订阅插件状态变化
     onStatus: (callback: (info: PluginInfo) => void) =>
       subscribe<PluginInfo>("plugin:status", callback),
+  },
+  together: {
+    // 查询当前一起听会话
+    getSession: () => ipcRenderer.invoke("together:getSession"),
+    // 创建房间
+    create: (userId: string) => ipcRenderer.invoke("together:create", userId),
+    // 加入房间
+    join: (roomId: string, inviterId: string, userId: string) =>
+      ipcRenderer.invoke("together:join", roomId, inviterId, userId),
+    // 恢复服务端上未结束的房间
+    restore: (userId: string) => ipcRenderer.invoke("together:restore", userId),
+    // 退出房间
+    leave: () => ipcRenderer.invoke("together:leave"),
+    // 上报本地播放状态
+    sync: (state: TogetherLocalState) => ipcRenderer.send("together:sync", state),
+    // 订阅同步事件
+    onEvent: (callback: (event: TogetherSyncEvent) => void) =>
+      subscribe<TogetherSyncEvent>("together:event", callback),
   },
   apis: {
     // 调用任意平台的任意接口

@@ -516,6 +516,22 @@
     "shuffleMode": {
       "on": "Shuffle on",
       "off": "Shuffle off"
+    },
+    "together": {
+      "title": "Listen Together",
+      "tooltip": "Netease Listen Together",
+      "description": "Play the same queue with a friend, hosted on your Netease account",
+      "hint": "Create a room and send the invitation link to a friend, or paste one you received.",
+      "needLogin": "Sign in to Netease Cloud Music to use Listen Together",
+      "create": "Create room",
+      "join": "Join room",
+      "leave": "Leave room",
+      "copy": "Copy invitation",
+      "invitation": "Invitation link",
+      "inputPlaceholder": "Paste an invitation link or room ID",
+      "members": "Room members",
+      "room": "Room ID",
+      "waitingPeer": "Waiting for another listener"
     }
   },
   "songList": {

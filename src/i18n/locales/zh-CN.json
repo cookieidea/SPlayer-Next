@@ -504,6 +504,22 @@
     "shuffleMode": {
       "on": "随机播放",
       "off": "顺序播放"
+    },
+    "together": {
+      "title": "一起听",
+      "tooltip": "网易云一起听",
+      "description": "与好友同步播放同一队列，房间建立在网易云账号上",
+      "hint": "创建房间后把邀请链接发给好友，或粘贴好友发来的链接加入。",
+      "needLogin": "登录网易云账号后才能使用一起听",
+      "create": "创建房间",
+      "join": "加入房间",
+      "leave": "退出房间",
+      "copy": "复制邀请",
+      "invitation": "邀请链接",
+      "inputPlaceholder": "粘贴邀请链接或房间 ID",
+      "members": "房间成员",
+      "room": "房间 ID",
+      "waitingPeer": "等待另一位听众加入"
     }
   },
   "songList": {

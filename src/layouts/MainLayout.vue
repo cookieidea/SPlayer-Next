@@ -2,8 +2,10 @@
 import { useStatusStore } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
 import { useSettingsStore } from "@/stores/settings";
+import { useUserStore } from "@/stores/user";
 import { useOrpheusProtocol } from "@/composables/useOrpheusProtocol";
 import { useExternalFileHandler } from "@/composables/useExternalFileHandler";
+import { initTogether, restoreRoom } from "@/services/listenTogether";
 
 const route = useRoute();
 const status = useStatusStore();
@@ -12,6 +14,22 @@ const settings = useSettingsStore();
 // 接入 orpheus 协议唤起与外部音频文件播放
 useOrpheusProtocol();
 useExternalFileHandler();
+
+// 一起听：订阅房间事件，并在已有登录态时续上服务端未结束的房间
+const user = useUserStore();
+initTogether();
+onMounted(() => {
+  const id = user.profile?.userId;
+  if (id) void restoreRoom(String(id));
+});
+
+// 登录完成后可能还有服务端未结束的房间，登录态就绪时补一次恢复
+watch(
+  () => user.profile?.userId,
+  (id) => {
+    if (id) void restoreRoom(String(id));
+  },
+);
 
 /** 有歌曲信息时显示播放栏 */
 const showPlayerBar = computed(() => !!useMediaStore().track);

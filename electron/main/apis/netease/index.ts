@@ -79,6 +79,15 @@ const NON_CACHEABLE: ReadonlySet<string> = new Set([
   "personal_fm",
   "fm_trash",
   "recommend_songs",
+  "listen_together_room_create",
+  "listen_together_status",
+  "listen_together_room_check",
+  "listen_together_invitation_accept",
+  "listen_together_sync_playlist_get",
+  "listen_together_sync_list_report",
+  "listen_together_play_command_report",
+  "listen_together_heartbeat",
+  "listen_together_end",
 ]);
 
 /** 无需初始化网易云匿名登录态的公开接口 */

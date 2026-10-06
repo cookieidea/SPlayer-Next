@@ -14,6 +14,7 @@ import { callQQMusic, clearQQMusicCookies, mergeQQMusicCookies } from "@main/api
 import { callKugou, clearKugouSession, mergeKugouSession } from "@main/apis/kugou";
 import { openNeteaseLoginWindow } from "@main/window/login";
 import { coreLog } from "@main/utils/logger";
+import * as together from "@main/services/listenTogether";
 import type { ApiPlatform } from "@shared/types/apis";
 
 /** 各平台的调用器：统一返回 `{ status?, body?, data? }` 由前端按需取 */
@@ -63,7 +64,11 @@ export const registerApisIpc = (): void => {
   );
 
   ipcMain.handle("apis:clearSession", (_evt, platform: ApiPlatform) => {
-    if (platform === "netease") clearNeteaseCookies();
+    if (platform === "netease") {
+      // 房间是账号级的：登录态一没，本地会话必须同步丢弃
+      together.abandon();
+      clearNeteaseCookies();
+    }
     if (platform === "qqmusic") clearQQMusicCookies();
     if (platform === "kugou") clearKugouSession();
   });
