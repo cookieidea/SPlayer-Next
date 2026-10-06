@@ -519,12 +519,29 @@ export const resolveLink = async (url: string): Promise<string> => {
 /**
  * 取未处理的一起听邀请
  *
- * 对方只点了「邀请」时不会有分享链接，房间 ID 只存在于他发来的私信卡片里。
- * @returns 邀请卡片列表
+ * 私信会一直留在收件箱里，房间却可能早已结束，因此逐条用 room/check 过滤——
+ * 不校验就会出现「房间失效了邀请还挂着」。校验并发进行，避免串行等待。
+ * @returns 仍可加入的邀请卡片列表
  */
 export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {
-  const result = await callNetease("listen_together_inbox", { limit: INBOX_LIMIT });
-  return invitesFromInbox(result);
+  const cards = invitesFromInbox(
+    await callNetease("listen_together_inbox", { limit: INBOX_LIMIT }),
+  );
+  if (cards.length === 0) return [];
+  const checked = await Promise.all(
+    cards.map(async (card) => {
+      // 已经在自己房间里的那条邀请不必再校验
+      if (session?.roomId === card.roomId) return card;
+      try {
+        const body = await callNetease("listen_together_room_check", { roomId: card.roomId });
+        return joinableFromBody(body) ? card : null;
+      } catch {
+        // 校验失败（网络抖动等）时宁可保留卡片，由点击时的 join 再兜一次
+        return card;
+      }
+    }),
+  );
+  return checked.filter((card): card is TogetherInviteCard => card !== null);
 };
 
 /**

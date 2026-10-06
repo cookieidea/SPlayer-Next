@@ -50,7 +50,10 @@ watch(
 watch(
   () => [store.session?.roomId, store.room?.members.length ?? 0].join("|"),
   () => {
-    if (props.open && store.inRoom) void loadFriends();
+    if (!props.open) return;
+    // 房间没了就刷新收件箱：那条邀请对应的房间可能也跟着结束了
+    void loadInbox();
+    if (store.inRoom) void loadFriends();
   },
 );
 
@@ -74,8 +77,9 @@ const onJoin = async (): Promise<void> => {
 
 const onLeave = async (): Promise<void> => {
   await together.leaveRoom();
-  // 房间没了，好友的「已在房间」标记随之失效
+  // 房间没了，好友的「已在房间」标记与收到的邀请都随之失效
   friends.value = [];
+  invites.value = [];
   emit("update:open", false);
 };
 

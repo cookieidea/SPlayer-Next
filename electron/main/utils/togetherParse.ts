@@ -142,7 +142,9 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
     const message = obj(payload?.msg);
     const general = obj(payload?.generalMsg) ?? obj(message?.generalMsg);
     const nativeUrl = str(general?.nativeUrl);
-    if (!nativeUrl) continue;
+    // resType 23 是通用的卡片消息，活动推广、VIP 福利页也走它，只有指向
+    // listenTogether 的才是邀请
+    if (!nativeUrl.includes("listenTogether")) continue;
     // orpheus://open?url1=<enc>&url2=<enc>：房间参数在 url1 里
     const outer = new URLSearchParams(nativeUrl.slice(nativeUrl.indexOf("?") + 1));
     const inner = decodeURIComponent(outer.get("url1") ?? "");

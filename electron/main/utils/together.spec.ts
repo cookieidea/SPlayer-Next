@@ -248,6 +248,41 @@ describe("好友邀请响应", () => {
   });
 });
 
+describe("卡片消息甄别（实测样本）", () => {
+  const card = (nativeUrl: string, fromUserId = 1) => ({
+    user: { fromUserId, lastMsgTime: 1791312632105 },
+    lastMsg: JSON.stringify({ resType: 23, type: 23, generalMsg: { title: "x", nativeUrl } }),
+  });
+
+  it("只认指向 listenTogether 的卡片", () => {
+    const inbox = {
+      status: 200,
+      body: {
+        msgs: [
+          // 真实邀请
+          card(
+            "orpheus://open?url1=orpheus%3A%2F%2Fnm%2Fplay%2FlistenTogether%3FroomId%3DR1_1%26inviterId%3D5&url2=x",
+            5,
+          ),
+          // 博物馆活动推广（同样 resType 23，但不是邀请）
+          card(
+            "orpheus://open?url1=https%3A%2F%2Fy.music.163.com%2Fg%2Fm%2Fat%2Fbowuguan%3Fmarket%3Dsixin&url2=x",
+            201586,
+          ),
+          // VIP 福利页
+          card(
+            "orpheus://open?url1=orpheus%3A%2F%2Frnpage%3Fcomponent%3Drn-vip-center%26tab%3Dwelfare&url2=x",
+            1452176465,
+          ),
+        ],
+      },
+    };
+    const cards = invitesFromInbox(inbox);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ roomId: "R1_1", inviterId: "5" });
+  });
+});
+
 describe("房间成员比较", () => {
   it("换房后成员列表不同即视为变化", () => {
     const before = roomFromBody({
