@@ -248,6 +248,69 @@ describe("好友邀请响应", () => {
   });
 });
 
+describe("解析健壮性", () => {
+  it("非法百分号编码不抛异常", () => {
+    const bad = {
+      status: 200,
+      body: {
+        msgs: [
+          {
+            user: { fromUserId: 1, lastMsgTime: 1 },
+            lastMsg: JSON.stringify({
+              resType: 23,
+              generalMsg: {
+                nativeUrl:
+                  "orpheus://open?url1=orpheus%3A%2F%2Fnm%2Fplay%2FlistenTogether%3FroomId%3DR%26inviterId%3D1&url2=x",
+              },
+            }),
+          },
+        ],
+      },
+    };
+    expect(() => invitesFromInbox(bad)).not.toThrow();
+    expect(invitesFromInbox(bad)).toHaveLength(1);
+  });
+
+  it("playMode 不含随机时读 displayList", () => {
+    const snapshot = snapshotFromBody({
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          playlist: {
+            playMode: "ORDER_LOOP",
+            randomList: { result: [9] },
+            displayList: { result: [1, 2] },
+          },
+        },
+      },
+    });
+    expect(snapshot.songIds).toEqual(["1", "2"]);
+  });
+
+  it("RANDOM 模式读 randomList", () => {
+    const snapshot = snapshotFromBody({
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          playlist: {
+            playMode: "RANDOM",
+            randomList: { result: [9, 8] },
+            displayList: { result: [1] },
+          },
+        },
+      },
+    });
+    expect(snapshot.songIds).toEqual(["9", "8"]);
+  });
+
+  it("非 {status, body} 形状不被误剥", () => {
+    const bare = { code: 200, data: { roomInfo: { roomId: "RB", creatorId: 3 } } };
+    expect(roomFromBody(bare)).toMatchObject({ roomId: "RB", creatorId: "3" });
+  });
+});
+
 describe("共享队列判定不依赖本地上报", () => {
   it("对端队列与本地不同即需替换", () => {
     const snapshot = { songIds: ["a", "b", "c"], command: null };

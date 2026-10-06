@@ -27,6 +27,14 @@ const parseJson = (value: unknown): Json | null => {
 
 export const str = (value: unknown): string => (value == null ? "" : String(value));
 
+const safeDecode = (value: string): string => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 const num = (value: unknown): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -34,7 +42,7 @@ const num = (value: unknown): number => {
 
 const unwrap = (value: unknown): unknown => {
   const root = obj(value);
-  if (root && obj(root.body)) return root.body;
+  if (root && typeof root.status === "number" && obj(root.body)) return root.body;
   return value;
 };
 
@@ -99,7 +107,7 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
     const nativeUrl = str(general?.nativeUrl);
     if (!nativeUrl.includes("listenTogether")) continue;
     const outer = new URLSearchParams(nativeUrl.slice(nativeUrl.indexOf("?") + 1));
-    const inner = decodeURIComponent(outer.get("url1") ?? "");
+    const inner = safeDecode(outer.get("url1") ?? "");
     const query = inner.slice(inner.indexOf("?") + 1);
     if (!query) continue;
     const params = new URLSearchParams(query);
@@ -109,7 +117,7 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
       roomId,
       inviterId: str(params.get("inviterId") || user?.fromUserId),
       inviterName: str(params.get("inviterName") || user?.nickname),
-      inviterAvatarUrl: decodeURIComponent(str(params.get("inviterAvatarUrl"))),
+      inviterAvatarUrl: safeDecode(str(params.get("inviterAvatarUrl"))),
       title: str(general?.title) || "加入一起听",
       receivedAt: num(conversation?.lastMsgTime ?? user?.lastMsgTime),
     });
@@ -122,7 +130,7 @@ export const snapshotFromBody = (value: unknown): TogetherSnapshot => {
   if (!data) return { songIds: [], command: null };
   const playlist = obj(data.playlist) ?? {};
   const mode = str(playlist.playMode).toUpperCase();
-  const shuffled = mode.includes("RANDOM") || mode.includes("SHUFFLE");
+  const shuffled = mode === "RANDOM" || mode === "SHUFFLE" || mode.endsWith("_RANDOM");
   const source = (shuffled ? obj(playlist.randomList) : null) ?? obj(playlist.displayList) ?? {};
   return {
     songIds: list(source.result)

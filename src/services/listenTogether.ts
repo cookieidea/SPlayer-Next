@@ -4,7 +4,7 @@ import * as queue from "@/stores/queue";
 import * as player from "@/core/player";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
-import { readTogetherCounters } from "@/services/togetherCounter";
+import { readTogetherCounters, setTogetherCounting } from "@/services/togetherCounter";
 import { buildInvitation, parseInvitation } from "@shared/utils/togetherInvitation";
 import type {
   TogetherCommand,
@@ -146,11 +146,13 @@ const commandToast = (command: TogetherCommand): string => {
 
 const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
   if (next.type === "session") {
+    setTogetherCounting(true);
     startReporting();
     pushState();
     return;
   }
   if (next.type === "session-end") {
+    setTogetherCounting(false);
     stopReporting();
     toast.warning("一起听已结束");
     return;
@@ -193,7 +195,9 @@ export const initTogether = (): void => {
     void handleEvent(next);
   });
   void window.api.together.getSession().then((session) => {
-    if (session) startReporting();
+    if (!session) return;
+    setTogetherCounting(true);
+    startReporting();
   });
 };
 
