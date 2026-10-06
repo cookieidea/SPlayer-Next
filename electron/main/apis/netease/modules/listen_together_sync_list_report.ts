@@ -5,11 +5,12 @@ const listenTogetherSyncListReport: NeteaseModule = (query, request) => {
   const songIds: string[] = Array.isArray(query.songIds)
     ? query.songIds.map((id) => String(id))
     : [];
+  const anchorPosition = Number(query.anchorPosition);
   const playlist = {
     commandType: "REPLACE",
     version: [{ userId: Number(query.userId) || 0, version: Number(query.version) || 0 }],
-    anchorSongId: "",
-    anchorPosition: -1,
+    anchorSongId: typeof query.anchorSongId === "string" ? query.anchorSongId : "",
+    anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
     randomList: songIds,
     displayList: songIds,
   };

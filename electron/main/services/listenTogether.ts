@@ -42,6 +42,7 @@ type RoomMode = "create" | "join" | "restore";
 export interface TogetherCommandPayload {
   command: TogetherCommand | null;
   songIds: string[];
+  playMode: string;
   initial: boolean;
 }
 
@@ -66,6 +67,7 @@ let clientSeq = 0;
 let playlistVersion = 0;
 let lastRemoteSignature = "";
 let lastRemoteSeq = -1;
+let lastRemotePlayMode = "";
 let awaitAdoption = 0;
 let pendingInitial: "report" | "adopt" | null = null;
 let leaderId = "";
@@ -75,6 +77,7 @@ let previousSongId = "";
 let lastState: TogetherLocalState = {
   songId: "",
   queueSongIds: [],
+  currentIndex: -1,
   positionMs: 0,
   playing: false,
   transitioning: false,
@@ -183,7 +186,11 @@ const reportCommand = async (
   });
 };
 
-const reportQueue = async (songIds: readonly string[]): Promise<void> => {
+const reportQueue = async (
+  songIds: readonly string[],
+  anchorSongId = lastState.songId,
+  anchorPosition = lastState.currentIndex,
+): Promise<void> => {
   if (!session) return;
   const issuing = generation;
   playlistVersion += 1;
@@ -196,6 +203,8 @@ const reportQueue = async (songIds: readonly string[]): Promise<void> => {
     userId,
     version,
     songIds: [...songIds],
+    anchorSongId: anchorSongId || "",
+    anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
   });
 };
 
@@ -225,10 +234,13 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
     if (baseline) baseline.queueSignature = songIdsSignature(snapshot.songIds);
   }
   const restored = mode === "restore" && initial;
+  const modeChanged = snapshot.playMode !== "" && snapshot.playMode !== lastRemotePlayMode;
+  if (modeChanged) lastRemotePlayMode = snapshot.playMode;
   for (const listener of commandListeners) {
     listener({
       command: fresh && command ? (restored ? { ...command, playing: false } : command) : null,
       songIds: replaceQueue ? [...snapshot.songIds] : [],
+      playMode: modeChanged ? snapshot.playMode : "",
       initial,
     });
   }
@@ -337,6 +349,7 @@ const endSession = (reason: "left" | "server" | "logout"): void => {
   hasLocalState = false;
   lastRemoteSignature = "";
   lastRemoteSeq = -1;
+  lastRemotePlayMode = "";
   awaitAdoption = 0;
   pendingInitial = null;
   pendingAdvanceAt = 0;
@@ -452,9 +465,9 @@ export const invite = async (acceptorId: string): Promise<void> => {
       acceptorId: id,
     }),
   );
-  const body = obj(result?.body);
-  if (!obj(body?.data)?.result) {
-    throw new Error(str(body?.message) || "邀请发送失败");
+  const data = obj(obj(result?.body)?.data);
+  if (!data?.result) {
+    throw new Error(str(data?.message) || "邀请发送失败");
   }
 };
 

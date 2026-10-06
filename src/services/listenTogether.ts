@@ -46,13 +46,15 @@ const collectState = (): TogetherLocalState => {
   const track = status.currentTrack;
   const isNetease = track?.source === "netease" && !track.serverId;
   const counters = readTogetherCounters();
+  const songIds = isNetease
+    ? queue.queue.value
+        .filter((item) => item.source === "netease" && !item.serverId)
+        .map((item) => item.id)
+    : [];
   return {
     songId: isNetease ? track.id : "",
-    queueSongIds: isNetease
-      ? queue.queue.value
-          .filter((item) => item.source === "netease" && !item.serverId)
-          .map((item) => item.id)
-      : [],
+    queueSongIds: songIds,
+    currentIndex: isNetease ? songIds.indexOf(track.id) : -1,
     positionMs: Math.max(0, Math.round(status.position)),
     playing: status.isPlaying,
     transitioning: status.trackLoading || pendingLoad,
@@ -137,6 +139,24 @@ const applyRemote = async (
   }
 };
 
+const applyPlayMode = (mode: string): void => {
+  const status = useStatusStore();
+  if (mode === "RANDOM") {
+    status.shuffleMode = "on";
+    status.repeatMode = "list";
+    return;
+  }
+  if (mode === "SINGLE_LOOP") {
+    status.shuffleMode = "off";
+    status.repeatMode = "one";
+    return;
+  }
+  if (mode === "ORDER_LOOP") {
+    status.shuffleMode = "off";
+    status.repeatMode = "list";
+  }
+};
+
 const commandToast = (command: TogetherCommand): string => {
   if (command.type === "PROGRESS") return "对方调整了播放进度";
   if (command.type === "PLAY") return "对方开始播放";
@@ -170,6 +190,7 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     if (names) toast.info(`一起听：${names}`);
     return;
   }
+  if (next.playMode) applyPlayMode(next.playMode);
   await applyRemote(next.songIds, next.command, next.initial);
   if (next.command && !next.initial) toast.info(commandToast(next.command));
 };

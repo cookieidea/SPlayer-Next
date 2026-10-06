@@ -67,6 +67,7 @@ export const registerTogetherIpc = (): void => {
       session,
       command: payload.command,
       songIds: payload.songIds,
+      playMode: payload.playMode,
       initial: payload.initial,
     });
   });

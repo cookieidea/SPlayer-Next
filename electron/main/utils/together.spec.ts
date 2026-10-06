@@ -17,11 +17,25 @@ import {
   str,
 } from "./togetherParse";
 import { parseInvitation, buildInvitation } from "@shared/utils/togetherInvitation";
-import type { TogetherCommand, TogetherLocalState } from "@shared/types/listenTogether";
+import type {
+  TogetherCommand,
+  TogetherLocalState,
+  TogetherSnapshot,
+} from "@shared/types/listenTogether";
+
+const snapshot = (patch: Partial<TogetherSnapshot> = {}): TogetherSnapshot => ({
+  songIds: [],
+  anchorSongId: "",
+  anchorPosition: -1,
+  playMode: "",
+  command: null,
+  ...patch,
+});
 
 const state = (patch: Partial<TogetherLocalState> = {}): TogetherLocalState => ({
   songId: "1",
   queueSongIds: ["1", "2"],
+  currentIndex: 0,
   positionMs: 0,
   playing: false,
   transitioning: false,
@@ -108,12 +122,12 @@ describe("一起听远端命令去重", () => {
 
 describe("共享队列判定", () => {
   it("顺序不同即需要替换", () => {
-    expect(needsQueueReplace({ songIds: ["2", "1"], command: null }, ["1", "2"])).toBe(true);
-    expect(needsQueueReplace({ songIds: ["1", "2"], command: null }, ["1", "2"])).toBe(false);
+    expect(needsQueueReplace(snapshot({ songIds: ["2", "1"] }), ["1", "2"])).toBe(true);
+    expect(needsQueueReplace(snapshot({ songIds: ["1", "2"] }), ["1", "2"])).toBe(false);
   });
 
   it("空队列不触发替换", () => {
-    expect(needsQueueReplace({ songIds: [], command: null }, [])).toBe(false);
+    expect(needsQueueReplace(snapshot({ songIds: [] }), [])).toBe(false);
   });
 
   it("队列签名保持顺序", () => {
@@ -323,18 +337,17 @@ describe("解析健壮性", () => {
 
 describe("共享队列判定不依赖本地上报", () => {
   it("对端队列与本地不同即需替换", () => {
-    const snapshot = { songIds: ["a", "b", "c"], command: null };
-    expect(needsQueueReplace(snapshot, ["a", "b"])).toBe(true);
-    expect(needsQueueReplace(snapshot, ["a", "b", "c"])).toBe(false);
+    const list = snapshot({ songIds: ["a", "b", "c"] });
+    expect(needsQueueReplace(list, ["a", "b"])).toBe(true);
+    expect(needsQueueReplace(list, ["a", "b", "c"])).toBe(false);
   });
 
   it("对端队列顺序变化也算变化", () => {
-    const snapshot = { songIds: ["c", "b", "a"], command: null };
-    expect(needsQueueReplace(snapshot, ["a", "b", "c"])).toBe(true);
+    expect(needsQueueReplace(snapshot({ songIds: ["c", "b", "a"] }), ["a", "b", "c"])).toBe(true);
   });
 
   it("本地队列为空时不触发替换", () => {
-    expect(needsQueueReplace({ songIds: [], command: null }, ["a"])).toBe(false);
+    expect(needsQueueReplace(snapshot({ songIds: [] }), ["a"])).toBe(false);
   });
 });
 

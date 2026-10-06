@@ -82,13 +82,16 @@ export const toCommand = (raw: unknown): TogetherCommand | null => {
   const playStatus = str(command.playStatus).toUpperCase();
   const targetSongId = str(command.targetSongId);
   const paused = type === "PAUSE" || playStatus === "PAUSE";
+  // 只描述时间轴或队列构成的命令不改变本机播放态
+  const neutral =
+    type === "PROGRESS" || type === "ADD" || type === "REPLACE" || type === "PLAYMODE_CHANGE";
   return {
     userId: str(command.userId),
     type,
     formerSongId: str(command.formerSongId),
     targetSongId: targetSongId === "0" ? "" : targetSongId,
     progressMs: Math.max(0, num(command.progress)),
-    playing: type !== "PROGRESS" && !paused,
+    playing: !neutral && !paused,
     serverSeq: num(command.serverSeq),
   };
 };
@@ -127,15 +130,22 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
 
 export const snapshotFromBody = (value: unknown): TogetherSnapshot => {
   const data = obj(obj(unwrap(value))?.data);
-  if (!data) return { songIds: [], command: null };
+  if (!data) {
+    return { songIds: [], anchorSongId: "", anchorPosition: -1, playMode: "", command: null };
+  }
   const playlist = obj(data.playlist) ?? {};
   const mode = str(playlist.playMode).toUpperCase();
   const shuffled = mode === "RANDOM" || mode === "SHUFFLE" || mode.endsWith("_RANDOM");
   const source = (shuffled ? obj(playlist.randomList) : null) ?? obj(playlist.displayList) ?? {};
+  const anchorSongId = str(playlist.anchorSongId);
+  const anchorPosition = Number(playlist.anchorPosition);
   return {
     songIds: list(source.result)
       .map((id) => str(id))
       .filter((id) => id !== "" && id !== "0"),
+    anchorSongId: anchorSongId === "0" ? "" : anchorSongId,
+    anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
+    playMode: mode,
     command: toCommand(data.playCommand ?? data.commandInfo),
   };
 };

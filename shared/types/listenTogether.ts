@@ -10,7 +10,8 @@ export interface TogetherRoom {
   members: TogetherMember[];
 }
 
-export type TogetherCommandType = "GOTO" | "NEXT" | "PREV" | "PLAY" | "PAUSE" | "PROGRESS";
+export type TogetherCommandType =
+  "GOTO" | "NEXT" | "PREV" | "PLAY" | "PAUSE" | "PROGRESS" | "ADD" | "REPLACE" | "PLAYMODE_CHANGE";
 
 export interface TogetherCommand {
   userId: string;
@@ -22,14 +23,21 @@ export interface TogetherCommand {
   serverSeq: number;
 }
 
+export type TogetherPlayMode = "ORDER_LOOP" | "RANDOM" | "SINGLE_LOOP";
+
 export interface TogetherSnapshot {
   songIds: string[];
+  anchorSongId: string;
+  anchorPosition: number;
+  playMode: string;
   command: TogetherCommand | null;
 }
 
 export interface TogetherLocalState {
   songId: string;
   queueSongIds: string[];
+  /** 当前曲目在共享队列中的下标，-1 表示不在队列里 */
+  currentIndex: number;
   positionMs: number;
   playing: boolean;
   transitioning: boolean;
@@ -62,6 +70,7 @@ export type TogetherSyncEvent =
       session: TogetherSession;
       command: TogetherCommand | null;
       songIds: string[];
+      playMode: string;
       initial: boolean;
     }
   | {
