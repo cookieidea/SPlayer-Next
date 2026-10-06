@@ -46,6 +46,14 @@ watch(
   },
 );
 
+// 房间换了或成员变了，好友列表里的「已在房间」标记就过期了，必须重取
+watch(
+  () => [store.session?.roomId, store.room?.members.length ?? 0].join("|"),
+  () => {
+    if (props.open && store.inRoom) void loadFriends();
+  },
+);
+
 const onCreate = async (): Promise<void> => {
   if (!userId.value) {
     toast.warning(t("player.together.needLogin"));
@@ -66,6 +74,8 @@ const onJoin = async (): Promise<void> => {
 
 const onLeave = async (): Promise<void> => {
   await together.leaveRoom();
+  // 房间没了，好友的「已在房间」标记随之失效
+  friends.value = [];
   emit("update:open", false);
 };
 

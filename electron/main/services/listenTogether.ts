@@ -458,7 +458,15 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
 export const create = async (userId: string): Promise<TogetherRoom> => {
   const created = roomFromBody(await callNetease("listen_together_room_create", {}));
   if (!created) throw new Error("创建房间未返回 roomId");
-  return enterRoom(created, userId, "create");
+  const room = enterRoom(created, userId, "create");
+  // 服务端在「已在房间」时会直接把旧房间返回来，成员可能还带着上一轮的残留；
+  // 立刻用一次 status 校准，避免界面显示上一局的人
+  const status = statusFromBody(await callNetease("listen_together_status", {}));
+  if (status.room && status.room.roomId === room.roomId) {
+    roomSignature = "";
+    publishRoom(status.room);
+  }
+  return room;
 };
 
 /**

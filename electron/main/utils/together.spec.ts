@@ -248,6 +248,46 @@ describe("好友邀请响应", () => {
   });
 });
 
+describe("房间成员比较", () => {
+  it("换房后成员列表不同即视为变化", () => {
+    const before = roomFromBody({
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          roomInfo: { roomId: "R1", creatorId: 1, roomUsers: [{ userId: 1 }, { userId: 2 }] },
+        },
+      },
+    });
+    const after = roomFromBody({
+      status: 200,
+      body: {
+        code: 200,
+        data: { roomInfo: { roomId: "R2", creatorId: 1, roomUsers: [{ userId: 1 }] } },
+      },
+    });
+    expect(before?.roomId).toBe("R1");
+    expect(after).toMatchObject({ roomId: "R2" });
+    expect(after?.members.map((m) => m.userId)).toEqual(["1"]);
+  });
+
+  it("同一房间成员减少时也能反映出来", () => {
+    const two = roomFromBody({
+      status: 200,
+      body: {
+        code: 200,
+        data: { roomInfo: { roomId: "R", roomUsers: [{ userId: 1 }, { userId: 2 }] } },
+      },
+    });
+    const one = roomFromBody({
+      status: 200,
+      body: { code: 200, data: { roomInfo: { roomId: "R", roomUsers: [{ userId: 1 }] } } },
+    });
+    expect(two?.members).toHaveLength(2);
+    expect(one?.members).toHaveLength(1);
+  });
+});
+
 describe("私信邀请（收件侧）", () => {
   // 真实抓自 msg/private/users 的载荷结构
   const realPayload = JSON.stringify({
