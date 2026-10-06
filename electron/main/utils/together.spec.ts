@@ -171,6 +171,43 @@ describe("一起听接口响应解析", () => {
   });
 });
 
+describe("callNetease 包装层", () => {
+  it("从 { status, body } 包装里取响应体", () => {
+    const wrapped = {
+      status: 200,
+      body: { code: 200, data: { roomInfo: { roomId: "R9", creatorId: 1 } } },
+    };
+    expect(roomFromBody(wrapped)).toMatchObject({ roomId: "R9", creatorId: "1" });
+    expect(statusFromBody({ status: 200, body: { code: 200, data: { inRoom: true } } })).toEqual({
+      inRoom: true,
+      room: null,
+    });
+    expect(joinableFromBody({ status: 200, body: { code: 200, data: { joinable: true } } })).toBe(
+      true,
+    );
+    expect(
+      snapshotFromBody({
+        status: 200,
+        body: { code: 200, data: { playlist: { displayList: { result: [7, 8] } } } },
+      }).songIds,
+    ).toEqual(["7", "8"]);
+  });
+
+  it("AI 已在房间时按既有房间继续对齐", () => {
+    const wrapped = {
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          type: "ALREADY_IN_ROOM",
+          roomInfo: { roomId: "d9a1485e", creatorId: 6294223883, roomUsers: [] },
+        },
+      },
+    };
+    expect(roomFromBody(wrapped)).toMatchObject({ roomId: "d9a1485e", creatorId: "6294223883" });
+  });
+});
+
 describe("一起听邀请链接", () => {
   it("解析官方分享链接", () => {
     const parsed = parseInvitation(
