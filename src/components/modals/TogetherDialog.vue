@@ -19,12 +19,18 @@ const invitationInput = ref("");
 const friends = shallowRef<TogetherFriend[]>([]);
 const friendsLoading = ref(false);
 const invites = shallowRef<TogetherInviteCard[]>([]);
-// 面板内的展示分支由它决定，而不是直接跟随 store：
-// 关闭动画期间内容仍在渲染，若立刻跟随 store 会先闪一帧创建房间界面
 const roomView = ref(false);
+let leaving = false;
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
-const memberText = computed(() => store.memberNames || t("player.together.waitingPeer"));
+const memberNames = ref("");
+const roomId = ref("");
+const memberText = computed(() => memberNames.value || t("player.together.waitingPeer"));
+
+const snapRoom = (): void => {
+  memberNames.value = store.memberNames;
+  roomId.value = store.room?.roomId ?? "";
+};
 
 watch(
   () => props.open,
@@ -34,6 +40,7 @@ watch(
       return;
     }
     roomView.value = store.inRoom;
+    snapRoom();
     void loadInbox();
     if (store.inRoom) void loadFriends();
   },
@@ -43,7 +50,8 @@ watch(
   () => [store.session?.roomId, store.room?.members.length ?? 0].join("|"),
   () => {
     if (!props.open) return;
-    roomView.value = store.inRoom;
+    if (!leaving) roomView.value = store.inRoom;
+    snapRoom();
     void loadInbox();
     if (store.inRoom) void loadFriends();
   },
@@ -54,7 +62,9 @@ const onCreate = async (): Promise<void> => {
     toast.warning(t("player.together.needLogin"));
     return;
   }
-  if (await together.createRoom(userId.value)) roomView.value = true;
+  if (!(await together.createRoom(userId.value))) return;
+  roomView.value = true;
+  snapRoom();
 };
 
 const onJoin = async (): Promise<void> => {
@@ -67,14 +77,19 @@ const onJoin = async (): Promise<void> => {
   if (!(await together.joinRoom(value, userId.value))) return;
   invitationInput.value = "";
   roomView.value = true;
+  snapRoom();
 };
 
 const onLeave = async (): Promise<void> => {
+  leaving = true;
+  emit("update:open", false);
+  try {
+    await together.leaveRoom();
+  } finally {
+    leaving = false;
+  }
   friends.value = [];
   invites.value = [];
-  roomView.value = false;
-  emit("update:open", false);
-  await together.leaveRoom();
 };
 
 const onCopy = (): void => void copy(invitation.value);
@@ -88,6 +103,7 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   if (!(await together.acceptInvite(card, userId.value))) return;
   invites.value = [];
   roomView.value = true;
+  snapRoom();
 };
 
 const loadFriends = async (): Promise<void> => {
@@ -119,7 +135,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <span class="text-xs text-on-surface-variant">{{ t("player.together.members") }}</span>
           <span class="text-sm break-all">{{ memberText }}</span>
           <span class="text-xs text-on-surface-variant mt-2">{{ t("player.together.room") }}</span>
-          <span class="text-xs break-all text-on-surface-variant/80">{{ store.room?.roomId }}</span>
+          <span class="text-xs break-all text-on-surface-variant/80">{{ roomId }}</span>
         </div>
 
         <div class="flex flex-col gap-2">
