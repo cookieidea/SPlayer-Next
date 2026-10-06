@@ -11,7 +11,7 @@ import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
 
-defineProps<{ open: boolean }>();
+const props = defineProps<{ open: boolean }>();
 
 const emit = defineEmits<{ "update:open": [value: boolean] }>();
 
@@ -25,6 +25,14 @@ const invitationInput = ref("");
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
 const memberText = computed(() => store.memberNames || t("player.together.waitingPeer"));
+
+// 组件由播放条常驻挂载，关闭时不会卸载，输入内容得自己清掉
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) invitationInput.value = "";
+  },
+);
 
 const onCreate = async (): Promise<void> => {
   if (!userId.value) {

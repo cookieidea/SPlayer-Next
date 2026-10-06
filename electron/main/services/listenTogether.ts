@@ -11,6 +11,7 @@
 
 import { callNetease } from "@main/apis/netease";
 import { neteaseLog } from "@main/utils/logger";
+import { fetchWithProxy } from "@main/utils/proxy";
 import {
   ADVANCE_HANDOVER_MS,
   HEARTBEAT_TICKS,
@@ -461,6 +462,11 @@ export const join = async (
   inviterId: string,
   userId: string,
 ): Promise<TogetherRoom> => {
+  // 房主自己再"加入"自己房间时服务端会拒绝，此时直接沿用已有房间
+  const current = statusFromBody(await callNetease("listen_together_status", {}));
+  if (current.inRoom && current.room?.roomId === roomId) {
+    return enterRoom(current.room, userId, "restore");
+  }
   if (!joinableFromBody(await callNetease("listen_together_room_check", { roomId }))) {
     throw new Error("房间已失效或无法加入");
   }
@@ -471,6 +477,24 @@ export const join = async (
     }),
   );
   return enterRoom(accepted ?? { roomId, creatorId: "", members: [] }, userId, "join");
+};
+
+/**
+ * 展开分享用的短链，取出跳转目标
+ *
+ * 官方 App 分享的 `163cn.tv/xxx` 只有跳转后才带 roomId/inviterId；渲染端拿不到
+ * 跨域响应，所以跟跳转放在主进程做。
+ * @param url - 用户粘贴文本里的链接
+ * @returns 跳转后的最终地址
+ */
+export const resolveLink = async (url: string): Promise<string> => {
+  if (!/^https?:\/\//i.test(url)) throw new Error("邀请链接无效");
+  const response = await fetchWithProxy(url, {
+    method: "GET",
+    redirect: "follow",
+    signal: AbortSignal.timeout(8000),
+  });
+  return response.url || url;
 };
 
 /** 退出房间：先清会话，结束请求在途时迟到的快照不得再改本地播放 */

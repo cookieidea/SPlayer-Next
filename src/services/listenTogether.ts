@@ -243,9 +243,18 @@ export const createRoom = async (userId: string): Promise<boolean> => {
  */
 export const joinRoom = async (input: string, userId: string): Promise<boolean> => {
   const store = useTogetherStore();
-  const parsed = parseInvitation(input);
+  let parsed = parseInvitation(input);
+  // 只有短链时跟一次跳转——官方 App 分享的文本里就是这种链接
+  if (!parsed.invitation && parsed.link) {
+    try {
+      parsed = parseInvitation(await window.api.together.resolveLink(parsed.link));
+    } catch {
+      toast.error("邀请链接无法打开，请检查网络后重试");
+      return false;
+    }
+  }
   if (!parsed.invitation) {
-    toast.error(parsed.error);
+    toast.error(parsed.error || "邀请链接里没有房间信息");
     return false;
   }
   store.busy = true;

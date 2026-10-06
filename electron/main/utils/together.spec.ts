@@ -208,6 +208,32 @@ describe("callNetease 包装层", () => {
   });
 });
 
+describe("分享短链", () => {
+  it("官方 App 的分享文案保留下来等主进程跟跳转", () => {
+    const shared =
+      "我的耳机分你一半，和我一起听歌吧～快点开看看 https://163cn.tv/bh2YFvu2 (@网易云音乐)";
+    const parsed = parseInvitation(shared);
+    expect(parsed.invitation).toBeNull();
+    expect(parsed.link).toBe("https://163cn.tv/bh2YFvu2");
+  });
+
+  it("短链跳转后的地址能解析出房间", () => {
+    const expanded =
+      "https://st.music.163.com/listen-together/share/?songId=412911436" +
+      "&roomId=41377ed589915fd2e6301bb93b32f9fb_1791305757&inviterId=2039529476";
+    expect(parseInvitation(expanded).invitation).toEqual({
+      roomId: "41377ed589915fd2e6301bb93b32f9fb_1791305757",
+      inviterId: "2039529476",
+    });
+  });
+
+  it("纯文案没有链接时给出提示", () => {
+    const parsed = parseInvitation("我的耳机分你一半");
+    expect(parsed.invitation).toBeNull();
+    expect(parsed.error).toBe("没有找到邀请链接或房间 ID");
+  });
+});
+
 describe("一起听邀请链接", () => {
   it("解析官方分享链接", () => {
     const parsed = parseInvitation(

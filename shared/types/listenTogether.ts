@@ -146,6 +146,11 @@ export interface TogetherApi {
   join: (roomId: string, inviterId: string, userId: string) => Promise<TogetherRoom>;
   /** 恢复服务端上尚未结束的房间 */
   restore: (userId: string) => Promise<TogetherRoom | null>;
+  /**
+   * 展开分享短链，取出带 roomId 的最终地址
+   * @param url - 用户粘贴文本里的链接
+   */
+  resolveLink: (url: string) => Promise<string>;
   /** 退出房间 */
   leave: () => Promise<void>;
   /** 上报本地播放状态，由服务端决定下一步 */

@@ -438,6 +438,8 @@ const api = {
       ipcRenderer.invoke("together:join", roomId, inviterId, userId),
     // 恢复服务端上未结束的房间
     restore: (userId: string) => ipcRenderer.invoke("together:restore", userId),
+    // 展开分享短链，取出带 roomId 的最终地址
+    resolveLink: (url: string) => ipcRenderer.invoke("together:resolveLink", url),
     // 退出房间
     leave: () => ipcRenderer.invoke("together:leave"),
     // 上报本地播放状态
