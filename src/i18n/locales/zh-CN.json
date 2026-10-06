@@ -519,7 +519,11 @@
       "inputPlaceholder": "粘贴邀请链接或房间 ID",
       "members": "房间成员",
       "room": "房间 ID",
-      "waitingPeer": "等待另一位听众加入"
+      "waitingPeer": "等待另一位听众加入",
+      "inviteFriends": "邀请好友",
+      "invite": "邀请",
+      "joined": "已在房间",
+      "noFriends": "没有可邀请的好友（需先在网易云关注对方）"
     }
   },
   "songList": {

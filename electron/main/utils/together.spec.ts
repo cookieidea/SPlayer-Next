@@ -7,7 +7,14 @@ import {
   needsQueueReplace,
   songIdsSignature,
 } from "./togetherProtocol";
-import { joinableFromBody, roomFromBody, snapshotFromBody, statusFromBody } from "./togetherParse";
+import {
+  joinableFromBody,
+  obj,
+  roomFromBody,
+  snapshotFromBody,
+  statusFromBody,
+  str,
+} from "./togetherParse";
 import { parseInvitation, buildInvitation } from "@shared/utils/togetherInvitation";
 import type { TogetherCommand, TogetherLocalState } from "@shared/types/listenTogether";
 
@@ -205,6 +212,38 @@ describe("callNetease 包装层", () => {
       },
     };
     expect(roomFromBody(wrapped)).toMatchObject({ roomId: "d9a1485e", creatorId: "6294223883" });
+  });
+});
+
+describe("好友邀请响应", () => {
+  it("关注列表取 body.follow 并标出已在房间的人", () => {
+    const wrapped = {
+      status: 200,
+      body: {
+        code: 200,
+        follow: [
+          { userId: 111, nickname: "甲", avatarUrl: "http://a" },
+          { userId: 222, nickname: "乙", avatarUrl: "" },
+        ],
+      },
+    };
+    const list = obj(wrapped)?.body;
+    const follow = obj(list)?.follow;
+    expect(Array.isArray(follow)).toBe(true);
+    expect((follow as unknown[]).length).toBe(2);
+    expect(str((follow as Record<string, unknown>[])[0].userId)).toBe("111");
+  });
+
+  it("邀请成功的判定读 data.result", () => {
+    const ok = { status: 200, body: { code: 200, data: { result: true, message: null } } };
+    expect(obj(obj(obj(ok)?.body)?.data)?.result).toBe(true);
+    const failed = {
+      status: 200,
+      body: { code: 200, data: { result: false, message: "对方未关注" } },
+    };
+    const data = obj(obj(obj(failed)?.body)?.data);
+    expect(data?.result).toBe(false);
+    expect(str(data?.message)).toBe("对方未关注");
   });
 });
 

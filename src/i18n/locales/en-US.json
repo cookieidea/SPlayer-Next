@@ -531,7 +531,11 @@
       "inputPlaceholder": "Paste an invitation link or room ID",
       "members": "Room members",
       "room": "Room ID",
-      "waitingPeer": "Waiting for another listener"
+      "waitingPeer": "Waiting for another listener",
+      "inviteFriends": "Invite friends",
+      "invite": "Invite",
+      "joined": "In room",
+      "noFriends": "No friends to invite yet (follow them on Netease first)"
     }
   },
   "songList": {

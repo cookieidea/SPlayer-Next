@@ -18,6 +18,7 @@ import { readTogetherCounters } from "@/services/togetherCounter";
 import { buildInvitation, parseInvitation } from "@shared/utils/togetherInvitation";
 import type {
   TogetherCommand,
+  TogetherFriend,
   TogetherLocalState,
   TogetherSyncEvent,
 } from "@shared/types/listenTogether";
@@ -266,6 +267,36 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
     return false;
   } finally {
     store.busy = false;
+  }
+};
+
+/**
+ * 取可邀请的好友
+ * @param userId - 本机用户 ID
+ * @returns 好友列表，失败时为空数组
+ */
+export const loadFriends = async (userId: string): Promise<TogetherFriend[]> => {
+  try {
+    return await window.api.together.friends(userId);
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+    return [];
+  }
+};
+
+/**
+ * 邀请指定好友进当前房间
+ * @param friend - 好友条目
+ * @returns 是否成功
+ */
+export const inviteFriend = async (friend: TogetherFriend): Promise<boolean> => {
+  try {
+    await window.api.together.invite(friend.userId);
+    toast.success(`已邀请 ${friend.nickname || friend.userId}`);
+    return true;
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+    return false;
   }
 };
 

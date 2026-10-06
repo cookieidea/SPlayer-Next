@@ -131,6 +131,18 @@ export type TogetherSessionEvent = Extract<
   { type: "session" | "command" | "advance" }
 >;
 
+/** 可邀请的好友条目 */
+export interface TogetherFriend {
+  /** 用户 ID */
+  userId: string;
+  /** 昵称 */
+  nickname: string;
+  /** 头像 */
+  avatarUrl: string;
+  /** 是否已在当前房间内 */
+  joined: boolean;
+}
+
 /** 一起听 IPC 接口 */
 export interface TogetherApi {
   /** 查询当前会话，未加入时返回 null */
@@ -151,6 +163,16 @@ export interface TogetherApi {
    * @param url - 用户粘贴文本里的链接
    */
   resolveLink: (url: string) => Promise<string>;
+  /**
+   * 取可邀请的好友（关注的人）
+   * @param userId - 本机用户 ID
+   */
+  friends: (userId: string) => Promise<TogetherFriend[]>;
+  /**
+   * 向指定用户发送房间邀请
+   * @param acceptorId - 被邀请人用户 ID
+   */
+  invite: (acceptorId: string) => Promise<void>;
   /** 退出房间 */
   leave: () => Promise<void>;
   /** 上报本地播放状态，由服务端决定下一步 */

@@ -26,12 +26,15 @@ import {
 } from "@main/utils/togetherProtocol";
 import {
   joinableFromBody,
+  obj,
   roomFromBody,
   snapshotFromBody,
   statusFromBody,
+  str,
 } from "@main/utils/togetherParse";
 import type {
   TogetherCommand,
+  TogetherFriend,
   TogetherLocalState,
   TogetherRoom,
   TogetherSession,
@@ -39,6 +42,9 @@ import type {
 
 /** 应用对端状态后，等渲染端确认新状态所需的帧数 */
 const ADOPT_CONFIRM_TICKS = 3;
+
+/** 拉取好友列表的条数上限 */
+const FRIENDS_LIMIT = 100;
 
 /** 进入房间的方式，决定首帧向谁对齐 */
 type RoomMode = "create" | "join" | "restore";
@@ -495,6 +501,47 @@ export const resolveLink = async (url: string): Promise<string> => {
     signal: AbortSignal.timeout(8000),
   });
   return response.url || url;
+};
+
+/**
+ * 取可邀请的好友（我关注的人）
+ *
+ * 官方客户端靠私信投递邀请，所以可选对象就是关注列表；已在房间内的人标记出来，
+ * 避免重复邀请。
+ * @param userId - 本机用户 ID
+ * @returns 好友列表
+ */
+export const friends = async (userId: string): Promise<TogetherFriend[]> => {
+  const result = obj(await callNetease("user_follows", { uid: userId, limit: FRIENDS_LIMIT }));
+  const list = obj(result?.body)?.follow;
+  const joined = new Set((room?.members ?? []).map((member) => member.userId));
+  return (Array.isArray(list) ? list : []).map((item: Record<string, unknown>) => ({
+    userId: str(item.userId),
+    nickname: str(item.nickname),
+    avatarUrl: str(item.avatarUrl),
+    joined: joined.has(str(item.userId)),
+  }));
+};
+
+/**
+ * 向指定用户发送房间邀请
+ * @param acceptorId - 被邀请人用户 ID
+ */
+export const invite = async (acceptorId: string): Promise<void> => {
+  if (!session) throw new Error("请先进入一起听房间");
+  const id = str(acceptorId).trim();
+  if (!/^\d{1,24}$/.test(id)) throw new Error("被邀请人 ID 无效");
+  const result = obj(
+    await callNetease("listen_together_invite_send", {
+      roomId: session.roomId,
+      acceptorId: id,
+    }),
+  );
+  const body = obj(result?.body);
+  if (!obj(body?.data)?.result) {
+    // result 为 false 时服务端会带原因（不在关注列表、房间已满等）
+    throw new Error(str(body?.message) || "邀请发送失败");
+  }
 };
 
 /** 退出房间：先清会话，结束请求在途时迟到的快照不得再改本地播放 */

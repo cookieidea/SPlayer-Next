@@ -10,6 +10,7 @@ import { useUserStore } from "@/stores/user";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
+import type { TogetherFriend } from "@shared/types/listenTogether";
 
 const props = defineProps<{ open: boolean }>();
 
@@ -21,6 +22,9 @@ const user = useUserStore();
 const { copy } = useCopyText();
 
 const invitationInput = ref("");
+/** 可邀请的好友（我已关注的人） */
+const friends = shallowRef<TogetherFriend[]>([]);
+const friendsLoading = ref(false);
 /** 本机用户 ID，未登录时为空串 */
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
@@ -30,7 +34,11 @@ const memberText = computed(() => store.memberNames || t("player.together.waitin
 watch(
   () => props.open,
   (open) => {
-    if (!open) invitationInput.value = "";
+    if (!open) {
+      invitationInput.value = "";
+      return;
+    }
+    if (store.inRoom) void loadFriends();
   },
 );
 
@@ -58,6 +66,21 @@ const onLeave = async (): Promise<void> => {
 };
 
 const onCopy = (): void => void copy(invitation.value);
+
+/** 拉一次关注列表：进入房间后再拉，才能标出已在房间内的人 */
+const loadFriends = async (): Promise<void> => {
+  if (!userId.value || friendsLoading.value) return;
+  friendsLoading.value = true;
+  try {
+    friends.value = await together.loadFriends(userId.value);
+  } finally {
+    friendsLoading.value = false;
+  }
+};
+
+const onInvite = async (friend: TogetherFriend): Promise<void> => {
+  if (await together.inviteFriend(friend)) await loadFriends();
+};
 </script>
 
 <template>
@@ -75,6 +98,44 @@ const onCopy = (): void => void copy(invitation.value);
           <span class="text-sm break-all">{{ memberText }}</span>
           <span class="text-xs text-on-surface-variant mt-2">{{ t("player.together.room") }}</span>
           <span class="text-xs break-all text-on-surface-variant/80">{{ store.room?.roomId }}</span>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <span class="text-xs text-on-surface-variant">
+            {{ t("player.together.inviteFriends") }}
+          </span>
+          <p v-if="friendsLoading" class="text-xs text-on-surface-variant/70">
+            {{ t("common.loading") }}
+          </p>
+          <p v-else-if="friends.length === 0" class="text-xs text-on-surface-variant/70">
+            {{ t("player.together.noFriends") }}
+          </p>
+          <div v-else class="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1">
+            <div
+              v-for="friend in friends"
+              :key="friend.userId"
+              class="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-on-surface/5"
+            >
+              <SImg
+                v-if="friend.avatarUrl"
+                :src="friend.avatarUrl"
+                class="w-7 h-7 rounded-full shrink-0"
+              />
+              <span class="flex-1 text-sm truncate">{{ friend.nickname || friend.userId }}</span>
+              <STag v-if="friend.joined" size="small" type="primary" variant="soft">
+                {{ t("player.together.joined") }}
+              </STag>
+              <SButton
+                v-else
+                size="small"
+                type="info"
+                variant="secondary"
+                @click="onInvite(friend)"
+              >
+                {{ t("player.together.invite") }}
+              </SButton>
+            </div>
+          </div>
         </div>
 
         <div class="flex flex-col gap-2">

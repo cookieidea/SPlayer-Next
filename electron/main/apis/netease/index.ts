@@ -88,6 +88,7 @@ const NON_CACHEABLE: ReadonlySet<string> = new Set([
   "listen_together_play_command_report",
   "listen_together_heartbeat",
   "listen_together_end",
+  "listen_together_invite_send",
 ]);
 
 /** 无需初始化网易云匿名登录态的公开接口 */

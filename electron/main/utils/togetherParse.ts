@@ -15,12 +15,12 @@ import type {
 
 type Json = Record<string, unknown>;
 
-const obj = (value: unknown): Json | null =>
+export const obj = (value: unknown): Json | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Json) : null;
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
-const str = (value: unknown): string => (value == null ? "" : String(value));
+export const str = (value: unknown): string => (value == null ? "" : String(value));
 
 const num = (value: unknown): number => {
   const parsed = Number(value);
