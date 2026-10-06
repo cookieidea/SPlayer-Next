@@ -8,6 +8,7 @@
 import type {
   TogetherCommand,
   TogetherCommandType,
+  TogetherInviteCard,
   TogetherMember,
   TogetherRoom,
   TogetherSnapshot,
@@ -19,6 +20,18 @@ export const obj = (value: unknown): Json | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Json) : null;
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+
+/** 解析可能是 JSON 字符串的值；已是对象或解析失败时返回 null */
+const parseJson = (value: unknown): Json | null => {
+  if (typeof value === "string") {
+    try {
+      return obj(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+  return obj(value);
+};
 
 export const str = (value: unknown): string => (value == null ? "" : String(value));
 
@@ -105,6 +118,49 @@ export const toCommand = (raw: unknown): TogetherCommand | null => {
     playing: type !== "PROGRESS" && !paused,
     serverSeq: num(command.serverSeq),
   };
+};
+
+/**
+ * 从私信会话里挑出一起听邀请
+ *
+ * 官方把邀请做成 `resType: 23` 的私信卡片，房间信息藏在 `generalMsg.nativeUrl`
+ * 的 `orpheus://nm/play/listenTogether?roomId=…&inviterId=…` 里。对方只点了
+ * 「邀请」而没有分享过链接时，这里是唯一能拿到 roomId 的地方。
+ * @param value - callNetease("listen_together_inbox") 返回值
+ * @returns 邀请卡片列表，按时间倒序
+ */
+export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
+  const body = obj(unwrap(value));
+  const conversations = Array.isArray(body?.msgs) ? body.msgs : [];
+  const cards: TogetherInviteCard[] = [];
+  for (const raw of conversations) {
+    const conversation = obj(raw);
+    const user = obj(conversation?.user);
+    // lastMsg 是 JSON 字符串；服务端在会话对象与 user 里各放了一份，两处都认
+    const source = conversation?.lastMsg ?? conversation?.msg ?? user?.lastMsg ?? user?.msg;
+    const payload = parseJson(source);
+    const message = obj(payload?.msg);
+    const general = obj(payload?.generalMsg) ?? obj(message?.generalMsg);
+    const nativeUrl = str(general?.nativeUrl);
+    if (!nativeUrl) continue;
+    // orpheus://open?url1=<enc>&url2=<enc>：房间参数在 url1 里
+    const outer = new URLSearchParams(nativeUrl.slice(nativeUrl.indexOf("?") + 1));
+    const inner = decodeURIComponent(outer.get("url1") ?? "");
+    const query = inner.slice(inner.indexOf("?") + 1);
+    if (!query) continue;
+    const params = new URLSearchParams(query);
+    const roomId = str(params.get("roomId"));
+    if (!roomId) continue;
+    cards.push({
+      roomId,
+      inviterId: str(params.get("inviterId") || user?.fromUserId),
+      inviterName: str(params.get("inviterName") || user?.nickname),
+      inviterAvatarUrl: decodeURIComponent(str(params.get("inviterAvatarUrl"))),
+      title: str(general?.title) || "加入一起听",
+      receivedAt: num(conversation?.lastMsgTime ?? user?.lastMsgTime),
+    });
+  }
+  return cards.sort((left, right) => right.receivedAt - left.receivedAt);
 };
 
 /**

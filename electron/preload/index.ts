@@ -440,6 +440,8 @@ const api = {
     restore: (userId: string) => ipcRenderer.invoke("together:restore", userId),
     // 展开分享短链，取出带 roomId 的最终地址
     resolveLink: (url: string) => ipcRenderer.invoke("together:resolveLink", url),
+    // 取未处理的一起听邀请（来自私信）
+    pendingInvites: () => ipcRenderer.invoke("together:pendingInvites"),
     // 取可邀请的好友（关注列表）
     friends: (userId: string) => ipcRenderer.invoke("together:friends", userId),
     // 向指定用户发送房间邀请

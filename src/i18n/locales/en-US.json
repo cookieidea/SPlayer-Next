@@ -535,7 +535,10 @@
       "inviteFriends": "Invite friends",
       "invite": "Invite",
       "joined": "In room",
-      "noFriends": "No friends to invite yet (follow them on Netease first)"
+      "noFriends": "No friends to invite yet (follow them on Netease first)",
+      "pendingInvites": "Listen Together invites",
+      "invitedBy": "{name} invited you",
+      "accept": "Accept"
     }
   },
   "songList": {

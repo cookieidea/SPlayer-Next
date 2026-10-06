@@ -19,6 +19,7 @@ import { buildInvitation, parseInvitation } from "@shared/utils/togetherInvitati
 import type {
   TogetherCommand,
   TogetherFriend,
+  TogetherInviteCard,
   TogetherLocalState,
   TogetherSyncEvent,
 } from "@shared/types/listenTogether";
@@ -269,6 +270,46 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
     store.busy = false;
   }
 };
+
+/**
+ * 取未处理的一起听邀请
+ *
+ * 对方在网易云里点「邀请」后，房间 ID 只存在于他发来的私信卡片里；没有这一步，
+ * 被邀请方就完全看不到任何可操作的东西。
+ * @returns 邀请卡片列表，失败时为空数组
+ */
+export const loadInvites = async (): Promise<TogetherInviteCard[]> => {
+  try {
+    return await window.api.together.pendingInvites();
+  } catch {
+    // 收件箱读取失败不该打断面板，静默返回空列表
+    return [];
+  }
+};
+
+/** 复用加入流程：房间 ID 与邀请人已知，直接走 join */
+const inviteJoin = async (roomId: string, inviterId: string, userId: string): Promise<boolean> => {
+  const store = useTogetherStore();
+  store.busy = true;
+  try {
+    await window.api.together.join(roomId, inviterId, userId);
+    return true;
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+    return false;
+  } finally {
+    store.busy = false;
+  }
+};
+
+/**
+ * 接受一条邀请
+ * @param card - 邀请卡片
+ * @param userId - 本机用户 ID
+ * @returns 是否成功
+ */
+export const acceptInvite = async (card: TogetherInviteCard, userId: string): Promise<boolean> =>
+  inviteJoin(card.roomId, card.inviterId, userId);
 
 /**
  * 取可邀请的好友

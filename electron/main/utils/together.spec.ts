@@ -8,6 +8,7 @@ import {
   songIdsSignature,
 } from "./togetherProtocol";
 import {
+  invitesFromInbox,
   joinableFromBody,
   obj,
   roomFromBody,
@@ -244,6 +245,73 @@ describe("好友邀请响应", () => {
     const data = obj(obj(obj(failed)?.body)?.data);
     expect(data?.result).toBe(false);
     expect(str(data?.message)).toBe("对方未关注");
+  });
+});
+
+describe("私信邀请（收件侧）", () => {
+  // 真实抓自 msg/private/users 的载荷结构
+  const realPayload = JSON.stringify({
+    msg: "我的耳机分你一半，和我一起听歌吧~",
+    pushMsg: "我的耳机分你一半，和我一起听歌吧~",
+    resType: 23,
+    type: 23,
+    generalMsg: {
+      noticeMsg: "加入一起听",
+      canPlay: false,
+      title: "加入一起听",
+      cover: "http://p1.music.126.net/x.jpg",
+      webUrl: "https://st.music.163.com/app-upgrade/index/index.html?type=listenTogether",
+      inboxBriefContent: "我的耳机分你一半，和我一起听歌吧~",
+      nativeUrl:
+        "orpheus://open?url1=orpheus%3A%2F%2Fnm%2Fplay%2FlistenTogether%3FroomId%3Dcbe6aa726d2b3f71ea4be2de03013547_1791312631%26inviterId%3D2039529476%26inviterName%3DXMJ_js%26listenTogetherRefer%3Dinbox_invite%26autoRecreatable%3D1&url2=https%3A%2F%2Fst.music.163.com%2Fapp-upgrade%2Findex%2Findex.html%3Ftype%3DlistenTogether",
+    },
+  });
+
+  const wrapped = {
+    status: 200,
+    body: {
+      msgs: [
+        {
+          user: {
+            id: 80564268776,
+            toUserId: 6294223883,
+            fromUserId: 2039529476,
+            newMsgCount: 2,
+            lastMsgTime: 1791312632105,
+            lastMsg: realPayload,
+          },
+        },
+        // 普通私信应当被忽略
+        {
+          user: { fromUserId: 111, lastMsgTime: 1791312000000, lastMsg: '{"msg":"你好"}' },
+        },
+      ],
+    },
+  };
+
+  it("从 nativeUrl 里解出房间与邀请人", () => {
+    const cards = invitesFromInbox(wrapped);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      roomId: "cbe6aa726d2b3f71ea4be2de03013547_1791312631",
+      inviterId: "2039529476",
+      inviterName: "XMJ_js",
+      title: "加入一起听",
+      receivedAt: 1791312632105,
+    });
+  });
+
+  it("非一起听私信被忽略", () => {
+    const onlyPlain = {
+      status: 200,
+      body: { msgs: [{ user: { fromUserId: 111, lastMsg: '{"msg":"你好"}', lastMsgTime: 1 } }] },
+    };
+    expect(invitesFromInbox(onlyPlain)).toEqual([]);
+  });
+
+  it("空响应不抛错", () => {
+    expect(invitesFromInbox({ status: 200, body: {} })).toEqual([]);
+    expect(invitesFromInbox(null)).toEqual([]);
   });
 });
 

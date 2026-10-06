@@ -143,6 +143,22 @@ export interface TogetherFriend {
   joined: boolean;
 }
 
+/** 收到的邀请（来自私信的一起听卡片） */
+export interface TogetherInviteCard {
+  /** 房间 ID */
+  roomId: string;
+  /** 邀请者用户 ID */
+  inviterId: string;
+  /** 邀请者昵称 */
+  inviterName: string;
+  /** 邀请者头像 */
+  inviterAvatarUrl: string;
+  /** 卡片标题 */
+  title: string;
+  /** 消息时间（Unix ms） */
+  receivedAt: number;
+}
+
 /** 一起听 IPC 接口 */
 export interface TogetherApi {
   /** 查询当前会话，未加入时返回 null */
@@ -163,6 +179,8 @@ export interface TogetherApi {
    * @param url - 用户粘贴文本里的链接
    */
   resolveLink: (url: string) => Promise<string>;
+  /** 取未处理的一起听邀请（来自私信） */
+  pendingInvites: () => Promise<TogetherInviteCard[]>;
   /**
    * 取可邀请的好友（关注的人）
    * @param userId - 本机用户 ID

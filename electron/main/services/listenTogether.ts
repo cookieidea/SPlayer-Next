@@ -25,6 +25,7 @@ import {
   type LocalBaseline,
 } from "@main/utils/togetherProtocol";
 import {
+  invitesFromInbox,
   joinableFromBody,
   obj,
   roomFromBody,
@@ -35,6 +36,7 @@ import {
 import type {
   TogetherCommand,
   TogetherFriend,
+  TogetherInviteCard,
   TogetherLocalState,
   TogetherRoom,
   TogetherSession,
@@ -45,6 +47,9 @@ const ADOPT_CONFIRM_TICKS = 3;
 
 /** 拉取好友列表的条数上限 */
 const FRIENDS_LIMIT = 100;
+
+/** 收件箱一次扫描的会话条数 */
+const INBOX_LIMIT = 20;
 
 /** 进入房间的方式，决定首帧向谁对齐 */
 type RoomMode = "create" | "join" | "restore";
@@ -501,6 +506,17 @@ export const resolveLink = async (url: string): Promise<string> => {
     signal: AbortSignal.timeout(8000),
   });
   return response.url || url;
+};
+
+/**
+ * 取未处理的一起听邀请
+ *
+ * 对方只点了「邀请」时不会有分享链接，房间 ID 只存在于他发来的私信卡片里。
+ * @returns 邀请卡片列表
+ */
+export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {
+  const result = await callNetease("listen_together_inbox", { limit: INBOX_LIMIT });
+  return invitesFromInbox(result);
 };
 
 /**

@@ -10,7 +10,7 @@ import { useUserStore } from "@/stores/user";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
-import type { TogetherFriend } from "@shared/types/listenTogether";
+import type { TogetherFriend, TogetherInviteCard } from "@shared/types/listenTogether";
 
 const props = defineProps<{ open: boolean }>();
 
@@ -25,6 +25,8 @@ const invitationInput = ref("");
 /** 可邀请的好友（我已关注的人） */
 const friends = shallowRef<TogetherFriend[]>([]);
 const friendsLoading = ref(false);
+/** 收到的一起听邀请（来自私信卡片） */
+const invites = shallowRef<TogetherInviteCard[]>([]);
 /** 本机用户 ID，未登录时为空串 */
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
@@ -38,6 +40,8 @@ watch(
       invitationInput.value = "";
       return;
     }
+    // 进房间时拉好友；不在房间时要看有没有别人发来的邀请
+    void loadInbox();
     if (store.inRoom) void loadFriends();
   },
 );
@@ -66,6 +70,16 @@ const onLeave = async (): Promise<void> => {
 };
 
 const onCopy = (): void => void copy(invitation.value);
+
+/** 拉一次收件箱：对方点过「邀请」但没分享链接时，只有这里能看到 */
+const loadInbox = async (): Promise<void> => {
+  if (!userId.value) return;
+  invites.value = await together.loadInvites();
+};
+
+const onAccept = async (card: TogetherInviteCard): Promise<void> => {
+  if (await together.acceptInvite(card, userId.value)) invites.value = [];
+};
 
 /** 拉一次关注列表：进入房间后再拉，才能标出已在房间内的人 */
 const loadFriends = async (): Promise<void> => {
@@ -156,6 +170,32 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
       </template>
 
       <template v-else>
+        <div v-if="invites.length > 0" class="flex flex-col gap-2">
+          <span class="text-xs text-on-surface-variant">
+            {{ t("player.together.pendingInvites") }}
+          </span>
+          <div
+            v-for="card in invites"
+            :key="card.roomId"
+            class="flex items-center gap-2 px-2 py-2 rounded-lg bg-primary/8"
+          >
+            <SImg
+              v-if="card.inviterAvatarUrl"
+              :src="card.inviterAvatarUrl"
+              class="w-8 h-8 rounded-full shrink-0"
+            />
+            <div class="flex-1 min-w-0 flex flex-col">
+              <span class="text-sm truncate">
+                {{ t("player.together.invitedBy", { name: card.inviterName || card.inviterId }) }}
+              </span>
+              <span class="text-xs text-on-surface-variant truncate">{{ card.title }}</span>
+            </div>
+            <SButton size="small" type="primary" :loading="store.busy" @click="onAccept(card)">
+              {{ t("player.together.accept") }}
+            </SButton>
+          </div>
+        </div>
+
         <p class="text-sm text-on-surface-variant leading-relaxed">
           {{ userId ? t("player.together.hint") : t("player.together.needLogin") }}
         </p>
