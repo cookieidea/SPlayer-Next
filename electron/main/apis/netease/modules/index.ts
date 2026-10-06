@@ -106,7 +106,6 @@ import album_sublist from "./album_sublist";
 import artist_sub from "./artist_sub";
 import artist_sublist from "./artist_sublist";
 
-// 一起听
 import listen_together_room_create from "./listen_together_room_create";
 import listen_together_status from "./listen_together_status";
 import listen_together_room_check from "./listen_together_room_check";

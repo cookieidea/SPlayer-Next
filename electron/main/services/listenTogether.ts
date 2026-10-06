@@ -1,14 +1,3 @@
-/**
- * 网易云「一起听」房间状态机
- *
- * 服务端只保存「共享队列 + 最近一条播放命令」，没有推送通道，所以这里用固定节拍
- * 轮询完成同步：每帧先上报本地变化，再拉一次快照应用对端命令，按节拍发心跳并校验
- * 房间是否仍然存在。
- *
- * 播放动作由渲染端执行：只有渲染端知道加载中的切歌、队列替换的落地时刻，主进程
- * 依据它回报的本地状态决定下一步。
- */
-
 import { callNetease } from "@main/apis/netease";
 import { neteaseLog } from "@main/utils/logger";
 import { fetchWithProxy } from "@main/utils/proxy";
@@ -42,25 +31,17 @@ import type {
   TogetherSession,
 } from "@shared/types/listenTogether";
 
-/** 应用对端状态后，等渲染端确认新状态所需的帧数 */
 const ADOPT_CONFIRM_TICKS = 3;
 
-/** 拉取好友列表的条数上限 */
 const FRIENDS_LIMIT = 100;
 
-/** 收件箱一次扫描的会话条数 */
 const INBOX_LIMIT = 20;
 
-/** 进入房间的方式，决定首帧向谁对齐 */
 type RoomMode = "create" | "join" | "restore";
 
-/** 下发给渲染端的对端状态 */
 export interface TogetherCommandPayload {
-  /** 最近一条对端命令，仅队列变化时为 null */
   command: TogetherCommand | null;
-  /** 需要整体替换的共享队列，空数组表示保持本地队列 */
   songIds: string[];
-  /** 是否是进入房间后的首次对齐 */
   initial: boolean;
 }
 
@@ -81,19 +62,13 @@ let tickCount = 0;
 
 let baseline: LocalBaseline | null = null;
 let localQueueIds: string[] = [];
-/** 上报序号，随房间生命周期单调递增 */
 let clientSeq = 0;
-/** 共享队列版本号，每次整体替换时自增 */
 let playlistVersion = 0;
 let lastRemoteSignature = "";
 let lastRemoteSeq = -1;
-/** 剩余多少帧内把本地状态视为「照做」而非用户动作 */
 let awaitAdoption = 0;
-/** 进入房间后的首帧待办 */
 let pendingInitial: "report" | "adopt" | null = null;
-/** 当前掌握推进权的一方 */
 let leaderId = "";
-/** 自然播完后等待对端推进的起点，0 表示不在等待 */
 let pendingAdvanceAt = 0;
 let previousSongId = "";
 
@@ -114,60 +89,33 @@ const commandListeners = new Set<CommandListener>();
 const advanceListeners = new Set<AdvanceListener>();
 const errorListeners = new Set<ErrorListener>();
 
-/**
- * 订阅房间信息变化
- * @param listener - 房间变化回调
- * @returns 取消订阅函数
- */
 export const onRoomChange = (listener: RoomListener): (() => void) => {
   roomListeners.add(listener);
   return () => roomListeners.delete(listener);
 };
 
-/**
- * 订阅房间结束
- * @param listener - 结束回调
- * @returns 取消订阅函数
- */
 export const onSessionEnd = (listener: EndListener): (() => void) => {
   endListeners.add(listener);
   return () => endListeners.delete(listener);
 };
 
-/**
- * 订阅对端状态
- * @param listener - 对端命令回调
- * @returns 取消订阅函数
- */
 export const onRemoteCommand = (listener: CommandListener): (() => void) => {
   commandListeners.add(listener);
   return () => commandListeners.delete(listener);
 };
 
-/**
- * 订阅「轮到本机推进队列」
- * @param listener - 推进回调
- * @returns 取消订阅函数
- */
 export const onAdvance = (listener: AdvanceListener): (() => void) => {
   advanceListeners.add(listener);
   return () => advanceListeners.delete(listener);
 };
 
-/**
- * 订阅同步失败
- * @param listener - 错误回调
- * @returns 取消订阅函数
- */
 export const onError = (listener: ErrorListener): (() => void) => {
   errorListeners.add(listener);
   return () => errorListeners.delete(listener);
 };
 
-/** 当前会话，未加入房间时为 null */
 export const getSession = (): TogetherSession | null => session;
 
-/** 是否正在房间内 */
 export const isActive = (): boolean => session !== null;
 
 const emitAdvance = (): void => {
@@ -179,7 +127,6 @@ const emitError = (error: unknown): void => {
   for (const listener of errorListeners) listener(message);
 };
 
-/** 房间指纹，用于抑制无变化的重复下发 */
 const signatureOf = (value: TogetherRoom): string =>
   [value.roomId, value.creatorId, value.members.map((member) => member.userId).join("_")].join("|");
 
@@ -191,12 +138,6 @@ const publishRoom = (value: TogetherRoom): void => {
   for (const listener of roomListeners) listener(value);
 };
 
-/**
- * 推定掌握推进权的一方：房主优先，退化为用户 ID 最小的一方
- * @param value - 房间信息
- * @param selfUserId - 本机用户 ID
- * @returns 推进权所属用户 ID
- */
 const pickLeader = (value: TogetherRoom, selfUserId: string): string => {
   if (value.creatorId) return value.creatorId;
   const candidates = [selfUserId, ...value.members.map((member) => member.userId)].filter(Boolean);
@@ -209,12 +150,6 @@ const pickLeader = (value: TogetherRoom, selfUserId: string): string => {
   return sorted[0] ?? selfUserId;
 };
 
-/**
- * 把变化列表折算成一条上报命令
- * @param changes - 本帧变化
- * @param playing - 当前播放态
- * @returns 命令类型与播放态，无需上报时返回 null
- */
 const reportFor = (
   changes: readonly string[],
   playing: boolean,
@@ -225,13 +160,6 @@ const reportFor = (
   return null;
 };
 
-/**
- * 上报一条播放命令
- * @param type - 命令类型
- * @param formerSongId - 切歌前歌曲 ID
- * @param playing - 发起者播放态
- * @param progressMs - 目标进度
- */
 const reportCommand = async (
   type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE",
   formerSongId: string,
@@ -251,10 +179,6 @@ const reportCommand = async (
   });
 };
 
-/**
- * 上报共享队列
- * @param songIds - 当前队列歌曲 ID
- */
 const reportQueue = async (songIds: readonly string[]): Promise<void> => {
   if (!session) return;
   playlistVersion += 1;
@@ -266,11 +190,6 @@ const reportQueue = async (songIds: readonly string[]): Promise<void> => {
   });
 };
 
-/**
- * 拉取并应用对端状态
- * @param initial - 是否进入房间后的首次对齐，此时无条件采用对端队列
- * @returns 是否应用了内容
- */
 const applySnapshot = async (initial: boolean): Promise<boolean> => {
   if (!session) return false;
   const selfUserId = session.userId;
@@ -294,8 +213,6 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
     localQueueIds = [...snapshot.songIds];
     if (baseline) baseline.queueSignature = songIdsSignature(snapshot.songIds);
   }
-  // 进程刚启动时恢复房间不代表要开始放音：这次不采纳对端的播放态，
-  // 由本机随后上报的 PAUSE 成为房间的权威状态
   const restored = mode === "restore" && initial;
   for (const listener of commandListeners) {
     listener({
@@ -307,7 +224,6 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   return true;
 };
 
-/** 心跳与房间探活 */
 const beat = async (): Promise<void> => {
   if (!session) return;
   const roomId = session.roomId;
@@ -326,7 +242,6 @@ const beat = async (): Promise<void> => {
   if (status.room) publishRoom(status.room);
 };
 
-/** 自然播完：掌握推进权时立刻续播，否则先等对端推过来 */
 const handleEnded = (): void => {
   if (!leaderId || leaderId === session?.userId) {
     leaderId = session?.userId ?? "";
@@ -336,7 +251,6 @@ const handleEnded = (): void => {
   pendingAdvanceAt = Date.now();
 };
 
-/** 单帧同步 */
 const tick = async (): Promise<void> => {
   if (!session || ticking || !hasLocalState) return;
   ticking = true;
@@ -359,7 +273,6 @@ const tick = async (): Promise<void> => {
         }
       }
     } else if (lastState.transitioning) {
-      // 加载中的切歌还没落定，此时的歌曲与进度都不是用户意图，只重建基线
       baseline = baselineOf(lastState);
       previousSongId = lastState.songId;
     } else {
@@ -370,7 +283,6 @@ const tick = async (): Promise<void> => {
         if (delta.changes.includes("ended")) handleEnded();
         const action = lastState.songId ? reportFor(delta.changes, lastState.playing) : null;
         if (action) {
-          // 本机主动操作即接管推进权，房间的下一首由本机决定
           if (action.type === "GOTO") leaderId = selfUserId;
           await reportCommand(
             action.type,
@@ -397,10 +309,6 @@ const tick = async (): Promise<void> => {
   }
 };
 
-/**
- * 结束会话并清理
- * @param reason - 结束原因
- */
 const endSession = (reason: "left" | "server" | "logout"): void => {
   if (timer) clearInterval(timer);
   timer = null;
@@ -420,13 +328,6 @@ const endSession = (reason: "left" | "server" | "logout"): void => {
   for (const listener of endListeners) listener(reason);
 };
 
-/**
- * 进入房间后的公共初始化
- * @param nextRoom - 房间信息
- * @param userId - 本机用户 ID
- * @param nextMode - 进入方式，决定首帧向谁对齐
- * @returns 房间信息
- */
 const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): TogetherRoom => {
   if (timer) clearInterval(timer);
   generation += 1;
@@ -450,17 +351,10 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   return nextRoom;
 };
 
-/**
- * 创建房间
- * @param userId - 本机用户 ID
- * @returns 服务端返回的房间
- */
 export const create = async (userId: string): Promise<TogetherRoom> => {
   const created = roomFromBody(await callNetease("listen_together_room_create", {}));
   if (!created) throw new Error("创建房间未返回 roomId");
   const room = enterRoom(created, userId, "create");
-  // 服务端在「已在房间」时会直接把旧房间返回来，成员可能还带着上一轮的残留；
-  // 立刻用一次 status 校准，避免界面显示上一局的人
   const status = statusFromBody(await callNetease("listen_together_status", {}));
   if (status.room && status.room.roomId === room.roomId) {
     roomSignature = "";
@@ -469,19 +363,11 @@ export const create = async (userId: string): Promise<TogetherRoom> => {
   return room;
 };
 
-/**
- * 加入房间
- * @param roomId - 房间 ID
- * @param inviterId - 邀请者用户 ID
- * @param userId - 本机用户 ID
- * @returns 服务端返回的房间
- */
 export const join = async (
   roomId: string,
   inviterId: string,
   userId: string,
 ): Promise<TogetherRoom> => {
-  // 房主自己再"加入"自己房间时服务端会拒绝，此时直接沿用已有房间
   const current = statusFromBody(await callNetease("listen_together_status", {}));
   if (current.inRoom && current.room?.roomId === roomId) {
     return enterRoom(current.room, userId, "restore");
@@ -498,14 +384,6 @@ export const join = async (
   return enterRoom(accepted ?? { roomId, creatorId: "", members: [] }, userId, "join");
 };
 
-/**
- * 展开分享用的短链，取出跳转目标
- *
- * 官方 App 分享的 `163cn.tv/xxx` 只有跳转后才带 roomId/inviterId；渲染端拿不到
- * 跨域响应，所以跟跳转放在主进程做。
- * @param url - 用户粘贴文本里的链接
- * @returns 跳转后的最终地址
- */
 export const resolveLink = async (url: string): Promise<string> => {
   if (!/^https?:\/\//i.test(url)) throw new Error("邀请链接无效");
   const response = await fetchWithProxy(url, {
@@ -516,13 +394,6 @@ export const resolveLink = async (url: string): Promise<string> => {
   return response.url || url;
 };
 
-/**
- * 取未处理的一起听邀请
- *
- * 私信会一直留在收件箱里，房间却可能早已结束，因此逐条用 room/check 过滤——
- * 不校验就会出现「房间失效了邀请还挂着」。校验并发进行，避免串行等待。
- * @returns 仍可加入的邀请卡片列表
- */
 export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {
   const cards = invitesFromInbox(
     await callNetease("listen_together_inbox", { limit: INBOX_LIMIT }),
@@ -530,13 +401,11 @@ export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {
   if (cards.length === 0) return [];
   const checked = await Promise.all(
     cards.map(async (card) => {
-      // 已经在自己房间里的那条邀请不必再校验
       if (session?.roomId === card.roomId) return card;
       try {
         const body = await callNetease("listen_together_room_check", { roomId: card.roomId });
         return joinableFromBody(body) ? card : null;
       } catch {
-        // 校验失败（网络抖动等）时宁可保留卡片，由点击时的 join 再兜一次
         return card;
       }
     }),
@@ -544,14 +413,6 @@ export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {
   return checked.filter((card): card is TogetherInviteCard => card !== null);
 };
 
-/**
- * 取可邀请的好友（我关注的人）
- *
- * 官方客户端靠私信投递邀请，所以可选对象就是关注列表；已在房间内的人标记出来，
- * 避免重复邀请。
- * @param userId - 本机用户 ID
- * @returns 好友列表
- */
 export const friends = async (userId: string): Promise<TogetherFriend[]> => {
   const result = obj(await callNetease("user_follows", { uid: userId, limit: FRIENDS_LIMIT }));
   const list = obj(result?.body)?.follow;
@@ -564,10 +425,6 @@ export const friends = async (userId: string): Promise<TogetherFriend[]> => {
   }));
 };
 
-/**
- * 向指定用户发送房间邀请
- * @param acceptorId - 被邀请人用户 ID
- */
 export const invite = async (acceptorId: string): Promise<void> => {
   if (!session) throw new Error("请先进入一起听房间");
   const id = str(acceptorId).trim();
@@ -580,12 +437,10 @@ export const invite = async (acceptorId: string): Promise<void> => {
   );
   const body = obj(result?.body);
   if (!obj(body?.data)?.result) {
-    // result 为 false 时服务端会带原因（不在关注列表、房间已满等）
     throw new Error(str(body?.message) || "邀请发送失败");
   }
 };
 
-/** 退出房间：先清会话，结束请求在途时迟到的快照不得再改本地播放 */
 export const leave = async (): Promise<void> => {
   const current = session;
   endSession("left");
@@ -597,16 +452,10 @@ export const leave = async (): Promise<void> => {
   }
 };
 
-/** 登出时清理，不发结束请求 */
 export const abandon = (): void => {
   endSession("logout");
 };
 
-/**
- * 恢复服务端上尚未结束的房间
- * @param userId - 本机用户 ID
- * @returns 恢复出的房间，无房间时为 null
- */
 export const restore = async (userId: string): Promise<TogetherRoom | null> => {
   if (session) return room;
   const status = statusFromBody(await callNetease("listen_together_status", {}));
@@ -614,13 +463,6 @@ export const restore = async (userId: string): Promise<TogetherRoom | null> => {
   return enterRoom(status.room, userId, "restore");
 };
 
-/**
- * 接收渲染端上报的本地播放状态
- *
- * 应用对端状态后的若干帧内，本机状态是「照做」的结果而非用户动作，这段时间只重建
- * 基线不上报，否则会把对端的动作原样回传，形成来回震荡。
- * @param state - 播放状态
- */
 export const updateLocal = (state: TogetherLocalState): void => {
   if (!session) return;
   const previousId = lastState.songId;

@@ -429,28 +429,17 @@ const api = {
       subscribe<PluginInfo>("plugin:status", callback),
   },
   together: {
-    // 查询当前一起听会话
     getSession: () => ipcRenderer.invoke("together:getSession"),
-    // 创建房间
     create: (userId: string) => ipcRenderer.invoke("together:create", userId),
-    // 加入房间
     join: (roomId: string, inviterId: string, userId: string) =>
       ipcRenderer.invoke("together:join", roomId, inviterId, userId),
-    // 恢复服务端上未结束的房间
     restore: (userId: string) => ipcRenderer.invoke("together:restore", userId),
-    // 展开分享短链，取出带 roomId 的最终地址
     resolveLink: (url: string) => ipcRenderer.invoke("together:resolveLink", url),
-    // 取未处理的一起听邀请（来自私信）
     pendingInvites: () => ipcRenderer.invoke("together:pendingInvites"),
-    // 取可邀请的好友（关注列表）
     friends: (userId: string) => ipcRenderer.invoke("together:friends", userId),
-    // 向指定用户发送房间邀请
     invite: (acceptorId: string) => ipcRenderer.invoke("together:invite", acceptorId),
-    // 退出房间
     leave: () => ipcRenderer.invoke("together:leave"),
-    // 上报本地播放状态
     sync: (state: TogetherLocalState) => ipcRenderer.send("together:sync", state),
-    // 订阅同步事件
     onEvent: (callback: (event: TogetherSyncEvent) => void) =>
       subscribe<TogetherSyncEvent>("together:event", callback),
   },

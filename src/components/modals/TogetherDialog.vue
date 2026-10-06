@@ -1,10 +1,4 @@
 <script setup lang="ts">
-/**
- * 网易云「一起听」房间面板
- *
- * 未在房间时提供创建与邀请链接加入；在房间时展示成员与邀请链接，可复制或退出。
- */
-
 import { useTogetherStore } from "@/stores/together";
 import { useUserStore } from "@/stores/user";
 import { useCopyText } from "@/composables/useCopyText";
@@ -22,17 +16,13 @@ const user = useUserStore();
 const { copy } = useCopyText();
 
 const invitationInput = ref("");
-/** 可邀请的好友（我已关注的人） */
 const friends = shallowRef<TogetherFriend[]>([]);
 const friendsLoading = ref(false);
-/** 收到的一起听邀请（来自私信卡片） */
 const invites = shallowRef<TogetherInviteCard[]>([]);
-/** 本机用户 ID，未登录时为空串 */
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
 const memberText = computed(() => store.memberNames || t("player.together.waitingPeer"));
 
-// 组件由播放条常驻挂载，关闭时不会卸载，输入内容得自己清掉
 watch(
   () => props.open,
   (open) => {
@@ -40,18 +30,15 @@ watch(
       invitationInput.value = "";
       return;
     }
-    // 进房间时拉好友；不在房间时要看有没有别人发来的邀请
     void loadInbox();
     if (store.inRoom) void loadFriends();
   },
 );
 
-// 房间换了或成员变了，好友列表里的「已在房间」标记就过期了，必须重取
 watch(
   () => [store.session?.roomId, store.room?.members.length ?? 0].join("|"),
   () => {
     if (!props.open) return;
-    // 房间没了就刷新收件箱：那条邀请对应的房间可能也跟着结束了
     void loadInbox();
     if (store.inRoom) void loadFriends();
   },
@@ -77,7 +64,6 @@ const onJoin = async (): Promise<void> => {
 
 const onLeave = async (): Promise<void> => {
   await together.leaveRoom();
-  // 房间没了，好友的「已在房间」标记与收到的邀请都随之失效
   friends.value = [];
   invites.value = [];
   emit("update:open", false);
@@ -85,7 +71,6 @@ const onLeave = async (): Promise<void> => {
 
 const onCopy = (): void => void copy(invitation.value);
 
-/** 拉一次收件箱：对方点过「邀请」但没分享链接时，只有这里能看到 */
 const loadInbox = async (): Promise<void> => {
   if (!userId.value) return;
   invites.value = await together.loadInvites();
@@ -95,7 +80,6 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   if (await together.acceptInvite(card, userId.value)) invites.value = [];
 };
 
-/** 拉一次关注列表：进入房间后再拉，才能标出已在房间内的人 */
 const loadFriends = async (): Promise<void> => {
   if (!userId.value || friendsLoading.value) return;
   friendsLoading.value = true;

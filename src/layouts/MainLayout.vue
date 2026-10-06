@@ -15,7 +15,6 @@ const settings = useSettingsStore();
 useOrpheusProtocol();
 useExternalFileHandler();
 
-// 一起听：订阅房间事件，并在已有登录态时续上服务端未结束的房间
 const user = useUserStore();
 initTogether();
 onMounted(() => {
@@ -23,7 +22,6 @@ onMounted(() => {
   if (id) void restoreRoom(String(id));
 });
 
-// 登录完成后可能还有服务端未结束的房间，登录态就绪时补一次恢复
 watch(
   () => user.profile?.userId,
   (id) => {

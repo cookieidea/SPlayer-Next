@@ -259,17 +259,14 @@ describe("卡片消息甄别（实测样本）", () => {
       status: 200,
       body: {
         msgs: [
-          // 真实邀请
           card(
             "orpheus://open?url1=orpheus%3A%2F%2Fnm%2Fplay%2FlistenTogether%3FroomId%3DR1_1%26inviterId%3D5&url2=x",
             5,
           ),
-          // 博物馆活动推广（同样 resType 23，但不是邀请）
           card(
             "orpheus://open?url1=https%3A%2F%2Fy.music.163.com%2Fg%2Fm%2Fat%2Fbowuguan%3Fmarket%3Dsixin&url2=x",
             201586,
           ),
-          // VIP 福利页
           card(
             "orpheus://open?url1=orpheus%3A%2F%2Frnpage%3Fcomponent%3Drn-vip-center%26tab%3Dwelfare&url2=x",
             1452176465,
@@ -324,7 +321,6 @@ describe("房间成员比较", () => {
 });
 
 describe("私信邀请（收件侧）", () => {
-  // 真实抓自 msg/private/users 的载荷结构
   const realPayload = JSON.stringify({
     msg: "我的耳机分你一半，和我一起听歌吧~",
     pushMsg: "我的耳机分你一半，和我一起听歌吧~",
@@ -356,7 +352,6 @@ describe("私信邀请（收件侧）", () => {
             lastMsg: realPayload,
           },
         },
-        // 普通私信应当被忽略
         {
           user: { fromUserId: 111, lastMsgTime: 1791312000000, lastMsg: '{"msg":"你好"}' },
         },

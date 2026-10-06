@@ -1,9 +1,3 @@
-/**
- * 一起听：创建房间
- *
- * 响应：`{ code, data: { roomInfo: { roomId, creatorId, roomUsers } } }`
- */
-
 import { createOption } from "../core/option";
 import type { NeteaseModule } from "../core/types";
 

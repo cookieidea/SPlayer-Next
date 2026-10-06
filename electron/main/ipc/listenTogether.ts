@@ -1,10 +1,3 @@
-/**
- * 一起听 IPC
- *
- * 房间同步全在主进程完成，渲染端只提交本地播放状态、订阅同步事件，
- * 这样主窗口隐藏或最小化时同步不会中断。
- */
-
 import { ipcMain } from "electron";
 import { broadcast } from "@main/utils/broadcast";
 import * as together from "@main/services/listenTogether";
@@ -18,7 +11,6 @@ const send = (event: TogetherSyncEvent): void => {
   broadcast("together:event", event);
 };
 
-/** 房间信息只在会话内才有意义，无会话时不发 */
 const sendRoom = (room: TogetherRoom): void => {
   if (!together.getSession()) return;
   send({ type: "room", room });

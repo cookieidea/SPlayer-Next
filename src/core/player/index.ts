@@ -616,7 +616,6 @@ export const seek = async (posMs: number): Promise<void> => {
   // 歌曲加载中 seek 无意义：引擎此刻没有可 seek 的解码线程，
   // 且 seekTarget 残留会让加载完成后的 position 推送被持续丢弃
   if (status.trackLoading) return;
-  // 应用对端命令、恢复播放进度同样会走到这里，由同步层按抑制窗口决定是否上报
   countTogetherAction("seek");
   const token = invalidatePlaybackOperation();
   // 先冻结插值，再写入位置
@@ -759,7 +758,6 @@ export const switchDevice = async (deviceId: string | null): Promise<void> => {
  * @param items - 歌曲列表
  * @param startIndex - 起始播放位置，默认 0
  * @param context - 队列中曲目共用的播放来源上下文
- * @param autoPlay - 是否自动开始播放，默认 true
  */
 export const playFrom = async (
   items: readonly Track[],

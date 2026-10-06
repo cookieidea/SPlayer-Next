@@ -65,7 +65,6 @@ export const registerApisIpc = (): void => {
 
   ipcMain.handle("apis:clearSession", (_evt, platform: ApiPlatform) => {
     if (platform === "netease") {
-      // 房间是账号级的：登录态一没，本地会话必须同步丢弃
       together.abandon();
       clearNeteaseCookies();
     }

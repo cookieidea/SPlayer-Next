@@ -65,7 +65,6 @@ const abLoopOpen = ref(false);
 const fmModeOpen = ref(false);
 const togetherOpen = ref(false);
 
-/** 一起听入口：仅在网易云登录后可用，房间入口属于播放控制而非通用设置 */
 const togetherStore = useTogetherStore();
 const user = useUserStore();
 const togetherVisible = computed(() => user.isLoggedIn);
@@ -77,7 +76,6 @@ const moreMenuItems = computed<DropdownMenuItem[]>(() => [
   { key: "speed", label: t("speed.title"), icon: IconLucideGauge },
   { key: "abLoop", label: t("abLoop.title"), icon: IconLucideRepeat2 },
   { key: "autoClose", label: t("autoClose.title"), icon: IconLucideClock },
-  // 全屏播放器工具栏空间有限，一起听收进更多菜单
   ...(togetherVisible.value && props.cover
     ? [{ key: "together", label: t("player.together.title"), icon: IconLucideUsers }]
     : []),

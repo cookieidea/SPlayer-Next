@@ -1,12 +1,3 @@
-/**
- * 一起听：结束房间
- *
- * params:
- * - roomId  房间 ID
- *
- * 响应：`{ code }`
- */
-
 import { createOption } from "../core/option";
 import type { NeteaseModule } from "../core/types";
 

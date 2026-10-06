@@ -1,13 +1,3 @@
-/**
- * 一起听：接受邀请加入房间
- *
- * params:
- * - roomId     房间 ID
- * - inviterId  邀请者用户 ID
- *
- * 响应：`{ code, data: { roomInfo } }`
- */
-
 import { createOption } from "../core/option";
 import type { NeteaseModule } from "../core/types";
 
