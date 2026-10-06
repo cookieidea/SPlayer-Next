@@ -116,8 +116,6 @@ export const onError = (listener: ErrorListener): (() => void) => {
 
 export const getSession = (): TogetherSession | null => session;
 
-export const isActive = (): boolean => session !== null;
-
 const emitAdvance = (): void => {
   for (const listener of advanceListeners) listener();
 };
@@ -131,6 +129,7 @@ const signatureOf = (value: TogetherRoom): string =>
   [value.roomId, value.creatorId, value.members.map((member) => member.userId).join("_")].join("|");
 
 const publishRoom = (value: TogetherRoom): void => {
+  if (!session) return;
   room = value;
   const signature = signatureOf(value);
   if (signature === roomSignature) return;
@@ -167,25 +166,35 @@ const reportCommand = async (
   progressMs = lastState.positionMs,
 ): Promise<void> => {
   if (!session) return;
+  const issuing = generation;
   clientSeq += 1;
+  const seq = clientSeq;
+  const roomId = session.roomId;
+  const targetSongId = lastState.songId || "0";
+  if (issuing !== generation) return;
   await callNetease("listen_together_play_command_report", {
-    roomId: session.roomId,
+    roomId,
     type,
     progressMs,
     playing,
     formerSongId: formerSongId || "0",
-    targetSongId: lastState.songId || "0",
-    clientSeq,
+    targetSongId,
+    clientSeq: seq,
   });
 };
 
 const reportQueue = async (songIds: readonly string[]): Promise<void> => {
   if (!session) return;
+  const issuing = generation;
   playlistVersion += 1;
+  const roomId = session.roomId;
+  const userId = Number(session.userId) || 0;
+  const version = playlistVersion;
+  if (issuing !== generation) return;
   await callNetease("listen_together_sync_list_report", {
-    roomId: session.roomId,
-    userId: Number(session.userId) || 0,
-    version: playlistVersion,
+    roomId,
+    userId,
+    version,
     songIds: [...songIds],
   });
 };
@@ -193,9 +202,11 @@ const reportQueue = async (songIds: readonly string[]): Promise<void> => {
 const applySnapshot = async (initial: boolean): Promise<boolean> => {
   if (!session) return false;
   const selfUserId = session.userId;
+  const issuing = generation;
   const snapshot = snapshotFromBody(
     await callNetease("listen_together_sync_playlist_get", { roomId: session.roomId }),
   );
+  if (!session || generation !== issuing) return false;
   const command = snapshot.command;
   const fresh =
     command !== null &&
@@ -317,6 +328,7 @@ const tick = async (): Promise<void> => {
 const endSession = (reason: "left" | "server" | "logout"): void => {
   if (timer) clearInterval(timer);
   timer = null;
+  generation += 1;
   session = null;
   room = null;
   roomSignature = "";

@@ -21,6 +21,8 @@ const friendsLoading = ref(false);
 const invites = shallowRef<TogetherInviteCard[]>([]);
 const roomView = ref(false);
 let leaving = false;
+let inboxToken = 0;
+let friendsToken = 0;
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
 const memberNames = ref("");
@@ -47,7 +49,11 @@ watch(
 );
 
 watch(
-  () => [store.session?.roomId, store.room?.members.length ?? 0].join("|"),
+  () =>
+    [
+      store.session?.roomId,
+      (store.room?.members ?? []).map((member) => member.userId).join("_"),
+    ].join("|"),
   () => {
     if (!props.open) return;
     if (!leaving) roomView.value = store.inRoom;
@@ -96,7 +102,9 @@ const onCopy = (): void => void copy(invitation.value);
 
 const loadInbox = async (): Promise<void> => {
   if (!userId.value) return;
-  invites.value = await together.loadInvites();
+  const token = ++inboxToken;
+  const next = await together.loadInvites();
+  if (token === inboxToken) invites.value = next;
 };
 
 const onAccept = async (card: TogetherInviteCard): Promise<void> => {
@@ -106,13 +114,25 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   snapRoom();
 };
 
+let friendsPending = false;
+
 const loadFriends = async (): Promise<void> => {
-  if (!userId.value || friendsLoading.value) return;
+  if (!userId.value) return;
+  if (friendsLoading.value) {
+    friendsPending = true;
+    return;
+  }
   friendsLoading.value = true;
+  const token = ++friendsToken;
   try {
-    friends.value = await together.loadFriends(userId.value);
+    const next = await together.loadFriends(userId.value);
+    if (token === friendsToken) friends.value = next;
   } finally {
     friendsLoading.value = false;
+  }
+  if (friendsPending) {
+    friendsPending = false;
+    void loadFriends();
   }
 };
 

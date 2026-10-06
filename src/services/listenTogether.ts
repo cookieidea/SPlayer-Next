@@ -154,7 +154,7 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
   if (next.type === "session-end") {
     setTogetherCounting(false);
     stopReporting();
-    toast.warning("一起听已结束");
+    if (next.reason !== "left") toast.warning("一起听已结束");
     return;
   }
   if (next.type === "error") {
@@ -188,11 +188,13 @@ const stopReporting = (): void => {
 
 export const isTogetherActive = (): boolean => useTogetherStore().inRoom;
 
+let eventChain: Promise<void> = Promise.resolve();
+
 export const initTogether = (): void => {
   if (unsubscribe) return;
   unsubscribe = window.api.together.onEvent((next) => {
     useTogetherStore().apply(next);
-    void handleEvent(next);
+    eventChain = eventChain.then(() => handleEvent(next)).catch(() => {});
   });
   void window.api.together.getSession().then((session) => {
     if (!session) return;

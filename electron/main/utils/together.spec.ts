@@ -61,6 +61,16 @@ describe("一起听本地变化识别", () => {
     expect(detectLocalChanges(state({ playing: true }), baseline).changes).toEqual(["playState"]);
   });
 
+  it("整曲播完时不再重复上报切歌", () => {
+    const baseline = baselineOf(state());
+    const delta = detectLocalChanges(
+      state({ songId: "9", endRevision: 1, seekRevision: 0 }),
+      baseline,
+    );
+    expect(delta.changes).toEqual(["ended"]);
+    expect(delta.changes).not.toContain("track");
+  });
+
   it("队列与整曲播完可以同时出现", () => {
     const baseline = baselineOf(state());
     const delta = detectLocalChanges(state({ queueSongIds: ["3"], endRevision: 2 }), baseline);

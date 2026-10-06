@@ -70,7 +70,10 @@ export const detectLocalChanges = (
   if (next.queueSignature !== baseline.queueSignature && state.queueSongIds.length > 0) {
     changes.push("queue");
   }
-  if (next.endRevision !== baseline.endRevision) changes.push("ended");
+  if (next.endRevision !== baseline.endRevision) {
+    changes.push("ended");
+    return { baseline: next, changes };
+  }
   if (!next.songId) return { baseline: next, changes };
   if (next.songId !== baseline.songId) changes.push("track");
   else if (next.seekRevision !== baseline.seekRevision) changes.push("progress");
