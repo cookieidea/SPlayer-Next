@@ -44,7 +44,7 @@ let emit: ((event: TogetherSyncEvent) => void) | null = null;
 
 const sessionEvent = (roomId = "R1"): TogetherSyncEvent => ({
   type: "session",
-  session: { roomId, generation: 1, userId: "7" },
+  session: { roomId, userId: "7" },
   room: { roomId, creatorId: "7", members: [{ userId: "7", nickname: "我", avatarUrl: "" }] },
 });
 
@@ -124,7 +124,7 @@ describe("一起听渲染端服务", () => {
     emit?.(sessionEvent());
     emit?.({
       type: "advance",
-      session: { roomId: "R1", generation: 1, userId: "7" },
+      session: { roomId: "R1", userId: "7" },
     });
     await vi.waitFor(() => expect(mocks.nextTrack).toHaveBeenCalled());
   });
@@ -142,7 +142,7 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "command",
-      session: { roomId: "R1", generation: 1, userId: "7" },
+      session: { roomId: "R1", userId: "7" },
       command: null,
       songIds: ["100", "200", "300"],
       playMode: "",
@@ -164,7 +164,7 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "command",
-      session: { roomId: "R1", generation: 1, userId: "7" },
+      session: { roomId: "R1", userId: "7" },
       command: {
         userId: "8",
         type: "GOTO",
@@ -195,7 +195,7 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "command",
-      session: { roomId: "R1", generation: 1, userId: "7" },
+      session: { roomId: "R1", userId: "7" },
       command: {
         userId: "8",
         type: "PROGRESS",
@@ -224,7 +224,7 @@ describe("一起听渲染端服务", () => {
     emit?.(sessionEvent());
     emit?.({
       type: "command",
-      session: { roomId: "R1", generation: 1, userId: "7" },
+      session: { roomId: "R1", userId: "7" },
       command: null,
       songIds: [],
       playMode: "RANDOM",
@@ -244,7 +244,7 @@ describe("一起听渲染端服务", () => {
     emit?.(sessionEvent());
     emit?.({
       type: "command",
-      session: { roomId: "R1", generation: 1, userId: "7" },
+      session: { roomId: "R1", userId: "7" },
       command: null,
       songIds: [],
       playMode: "SINGLE_LOOP",

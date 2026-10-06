@@ -8,8 +8,6 @@ export const useTogetherStore = defineStore("together", () => {
   const session = ref<TogetherSession | null>(null);
   const room = shallowRef<TogetherRoom | null>(null);
   const inRoom = computed(() => session.value !== null);
-  const event = shallowRef<TogetherSyncEvent | null>(null);
-  const eventId = ref(0);
   const busy = ref(false);
 
   const apply = (next: TogetherSyncEvent): void => {
@@ -22,8 +20,6 @@ export const useTogetherStore = defineStore("together", () => {
       session.value = null;
       room.value = null;
     }
-    event.value = next;
-    eventId.value += 1;
   };
 
   const memberNames = computed(() => {
@@ -32,5 +28,5 @@ export const useTogetherStore = defineStore("together", () => {
     return members.map((member) => member.nickname || member.userId).join("、");
   });
 
-  return { session, room, inRoom, event, eventId, busy, apply, memberNames };
+  return { session, room, inRoom, busy, apply, memberNames };
 });

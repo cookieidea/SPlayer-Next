@@ -73,6 +73,8 @@ let pendingInitial: "report" | "adopt" | null = null;
 let leaderId = "";
 let pendingAdvanceAt = 0;
 let previousSongId = "";
+let rateLimitUntil = 0;
+let rateLimitFailures = 0;
 
 let lastState: TogetherLocalState = {
   songId: "",
@@ -118,6 +120,39 @@ export const onError = (listener: ErrorListener): (() => void) => {
 };
 
 export const getSession = (): TogetherSession | null => session;
+
+const isRateLimited = (error: unknown): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; current && depth < 8; depth++) {
+    const text = (current instanceof Error ? current.message : String(current)).toLowerCase();
+    if (
+      text.includes("429") ||
+      text.includes("too many requests") ||
+      text.includes("rate limit") ||
+      text.includes("操作频繁") ||
+      text.includes("频繁")
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+};
+
+const registerFailure = (error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error);
+  emitError(message);
+  if (!isRateLimited(error)) return;
+  rateLimitFailures += 1;
+  if (rateLimitFailures > 3) {
+    rateLimitUntil = Number.MAX_SAFE_INTEGER;
+    emitError("一起听同步请求过于频繁，请退出房间后重试");
+    return;
+  }
+  const delay = Math.min(120_000, 30_000 * 2 ** (rateLimitFailures - 1));
+  rateLimitUntil = Date.now() + delay;
+  emitError(`一起听请求受限，将在 ${Math.round(delay / 1000)} 秒后重试`);
+};
 
 const emitAdvance = (): void => {
   for (const listener of advanceListeners) listener();
@@ -229,7 +264,6 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
     if (command.userId) leaderId = command.userId;
   }
   if (replaceQueue) {
-    playlistVersion += 1;
     localQueueIds = [...snapshot.songIds];
     if (baseline) baseline.queueSignature = songIdsSignature(snapshot.songIds);
   }
@@ -276,6 +310,7 @@ const handleEnded = (): void => {
 
 const tick = async (): Promise<void> => {
   if (!session || ticking || !hasLocalState) return;
+  if (Date.now() < rateLimitUntil) return;
   ticking = true;
   const selfUserId = session.userId;
   try {
@@ -329,9 +364,11 @@ const tick = async (): Promise<void> => {
       leaderId = selfUserId;
       emitAdvance();
     }
+    rateLimitFailures = 0;
+    rateLimitUntil = 0;
   } catch (error) {
     neteaseLog.warn("一起听同步失败:", error);
-    emitError(error);
+    registerFailure(error);
   } finally {
     ticking = false;
   }
@@ -355,13 +392,15 @@ const endSession = (reason: "left" | "server" | "logout"): void => {
   pendingAdvanceAt = 0;
   tickCount = 0;
   previousSongId = "";
+  rateLimitUntil = 0;
+  rateLimitFailures = 0;
   for (const listener of endListeners) listener(reason);
 };
 
 const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): TogetherRoom => {
   if (timer) clearInterval(timer);
   generation += 1;
-  session = { roomId: nextRoom.roomId, generation, userId };
+  session = { roomId: nextRoom.roomId, userId };
   mode = nextMode;
   roomSignature = "";
   publishRoom(nextRoom);
@@ -375,6 +414,8 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   baseline = null;
   hasLocalState = false;
   previousSongId = "";
+  rateLimitUntil = 0;
+  rateLimitFailures = 0;
   leaderId = nextMode === "create" ? userId : pickLeader(nextRoom, userId);
   pendingInitial = nextMode === "create" ? "report" : "adopt";
   timer = setInterval(() => void tick(), SYNC_INTERVAL_MS);

@@ -402,6 +402,58 @@ describe("一起听房间状态机", () => {
     expect(cards.map((c) => c.roomId)).toEqual(["LIVE"]);
   });
 
+  it("同步遇限流后暂停轮询并提示", async () => {
+    const service = await load();
+    const errors: string[] = [];
+    service.onError((message: string) => errors.push(message));
+
+    let callCount = 0;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_sync_playlist_get") {
+        callCount += 1;
+        if (callCount > 1) throw new Error("429 Too Many Requests");
+        return snapshotBody(["100"]);
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+    const afterFirst = callCount;
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(errors.some((m) => m.includes("受限"))).toBe(true);
+    expect(callCount).toBeLessThanOrEqual(afterFirst + 1);
+  });
+
+  it("切换房间会重置限流状态", async () => {
+    const service = await load();
+    let limitNext = true;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_sync_playlist_get") {
+        if (limitNext) throw new Error("操作频繁");
+        return snapshotBody(["100"]);
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+    limitNext = false;
+    await service.leave();
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(service.getSession()).not.toBeNull();
+  });
+
   it("状态查询失败时保留邀请卡片", async () => {
     const service = await load();
     const inboxBody = {

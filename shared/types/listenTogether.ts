@@ -45,7 +45,6 @@ export interface TogetherLocalState {
 
 export interface TogetherSession {
   roomId: string;
-  generation: number;
   userId: string;
 }
 
