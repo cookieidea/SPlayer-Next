@@ -55,7 +55,7 @@ const toMember = (raw: unknown): TogetherMember => {
   };
 };
 
-export const toRoom = (raw: unknown): TogetherRoom | null => {
+const toRoom = (raw: unknown): TogetherRoom | null => {
   const room = obj(raw);
   if (!room) return null;
   const roomId = str(room.roomId);
@@ -74,7 +74,7 @@ export const roomFromBody = (value: unknown): TogetherRoom | null => {
   return toRoom(data?.roomInfo) ?? toRoom(data);
 };
 
-export const toCommand = (raw: unknown): TogetherCommand | null => {
+const toCommand = (raw: unknown): TogetherCommand | null => {
   const command = obj(raw);
   if (!command) return null;
   const type = str(command.commandType).toUpperCase() as TogetherCommandType;

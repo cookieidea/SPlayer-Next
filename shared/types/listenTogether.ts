@@ -23,8 +23,6 @@ export interface TogetherCommand {
   serverSeq: number;
 }
 
-export type TogetherPlayMode = "ORDER_LOOP" | "RANDOM" | "SINGLE_LOOP";
-
 export interface TogetherSnapshot {
   songIds: string[];
   anchorSongId: string;
@@ -81,11 +79,6 @@ export type TogetherSyncEvent =
       type: "error";
       message: string;
     };
-
-export type TogetherSessionEvent = Extract<
-  TogetherSyncEvent,
-  { type: "session" | "command" | "advance" }
->;
 
 export interface TogetherFriend {
   userId: string;

@@ -5,12 +5,12 @@ const URL_PATTERN = /https?:\/\/[^\s"'<>()（）【】]+/i;
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const USER_ID_PATTERN = /^\d{1,24}$/;
 
-export interface TogetherInvitation {
+interface TogetherInvitation {
   roomId: string;
   inviterId: string;
 }
 
-export interface InvitationParseResult {
+interface InvitationParseResult {
   invitation: TogetherInvitation | null;
   link: string;
   error: string;

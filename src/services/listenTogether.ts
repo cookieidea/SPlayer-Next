@@ -209,6 +209,11 @@ const stopReporting = (): void => {
 
 export const isTogetherActive = (): boolean => useTogetherStore().inRoom;
 
+export const togetherCounters = (): { seekRevision: number; endRevision: number } =>
+  readTogetherCounters();
+
+export { countTogetherAction, setTogetherCounting } from "@/services/togetherCounter";
+
 let eventChain: Promise<void> = Promise.resolve();
 
 export const initTogether = (): void => {

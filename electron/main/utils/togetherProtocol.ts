@@ -4,8 +4,6 @@ import type {
   TogetherSnapshot,
 } from "@shared/types/listenTogether";
 
-export const REPORT_SUPPRESS_MS = 1800;
-
 export const ADVANCE_HANDOVER_MS = 3500;
 
 export const SYNC_INTERVAL_MS = 1000;
@@ -46,7 +44,7 @@ export interface LocalBaseline {
   endRevision: number;
 }
 
-export type LocalChange = "queue" | "track" | "progress" | "playState" | "ended";
+type LocalChange = "queue" | "track" | "progress" | "playState" | "ended";
 
 export const baselineOf = (state: TogetherLocalState): LocalBaseline => ({
   queueSignature: songIdsSignature(state.queueSongIds),
@@ -56,7 +54,7 @@ export const baselineOf = (state: TogetherLocalState): LocalBaseline => ({
   endRevision: state.endRevision,
 });
 
-export interface LocalDelta {
+interface LocalDelta {
   baseline: LocalBaseline;
   changes: LocalChange[];
 }
