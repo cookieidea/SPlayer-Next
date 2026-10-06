@@ -19,6 +19,9 @@ const invitationInput = ref("");
 const friends = shallowRef<TogetherFriend[]>([]);
 const friendsLoading = ref(false);
 const invites = shallowRef<TogetherInviteCard[]>([]);
+// 面板内的展示分支由它决定，而不是直接跟随 store：
+// 关闭动画期间内容仍在渲染，若立刻跟随 store 会先闪一帧创建房间界面
+const roomView = ref(false);
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
 const memberText = computed(() => store.memberNames || t("player.together.waitingPeer"));
@@ -30,6 +33,7 @@ watch(
       invitationInput.value = "";
       return;
     }
+    roomView.value = store.inRoom;
     void loadInbox();
     if (store.inRoom) void loadFriends();
   },
@@ -39,6 +43,7 @@ watch(
   () => [store.session?.roomId, store.room?.members.length ?? 0].join("|"),
   () => {
     if (!props.open) return;
+    roomView.value = store.inRoom;
     void loadInbox();
     if (store.inRoom) void loadFriends();
   },
@@ -49,7 +54,7 @@ const onCreate = async (): Promise<void> => {
     toast.warning(t("player.together.needLogin"));
     return;
   }
-  await together.createRoom(userId.value);
+  if (await together.createRoom(userId.value)) roomView.value = true;
 };
 
 const onJoin = async (): Promise<void> => {
@@ -59,14 +64,17 @@ const onJoin = async (): Promise<void> => {
   }
   const value = invitationInput.value.trim();
   if (!value) return;
-  if (await together.joinRoom(value, userId.value)) invitationInput.value = "";
+  if (!(await together.joinRoom(value, userId.value))) return;
+  invitationInput.value = "";
+  roomView.value = true;
 };
 
 const onLeave = async (): Promise<void> => {
-  await together.leaveRoom();
   friends.value = [];
   invites.value = [];
+  roomView.value = false;
   emit("update:open", false);
+  await together.leaveRoom();
 };
 
 const onCopy = (): void => void copy(invitation.value);
@@ -77,7 +85,9 @@ const loadInbox = async (): Promise<void> => {
 };
 
 const onAccept = async (card: TogetherInviteCard): Promise<void> => {
-  if (await together.acceptInvite(card, userId.value)) invites.value = [];
+  if (!(await together.acceptInvite(card, userId.value))) return;
+  invites.value = [];
+  roomView.value = true;
 };
 
 const loadFriends = async (): Promise<void> => {
@@ -104,7 +114,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
     @update:open="emit('update:open', $event)"
   >
     <div class="flex flex-col gap-4">
-      <template v-if="store.inRoom">
+      <template v-if="roomView">
         <div class="flex flex-col gap-1">
           <span class="text-xs text-on-surface-variant">{{ t("player.together.members") }}</span>
           <span class="text-sm break-all">{{ memberText }}</span>
