@@ -39,7 +39,7 @@ const INBOX_LIMIT = 20;
 
 type RoomMode = "create" | "join" | "restore";
 
-export interface TogetherCommandPayload {
+interface TogetherCommandPayload {
   command: TogetherCommand | null;
   songIds: string[];
   playMode: string;
