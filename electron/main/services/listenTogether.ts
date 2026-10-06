@@ -272,6 +272,8 @@ const tick = async (): Promise<void> => {
           await reportCommand("PAUSE", lastState.songId, false);
         }
       }
+      tickCount += 1;
+      return;
     } else if (lastState.transitioning) {
       baseline = baselineOf(lastState);
       previousSongId = lastState.songId;
@@ -279,7 +281,10 @@ const tick = async (): Promise<void> => {
       const delta = detectLocalChanges(lastState, baseline ?? baselineOf(lastState));
       baseline = delta.baseline;
       if (awaitAdoption <= 0) {
-        if (delta.changes.includes("queue")) await reportQueue(lastState.queueSongIds);
+        if (delta.changes.includes("queue")) {
+          await reportQueue(lastState.queueSongIds);
+          localQueueIds = [...lastState.queueSongIds];
+        }
         if (delta.changes.includes("ended")) handleEnded();
         const action = lastState.songId ? reportFor(delta.changes, lastState.playing) : null;
         if (action) {
@@ -469,7 +474,6 @@ export const updateLocal = (state: TogetherLocalState): void => {
   lastState = state;
   hasLocalState = true;
   if (state.songId !== previousId) previousSongId = previousId;
-  localQueueIds = [...state.queueSongIds];
   if (!baseline || awaitAdoption > 0) {
     baseline = baselineOf(state);
     previousSongId = state.songId;

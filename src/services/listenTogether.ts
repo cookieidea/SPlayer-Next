@@ -19,6 +19,18 @@ const REPORT_INTERVAL_MS = 1000;
 
 const QUEUE_FETCH_LIMIT = 500;
 
+let busyCount = 0;
+
+const beginBusy = (): void => {
+  busyCount += 1;
+  useTogetherStore().busy = true;
+};
+
+const endBusy = (): void => {
+  busyCount = Math.max(0, busyCount - 1);
+  if (busyCount === 0) useTogetherStore().busy = false;
+};
+
 const TOGETHER_CONTEXT = {
   originId: "listen-together",
   originType: "page" as const,
@@ -70,7 +82,7 @@ const tracksForIds = async (songIds: readonly string[]): Promise<Track[]> => {
 const respondCommand = async (command: TogetherCommand, index: number): Promise<void> => {
   const status = useStatusStore();
   const seekOnly = command.type === "PROGRESS";
-  if (status.playIndex !== index) {
+  if (status.currentTrack?.id !== command.targetSongId) {
     await player.playFrom(
       queue.queue.value,
       index,
@@ -89,15 +101,21 @@ const applyRemote = async (
   command: TogetherCommand | null,
   initial: boolean,
 ): Promise<void> => {
-  const targetId = command?.targetSongId || songIds[0] || "";
   if (songIds.length > 0) {
     const tracks = await tracksForIds(songIds);
     if (tracks.length === 0) return;
-    const targetIndex = tracks.findIndex((track) => track.id === targetId);
-    if (command && targetIndex < 0) return;
-    const index = targetIndex < 0 ? 0 : targetIndex;
-    const seekOnly = command?.type === "PROGRESS";
-    const autoPlay = !seekOnly && (!initial || Boolean(command?.playing));
+    if (!command) {
+      const currentId = useStatusStore().currentTrack?.id ?? "";
+      let keep = tracks.findIndex((track) => track.id === currentId);
+      if (keep < 0) keep = 0;
+      queue.setQueue(tracks, TOGETHER_CONTEXT);
+      useStatusStore().playIndex = keep;
+      return;
+    }
+    const index = tracks.findIndex((track) => track.id === command.targetSongId);
+    if (index < 0) return;
+    const seekOnly = command.type === "PROGRESS";
+    const autoPlay = !seekOnly && (!initial || command.playing);
     pendingLoad = true;
     try {
       await player.playFrom(tracks, index, TOGETHER_CONTEXT, autoPlay);
@@ -105,7 +123,7 @@ const applyRemote = async (
       pendingLoad = false;
     }
     if (!autoPlay) return;
-    if (command && !command.playing) await player.pause();
+    if (!command.playing) await player.pause();
     return;
   }
   if (!command?.targetSongId) return;
@@ -180,8 +198,7 @@ export const initTogether = (): void => {
 };
 
 export const createRoom = async (userId: string): Promise<boolean> => {
-  const store = useTogetherStore();
-  store.busy = true;
+  beginBusy();
   try {
     await window.api.together.create(userId);
     return true;
@@ -189,12 +206,11 @@ export const createRoom = async (userId: string): Promise<boolean> => {
     toast.error(error instanceof Error ? error.message : String(error));
     return false;
   } finally {
-    store.busy = false;
+    endBusy();
   }
 };
 
 export const joinRoom = async (input: string, userId: string): Promise<boolean> => {
-  const store = useTogetherStore();
   let parsed = parseInvitation(input);
   if (!parsed.invitation && parsed.link) {
     try {
@@ -208,7 +224,7 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
     toast.error(parsed.error || "邀请链接里没有房间信息");
     return false;
   }
-  store.busy = true;
+  beginBusy();
   try {
     await window.api.together.join(parsed.invitation.roomId, parsed.invitation.inviterId, userId);
     return true;
@@ -216,7 +232,7 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
     toast.error(error instanceof Error ? error.message : String(error));
     return false;
   } finally {
-    store.busy = false;
+    endBusy();
   }
 };
 
@@ -229,8 +245,7 @@ export const loadInvites = async (): Promise<TogetherInviteCard[]> => {
 };
 
 const inviteJoin = async (roomId: string, inviterId: string, userId: string): Promise<boolean> => {
-  const store = useTogetherStore();
-  store.busy = true;
+  beginBusy();
   try {
     await window.api.together.join(roomId, inviterId, userId);
     return true;
@@ -238,7 +253,7 @@ const inviteJoin = async (roomId: string, inviterId: string, userId: string): Pr
     toast.error(error instanceof Error ? error.message : String(error));
     return false;
   } finally {
-    store.busy = false;
+    endBusy();
   }
 };
 
@@ -266,14 +281,13 @@ export const inviteFriend = async (friend: TogetherFriend): Promise<boolean> => 
 };
 
 export const leaveRoom = async (): Promise<void> => {
-  const store = useTogetherStore();
-  store.busy = true;
+  beginBusy();
   try {
     await window.api.together.leave();
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
   } finally {
-    store.busy = false;
+    endBusy();
   }
 };
 

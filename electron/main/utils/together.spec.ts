@@ -248,6 +248,23 @@ describe("好友邀请响应", () => {
   });
 });
 
+describe("共享队列判定不依赖本地上报", () => {
+  it("对端队列与本地不同即需替换", () => {
+    const snapshot = { songIds: ["a", "b", "c"], command: null };
+    expect(needsQueueReplace(snapshot, ["a", "b"])).toBe(true);
+    expect(needsQueueReplace(snapshot, ["a", "b", "c"])).toBe(false);
+  });
+
+  it("对端队列顺序变化也算变化", () => {
+    const snapshot = { songIds: ["c", "b", "a"], command: null };
+    expect(needsQueueReplace(snapshot, ["a", "b", "c"])).toBe(true);
+  });
+
+  it("本地队列为空时不触发替换", () => {
+    expect(needsQueueReplace({ songIds: [], command: null }, ["a"])).toBe(false);
+  });
+});
+
 describe("卡片消息甄别（实测样本）", () => {
   const card = (nativeUrl: string, fromUserId = 1) => ({
     user: { fromUserId, lastMsgTime: 1791312632105 },
