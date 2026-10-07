@@ -1206,4 +1206,51 @@ describe("一起听房间状态机", () => {
     // 必须解除认领并应用对端的模式
     expect(applied).toContain("SINGLE_LOOP");
   });
+  it("上报载荷取自发送瞬间的快照而非当前值", async () => {
+    const service = await load();
+    const targets: string[] = [];
+
+    let releaseGoto!: () => void;
+    const heldGoto = new Promise<void>((resolve) => {
+      releaseGoto = resolve;
+    });
+    let holdGoto = true;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        if (params.type === "GOTO") {
+          targets.push(String(params.targetSongId));
+          if (holdGoto) await heldGoto;
+        }
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100", "200", "300"]);
+    });
+
+    // 首帧上报也会走 GOTO：先放它过去
+    holdGoto = false;
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    targets.length = 0;
+
+    // 切歌到 200：这条 GOTO 会被挂住
+    holdGoto = true;
+    service.updateLocal(localState({ songId: "200", currentIndex: 1 }));
+    vi.advanceTimersByTime(1000);
+    await Promise.resolve();
+
+    // 上报在飞时，用户又切到 300
+    holdGoto = false;
+    service.updateLocal(localState({ songId: "300", currentIndex: 2 }));
+
+    releaseGoto();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 第一条 GOTO 的载荷必须是 200，不能因为 await 之后重读而变成 300
+    expect(targets[0]).toBe("200");
+  });
 });

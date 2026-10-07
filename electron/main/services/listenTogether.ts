@@ -239,24 +239,26 @@ const reportCommand = async (
   type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE" | "PLAYMODE_CHANGE",
   formerSongId: string,
   playing: boolean,
-  progressMs = lastState.positionMs,
+  state: TogetherLocalState,
 ): Promise<void> => {
   if (!session) return;
   const issuing = generation;
   clientSeq += 1;
   const seq = clientSeq;
   const roomId = session.roomId;
-  const targetSongId = lastState.songId || "0";
+  // 载荷来自调用方捕获的快照：await 期间 lastState 可能已被替换，
+  // 在这里重读会让请求内容与本次 delta 不再对应
+  const targetSongId = state.songId || "0";
   if (issuing !== generation) return;
   await callNetease("listen_together_play_command_report", {
     roomId,
     type,
-    progressMs,
+    progressMs: state.positionMs,
     playing,
     formerSongId: formerSongId || "0",
     targetSongId,
     clientSeq: seq,
-    playMode: type === "PLAYMODE_CHANGE" ? lastState.playMode : "",
+    playMode: type === "PLAYMODE_CHANGE" ? state.playMode : "",
   });
 };
 
@@ -414,35 +416,39 @@ const tick = async (): Promise<void> => {
   ticking = true;
   const selfUserId = session.userId;
   const issuing = generation;
+  // 本轮唯一的本地状态快照：所有上报与提交都基于它，
+  // 避免 await 之后重读 lastState 拿到与本次 delta 不匹配的值
+  const state = lastState;
   let healthy = true;
   try {
     if (pendingInitial === "report") {
       pendingInitial = null;
-      baseline = baselineOf(lastState);
-      if (lastState.queueSongIds.length) {
-        const initialQueue = [...lastState.queueSongIds];
+      baseline = baselineOf(state);
+      if (state.queueSongIds.length) {
+        const initialQueue = [...state.queueSongIds];
         if (await guarded(() => reportQueue(initialQueue), issuing)) {
           localQueueIds = initialQueue;
         } else {
           healthy = false;
         }
       }
-      if (lastState.songId) {
+      if (state.songId) {
         healthy =
-          (await guarded(() => reportCommand("GOTO", "", lastState.playing), issuing)) && healthy;
+          (await guarded(() => reportCommand("GOTO", "", state.playing, state), issuing)) &&
+          healthy;
       }
       // 创建者即房间初始状态的权威：本地播放器模式也要一起上报，
       // 否则服务端默认值会在随后的快照里把创建者的模式覆盖掉。
       // 只有上报成功才登记为"已认领"：失败还登记的话，服务端之后真实返回的
       // 模式会被 claiming 当作"未回显"吞掉，而该值此后再无补报机会
       const modeReported = await guarded(
-        () => reportCommand("PLAYMODE_CHANGE", "", lastState.playing),
+        () => reportCommand("PLAYMODE_CHANGE", "", state.playing, state),
         issuing,
       );
       healthy = modeReported && healthy;
       if (modeReported) {
-        lastRemotePlayMode = lastState.playMode;
-        claimingMode = lastState.playMode;
+        lastRemotePlayMode = state.playMode;
+        claimingMode = state.playMode;
       }
       // 上报期间可能已经换了房：后续阶段属于旧会话，不再继续
       if (issuing !== generation) {
@@ -457,23 +463,23 @@ const tick = async (): Promise<void> => {
       const ok = await guarded(async () => {
         applied = await applySnapshot(true);
         if (applied && mode === "restore") {
-          await reportCommand("PAUSE", lastState.songId, false);
+          await reportCommand("PAUSE", state.songId, false, state);
         }
       }, issuing);
       if (ok && applied) awaitAdoption = ADOPT_CONFIRM_TICKS;
       if (!ok) healthy = false;
       tickCount += 1;
       return;
-    } else if (lastState.transitioning) {
+    } else if (state.transitioning) {
       // 加载期间只冻结进度与播放态：歌曲切换是用户的既成操作，必须保留下来，
       // 否则加载结束时基线已等于新歌，切歌永远检测不到。
       baseline = {
-        ...baselineOf(lastState),
-        songId: baseline?.songId ?? lastState.songId,
-        queueSignature: baseline?.queueSignature ?? baselineOf(lastState).queueSignature,
+        ...baselineOf(state),
+        songId: baseline?.songId ?? state.songId,
+        queueSignature: baseline?.queueSignature ?? baselineOf(state).queueSignature,
       };
     } else {
-      const delta = detectLocalChanges(lastState, baseline ?? baselineOf(lastState));
+      const delta = detectLocalChanges(state, baseline ?? baselineOf(state));
       const next = delta.baseline;
       // 刚下发过的模式又原样回来：这是渲染端 applyPlayMode 的回执，不是用户操作。
       // 只在待确认时吞一次，之后同样的值仍可正常上报
@@ -487,7 +493,7 @@ const tick = async (): Promise<void> => {
       } else if (delta.changes.includes("playMode")) {
         pendingModeAck = "";
       }
-      const prev = baseline ?? baselineOf(lastState);
+      const prev = baseline ?? baselineOf(state);
       // 基线按维度提交：某项上报成功后只推进该维度，失败的下轮还能被检出。
       // 一次性提交整个 delta 会让失败的变化永久丢失。
       // 上报是异步的：期间本地可能又变了。只有当该维度仍是当前值时才提交基线，
@@ -522,8 +528,8 @@ const tick = async (): Promise<void> => {
       if (!stale && awaitAdoption <= 0) {
         if (delta.changes.includes("queue")) {
           // 发送值与写回值必须是同一个数组：请求期间本地可能已改成别的队列，
-          // 此时读 lastState 写回会让缓存与服务端实际持有的队列不一致
-          const sentQueue = [...lastState.queueSongIds];
+          // 写回当前值会让缓存与服务端实际持有的队列不一致
+          const sentQueue = [...state.queueSongIds];
           if (await guarded(() => reportQueue(sentQueue), issuing)) {
             localQueueIds = sentQueue;
             commit("queue");
@@ -537,7 +543,7 @@ const tick = async (): Promise<void> => {
           handleEnded();
           commit("end");
         }
-        const actions = lastState.songId ? reportFor(delta.changes, lastState.playing) : [];
+        const actions = state.songId ? reportFor(delta.changes, state.playing) : [];
         for (const action of actions) {
           if (action.type === "GOTO") leaderId = selfUserId;
           const sent = await guarded(
@@ -546,6 +552,7 @@ const tick = async (): Promise<void> => {
                 action.type,
                 delta.changes.includes("track") ? previousSongId : "",
                 action.playing,
+                state,
               ),
             issuing,
           );
@@ -687,21 +694,26 @@ export const join = async (
   userId: string,
 ): Promise<TogetherRoom> => {
   const operation = ++roomOperation;
+  // 每个异步阶段回来都要确认自己没被后续操作或会话终止取代，
+  // 否则会在登出/切房之后继续推进并重建会话
+  const ensureCurrent = (): void => {
+    if (operation !== roomOperation) throw new Error("房间操作已被后续操作取代");
+  };
   const current = statusFromBody(await callNetease("listen_together_status", {}));
-  if (operation !== roomOperation) throw new Error("房间操作已被后续操作取代");
+  ensureCurrent();
   if (current.inRoom && current.room?.roomId === roomId) {
     return enterRoom(current.room, userId, "restore");
   }
-  if (!joinableFromBody(await callNetease("listen_together_room_check", { roomId }))) {
-    throw new Error("房间已失效或无法加入");
-  }
+  const joinable = joinableFromBody(await callNetease("listen_together_room_check", { roomId }));
+  ensureCurrent();
+  if (!joinable) throw new Error("房间已失效或无法加入");
   const accepted = roomFromBody(
     await callNetease("listen_together_invitation_accept", {
       roomId,
       inviterId: inviterId || "0",
     }),
   );
-  if (operation !== roomOperation) throw new Error("房间操作已被后续操作取代");
+  ensureCurrent();
   return enterRoom(accepted ?? { roomId, creatorId: "", members: [] }, userId, "join");
 };
 
