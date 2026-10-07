@@ -862,9 +862,9 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   return nextRoom;
 };
 
-export const create = async (userId: string, roomType = ""): Promise<TogetherRoom> => {
+export const create = async (userId: string): Promise<TogetherRoom> => {
   const operation = ++roomOperation;
-  const created = roomFromBody(await callNetease("listen_together_room_create", { roomType }));
+  const created = roomFromBody(await callNetease("listen_together_room_create", {}));
   if (operation !== roomOperation) throw new Error("房间操作已被后续操作取代");
   if (!created) throw new Error("创建房间未返回 roomId");
   const room = enterRoom(created, userId, "create");
