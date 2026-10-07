@@ -160,15 +160,6 @@ describe("多人一起听渲染端服务", () => {
     expect(queue.queue.value.map((item) => item.id)).toContain("room2");
   });
 
-  it("只有用户自己切歌才回报，跟随房间换曲不回传", () => {
-    // 跟随产生的那首不能回报，否则两端互相切歌
-    expect(mods.shouldReportLocalSong(true, "1", "1")).toBe(false);
-    expect(mods.shouldReportLocalSong(true, "9", "1")).toBe(true);
-    // 不在房间 / 没有曲目都不该上报
-    expect(mods.shouldReportLocalSong(false, "9", "1")).toBe(false);
-    expect(mods.shouldReportLocalSong(true, "", "1")).toBe(false);
-  });
-
   it("房间队列只用于展示，且内容没变时不重复拉取曲目详情", async () => {
     mocks.songsByIds.mockResolvedValue([track("room1"), track("room2")]);
     mods.initTogetherMulti();
@@ -183,5 +174,22 @@ describe("多人一起听渲染端服务", () => {
     emit?.(roomEvent(room("room1", ["room2"])));
     await Promise.resolve();
     expect(mocks.songsByIds.mock.calls.length).toBe(calls);
+  });
+
+  it("跟随房间换曲只动本地播放器，不产生任何服务端调用", async () => {
+    queue.setQueue([track("mine1")]);
+    mocks.songsByIds.mockResolvedValue([track("room1")]);
+    mods.initTogetherMulti();
+
+    const api = window.api.togetherMulti as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    for (const fn of Object.values(api)) fn.mockClear?.();
+
+    emit?.(roomEvent(room("room1", [])));
+    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
+
+    // 多人房只通过房间面板的置顶改队列；本地换曲上报会与房间互相拉扯
+    for (const [name, fn] of Object.entries(api)) {
+      expect(fn.mock.calls.length, `${name} 不该被调用`).toBe(0);
+    }
   });
 });

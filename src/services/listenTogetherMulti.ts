@@ -1,4 +1,3 @@
-import { watch } from "vue";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { useStatusStore } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
@@ -16,8 +15,6 @@ let unsubscribe: (() => void) | null = null;
 
 // 跟随房间换曲后不能再把这次变化回报给房间，否则两端互相切歌。
 // 按「房间设的那首」逐值抑制，而不是开时间窗：时间窗会把用户随后的真实切歌一起吞掉
-let remoteSongId = "";
-
 let roomQueueKey = "";
 
 const resolveTracks = async (ids: string[]): Promise<Track[]> => {
@@ -57,7 +54,6 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   const [track] = await resolveTracks([roomSongId]);
   if (!track) return;
 
-  remoteSongId = roomSongId;
   let at = queue.findTrackIndex(roomSongId);
   if (at < 0) at = player.insertToQueue(track, undefined, MULTI_CONTEXT);
   if (at < 0) return;
@@ -83,32 +79,8 @@ const handleEvent = (): void => {
   }
 };
 
-/** 跟随房间换曲不能再回报给房间；只有用户自己切到别的歌才上报 */
-export const shouldReportLocalSong = (
-  inRoom: boolean,
-  songId: string,
-  roomSongId: string,
-): boolean => inRoom && Boolean(songId) && songId !== roomSongId;
-
-/** 本地切歌后把房间切过去。不是用户点的动作，因此不占 busy、只在失败时报错 */
-const switchMultiSong = async (songId: string): Promise<void> => {
-  try {
-    await window.api.togetherMulti.switchSong(songId, 0);
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : String(error));
-  }
-};
-
 export const initTogetherMulti = (): void => {
   handleEvent();
-  // 用户在本地主动切歌时把房间也切过去（参考实现同样上报 SONG_SWITCH）
-  watch(
-    () => useMediaStore().track?.id ?? "",
-    (id) => {
-      if (!shouldReportLocalSong(useTogetherMultiStore().inRoom, id, remoteSongId)) return;
-      void switchMultiSong(id);
-    },
-  );
 };
 
 const withBusy = async <T>(run: () => Promise<T>): Promise<T | null> => {

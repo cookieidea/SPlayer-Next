@@ -16,8 +16,6 @@ const OPERATE_ADD = 1;
 
 const OPERATE_TOP = 2;
 
-const OPERATE_SWITCH = 4;
-
 type RoomListener = (room: TogetherMultiRoom, generation: number) => void;
 
 type EndListener = (reason: TogetherMultiEndReason, generation: number) => void;
@@ -224,6 +222,3 @@ export const addMultiSong = (songId: string, songBizId = 0): Promise<TogetherMul
 
 export const topMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
   operate(songId, songBizId, OPERATE_TOP);
-
-export const switchMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
-  operate(songId, songBizId, OPERATE_SWITCH);

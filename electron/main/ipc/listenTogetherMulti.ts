@@ -38,10 +38,6 @@ export const registerTogetherMultiIpc = (): void => {
     multi.topMultiSong(songId, songBizId),
   );
 
-  ipcMain.handle("togetherMulti:switchSong", (_event, songId: string, songBizId: number) =>
-    multi.switchMultiSong(songId, songBizId),
-  );
-
   multi.onMultiRoom((room, generation) => {
     send({ type: "room", room, generation });
   });
