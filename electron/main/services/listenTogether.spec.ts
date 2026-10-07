@@ -1591,4 +1591,60 @@ describe("一起听房间状态机", () => {
     // 这是对采纳的跟随，不是用户切歌
     expect(gotos).toHaveLength(0);
   });
+  it("播完时非 leader 不自行选曲，leader 的选曲到达后接管被取消", async () => {
+    const service = await load();
+    const advances: string[] = [];
+    service.onAdvance(() => advances.push("advance"));
+    let statusCalls = 0;
+    let snapshotCommand: Record<string, unknown> | null = null;
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_status") {
+        statusCalls += 1;
+        return statusCalls === 1 ? statusBody(false) : statusBody(true, "R1", [8]);
+      }
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true, status: "AVAILABLE" } } };
+      }
+      if (name === "listen_together_invitation_accept") {
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: { roomInfo: { roomId: "R1", creatorId: 8, roomUsers: [{ userId: 8 }] } },
+          },
+        };
+      }
+      if (name === "listen_together_sync_playlist_get") {
+        return snapshotBody(["100", "200"], "", -1, "ORDER_LOOP", snapshotCommand);
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.join("R1", "8", "7");
+    service.updateLocal(localState({ songId: "100", endRevision: 0 }));
+    await vi.advanceTimersByTimeAsync(1000);
+    advances.length = 0;
+
+    // 本机歌曲播完：我是 follower（leader 是房间创建者 8），不该自行推进
+    service.updateLocal(localState({ songId: "100", endRevision: 1 }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(advances).toHaveLength(0);
+
+    // leader 的选曲到达（按 songId 采纳）
+    snapshotCommand = {
+      userId: "8",
+      commandType: "GOTO",
+      playStatus: "PLAY",
+      formerSongId: "100",
+      targetSongId: "200",
+      progress: 0,
+      serverSeq: 7,
+    };
+    service.updateLocal(localState({ songId: "200", endRevision: 1 }));
+    for (let i = 0; i < 6; i++) await vi.advanceTimersByTimeAsync(1000);
+
+    // 收到了 leader 的选曲就不该再抢推进权
+    expect(advances).toHaveLength(0);
+  });
 });
