@@ -1658,9 +1658,9 @@ describe("一起听房间状态机", () => {
     // 收到了 leader 的选曲就不该再抢推进权
     expect(advances).toHaveLength(0);
   });
-  it("有人进房时重报当前歌曲与进度", async () => {
+  it("有人进房时重发当前歌曲指令", async () => {
     const service = await load();
-    const progress: string[] = [];
+    const gotos: string[] = [];
     let users = [7];
 
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
@@ -1682,7 +1682,7 @@ describe("一起听房间状态机", () => {
         };
       }
       if (name === "listen_together_play_command_report") {
-        if (params.type === "PROGRESS") progress.push(String(params.targetSongId));
+        if (params.type === "GOTO") gotos.push(String(params.targetSongId));
         return { status: 200, body: { code: 200 } };
       }
       return snapshotBody(["100"], "", -1, "ORDER_LOOP");
@@ -1691,14 +1691,18 @@ describe("一起听房间状态机", () => {
     await service.create("7");
     service.updateLocal(localState({ songId: "100", positionMs: 42000, playing: true }));
 
-    // 首次观察（可能正是自己刚进来）：不能报，否则会覆盖房间已有状态
+    // 首帧（建房）那条 GOTO 不算，只关心成员变化触发的
     await cycle();
-    expect(progress).toHaveLength(0);
+    gotos.length = 0;
 
-    // 有人进来：把当前歌曲与进度重报一次
+    // 首次成员观察（可能正是自己刚进来）：不能报，否则会覆盖房间已有状态
+    await cycle();
+    expect(gotos).toHaveLength(0);
+
+    // 有人进来：重发一条 GOTO（官方客户端需要真正的歌曲指令才会切歌）
     users = [7, 8];
     await cycle();
-    expect(progress).toEqual(["100"]);
+    expect(gotos).toEqual(["100"]);
   });
   it("房间拉取按低频进行而不是每 tick 一次", async () => {
     const service = await load();

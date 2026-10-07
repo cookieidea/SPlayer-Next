@@ -5,6 +5,7 @@ import {
   ADVANCE_HANDOVER_MS,
   HEARTBEAT_TICKS,
   SNAPSHOT_POLL_TICKS,
+  STATUS_TICKS,
   SYNC_INTERVAL_MS,
   baselineOf,
   commandSignature,
@@ -432,14 +433,14 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   return fresh;
 };
 
-const beat = async (): Promise<boolean> => {
+const beat = async (doHeartbeat: boolean): Promise<boolean> => {
   if (!session) return true;
   const roomId = session.roomId;
   const issuingBeat = generation;
   let healthy = true;
   try {
     // 没有歌就不发心跳：参考实现同样跳过，避免空放时白刷请求
-    if (lastState.songId) {
+    if (doHeartbeat && lastState.songId) {
       await callNetease("listen_together_heartbeat", {
         roomId,
         songId: lastState.songId,
@@ -470,10 +471,9 @@ const beat = async (): Promise<boolean> => {
       // 首次观察不报：那可能正是自己刚进来，此时还没采纳房间状态，
       // 报上去会把房间已有的歌曲/进度覆盖掉
       if (knownMemberIds.length > 0 && arrived && pendingInitial === null && lastState.songId) {
-        await guarded(
-          () => reportCommand("PROGRESS", lastState.songId, lastState.playing, lastState),
-          issuingBeat,
-        );
+        // 必须发 GOTO 而不是 PROGRESS：对端（尤其官方客户端）入场时
+        // 需要一条真正的歌曲指令才会切歌，PROGRESS 只调整进度
+        await guarded(() => reportCommand("GOTO", "", lastState.playing, lastState), issuingBeat);
       }
       knownMemberIds = ids;
       publishRoom(status.room);
@@ -784,7 +784,9 @@ const tick = async (): Promise<void> => {
     }
     tickCount += 1;
     if (issuing !== generation) return;
-    if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await beat()) && healthy;
+    if (tickCount % STATUS_TICKS === 0) {
+      healthy = (await beat(tickCount % HEARTBEAT_TICKS === 0)) && healthy;
+    }
     if (pendingAdvanceAt && Date.now() - pendingAdvanceAt >= ADVANCE_HANDOVER_MS) {
       pendingAdvanceAt = 0;
       leaderId = selfUserId;

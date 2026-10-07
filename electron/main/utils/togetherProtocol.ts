@@ -13,8 +13,11 @@ export const SYNC_INTERVAL_MS = 1000;
  *  1 秒一次是每秒一个请求，参考实现用的是 4 秒——这是延迟与风控的取舍点 */
 export const SNAPSHOT_POLL_TICKS = 4;
 
-/** 心跳 + 房间存活性探测间隔：参考实现用 20s 心跳 / 15s 状态，这里统一 15s */
-export const HEARTBEAT_TICKS = 15;
+/** 心跳间隔：参考实现用 20s */
+export const HEARTBEAT_TICKS = 20;
+
+/** 成员状态探测间隔：要在有人进房后尽快重发歌曲指令，不能太慢 */
+export const STATUS_TICKS = 5;
 
 export const songIdsSignature = (ids: readonly (string | number)[]): string => ids.join(",");
 
