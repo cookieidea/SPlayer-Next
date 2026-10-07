@@ -2,7 +2,13 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  playFrom: vi.fn(() => Promise.resolve()),
+  // 忠实复现真实 playFrom 的副作用：它会 setQueue（后者是"窗口被当成房间歌单"的关键），
+  // 只记调用参数的话，队列被截断这类问题在测试里根本暴露不出来
+  playFrom: vi.fn((items: readonly Track[], startIndex: number, context?: PlaybackContext) => {
+    queue.setQueue(items, context);
+    useStatusStore().playIndex = Math.max(0, Math.min(startIndex, items.length - 1));
+    return Promise.resolve();
+  }),
   play: vi.fn(() => Promise.resolve()),
   pause: vi.fn(() => Promise.resolve()),
   seek: vi.fn(() => Promise.resolve()),
@@ -21,6 +27,12 @@ vi.mock("@/core/player", () => ({
   seek: mocks.seek,
   nextTrack: mocks.nextTrack,
   playAtIndex: vi.fn(() => Promise.resolve()),
+  // 兜底路径会靠它把目标插进本地队列，返回的下标要真实
+  insertToQueue: vi.fn((item: Track, afterIndex?: number, context?: PlaybackContext) => {
+    const at = typeof afterIndex === "number" ? afterIndex + 1 : queue.queue.value.length;
+    queue.insertToQueue(item, at, context);
+    return at;
+  }),
   setShuffleMode: mocks.setShuffleMode,
   setRepeatMode: mocks.setRepeatMode,
 }));
@@ -42,6 +54,7 @@ let useStatusStore: typeof import("@/stores/status").useStatusStore;
 let queue: {
   setQueue: (items: readonly Track[], context?: PlaybackContext) => void;
   shuffleQueue: (keepIndex: number) => void;
+  insertToQueue: (item: Track, index: number, context?: PlaybackContext) => void;
   queue: { value: Track[] };
 };
 let mods: typeof ServiceModule;
@@ -556,6 +569,40 @@ describe("一起听渲染端服务", () => {
     expect((mocks.seek.mock.calls[0] as unknown[])[0]).toBe(30000);
   });
 
+  it("对方拖进度且目标曲不同时保持本地在播，不被静音", async () => {
+    queue.setQueue([track("100")]);
+    mocks.songsByIds.mockResolvedValue([track("100"), track("200")]);
+    const status = useStatusStore();
+    status.state = "playing";
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "PROGRESS",
+        formerSongId: "0",
+        targetSongId: "200",
+        progressMs: 30000,
+        // PROGRESS 的 playing 是解析层刻意置的中性值
+        playing: false,
+        serverSeq: 9,
+      },
+      songIds: ["100", "200"],
+      playMode: "",
+      initial: false,
+      autoPlay: false,
+    });
+
+    await vi.waitFor(() => expect(mocks.playFrom).toHaveBeenCalled());
+    // 第四个参数是 autoPlay：中性 playing 不能被当成"对方暂停了"，
+    // 否则正在播放的接收方会被换成暂停态且不再自动播
+    expect((mocks.playFrom.mock.calls[0] as unknown[])[3]).toBe(true);
+  });
+
   it("常规 GOTO 仍从头播放且不额外定位", async () => {
     queue.setQueue([track("100")]);
     mocks.songsByIds.mockResolvedValue([track("100"), track("200")]);
@@ -646,6 +693,10 @@ describe("一起听渲染端服务", () => {
     const call = mocks.playFrom.mock.calls[0] as unknown[];
     const list = call[0] as Track[];
     expect(list[call[1] as number as number]?.id).toBe(target);
+    // 兜底窗口只用来定位目标，绝不能变成房间歌单：
+    // 本地队列会被整表上报，一旦被截断成 200 首，房间歌单就跟着丢歌
+    expect(queue.queue.value.length).toBeLessThan(200);
+    expect(queue.queue.value.map((item) => item.id)).toContain(target);
   });
 
   it("云盘与本地音乐不进共享队列，并提示已跳过", async () => {

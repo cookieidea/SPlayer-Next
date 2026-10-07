@@ -131,10 +131,13 @@ const respondCommand = async (
   const status = useStatusStore();
   if (command.type === "PLAYMODE_CHANGE") return;
   const seekOnly = command.type === "PROGRESS";
+  // PROGRESS 的 playing 是中性值（解析层刻意置 false），不能拿它决定要不要播放：
+  // 对方拖进度时若目标曲与本地不同，被迫换曲后会一直停在暂停，等于把接收方静音
+  const autoPlay = seekOnly ? status.isPlaying : command.playing;
   if (status.currentTrack?.id !== command.targetSongId) {
     // 必须交原始顺序：传洗牌后的顺序回 playFrom，setQueue 会把它当成新的原始顺序，
     // 之后"关闭随机"就再也还原不回来了
-    await player.playFrom(list, index, status.currentPlaybackContext, !seekOnly && command.playing);
+    await player.playFrom(list, index, status.currentPlaybackContext, autoPlay);
     reapplyLocalShuffle();
   }
   await player.seek(command.progressMs);
@@ -166,8 +169,10 @@ const applyRemote = async (
     let tracks = await tracksForIds(songIds);
     // 房间歌单可能上千首：整表解析失败或目标缺失时，退化为目标附近的窗口。
     // 否则这里会静默返回——用户看到的就是"进房什么都没发生"
+    let fallbackWindow = false;
     if (targetId && !tracks.some((track) => track.id === targetId)) {
       tracks = await tracksForIds(windowAround(songIds, targetId, ADOPT_WINDOW));
+      fallbackWindow = true;
     }
     if (tracks.length === 0) return;
     if (!command) {
@@ -194,19 +199,30 @@ const applyRemote = async (
     }
     // 播放模式命令只改模式，不触碰播放器
     if (command.type === "PLAYMODE_CHANGE") return;
-    const index = tracks.findIndex((track) => track.id === command.targetSongId);
+    let index = tracks.findIndex((track) => track.id === command.targetSongId);
     if (index < 0) return;
+    if (fallbackWindow) {
+      // 窗口只是定位目标用的兜底，写回本地会被下一轮整表上报当成房间歌单、
+      // 把上千首截断成 200 首。改成在本地队列里就地定位，没有就插这一首
+      const target = tracks[index];
+      const found = queue.findTrackIndex(target.id);
+      const at = found >= 0 ? found : player.insertToQueue(target, undefined, TOGETHER_CONTEXT);
+      if (at < 0) return;
+      tracks = queue.queue.value;
+      index = at;
+    }
     // 纯时间轴命令：只对齐曲目与进度，不改播放态
     if (command.type === "PROGRESS") {
+      // 换曲前先记下本地是否在播：PROGRESS 的 playing 恒为 false，
+      // 用它当 autoPlay 会让正在播放的一方被静音
+      const wasPlaying = useStatusStore().isPlaying;
       pendingLoad = true;
       try {
         if (useStatusStore().currentTrack?.id !== command.targetSongId) {
-          await player.playFrom(tracks, index, TOGETHER_CONTEXT, false);
+          await player.playFrom(tracks, index, TOGETHER_CONTEXT, playOnEntry || wasPlaying);
           reapplyLocalShuffle();
         }
         await player.seek(command.progressMs);
-        // 入场时进度命令也要起播：PROGRESS 被解析为 neutral，playing 恒为 false，
-        // 只看它会让接收方一直停在暂停态
         if (playOnEntry) await player.play();
       } finally {
         pendingLoad = false;
