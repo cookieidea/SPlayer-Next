@@ -1253,4 +1253,87 @@ describe("一起听房间状态机", () => {
     // 第一条 GOTO 的载荷必须是 200，不能因为 await 之后重读而变成 300
     expect(targets[0]).toBe("200");
   });
+  it("首帧队列上报失败会在下一轮重试", async () => {
+    const service = await load();
+    const queues: string[][] = [];
+    let failQueue = true;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_sync_list_report") {
+        if (failQueue) throw new Error("网络错误");
+        queues.push([...(params.songIds as string[])]);
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100", "200"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100", "200"] }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(queues).toHaveLength(0);
+
+    failQueue = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(queues.some((ids) => ids.length === 2 && ids[0] === "100" && ids[1] === "200")).toBe(
+      true,
+    );
+  });
+
+  it("首帧 GOTO 上报失败会在下一轮重试", async () => {
+    const service = await load();
+    const gotos: string[] = [];
+    let failGoto = true;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report" && params.type === "GOTO") {
+        if (failGoto) throw new Error("网络错误");
+        gotos.push(String(params.targetSongId));
+      }
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"] }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(gotos).toHaveLength(0);
+
+    failGoto = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(gotos).toContain("100");
+  });
+
+  it("首帧模式上报失败会在下一轮重试", async () => {
+    const service = await load();
+    const modes: string[] = [];
+    let failMode = true;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report" && params.type === "PLAYMODE_CHANGE") {
+        if (failMode) throw new Error("网络错误");
+        modes.push(String(params.playMode));
+      }
+      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(modes).toHaveLength(0);
+
+    failMode = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(modes).toContain("RANDOM");
+  });
 });

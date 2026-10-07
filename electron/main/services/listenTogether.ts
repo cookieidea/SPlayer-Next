@@ -324,7 +324,11 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   }
   if (replaceQueue) {
     localQueueIds = [...snapshot.songIds];
-    if (baseline) baseline.queueSignature = songIdsSignature(snapshot.songIds);
+    // 只在该维度已经确认同步时才推进基线：首帧队列上报失败时基线仍是
+    // 未确认的哨兵，这里直接写服务端值会把"待上报"抹平成"已同步"
+    if (baseline && baseline.queueSignature !== "") {
+      baseline.queueSignature = songIdsSignature(snapshot.songIds);
+    }
   }
   const restored = mode === "restore" && initial;
   if (modeChanged) {
@@ -423,19 +427,65 @@ const tick = async (): Promise<void> => {
   try {
     if (pendingInitial === "report") {
       pendingInitial = null;
-      baseline = baselineOf(state);
+      // 首帧同样按维度提交：任一维度上报失败就保持旧基线，
+      // 否则 pendingInitial 已清空、差异也被抹平，该状态再也补报不出去
+      const initial = baselineOf(state);
+      // 待上报的维度先标记为"未确认"（空值），上报成功后才收敛到真实值。
+      // 必须无条件覆盖：渲染端的首帧上报可能已经先把 baseline 整块设成当前状态
+      baseline = {
+        ...(baseline ?? initial),
+        ...(state.queueSongIds.length ? { queueSignature: "" } : {}),
+        ...(state.songId ? { songId: "" } : {}),
+        ...(state.playMode ? { playMode: "" } : {}),
+      };
+      const claim = (dimension: "queue" | "songId" | "mode"): void => {
+        const current = baseline ?? initial;
+        // await 期间本地又变了就不提交：留给下一轮检出，避免把新操作标成已同步
+        if (dimension === "queue") {
+          if (songIdsSignature(lastState.queueSongIds) !== initial.queueSignature) return;
+        } else if (dimension === "songId") {
+          if (
+            lastState.songId !== initial.songId ||
+            lastState.seekRevision !== initial.seekRevision
+          ) {
+            return;
+          }
+        } else if (lastState.playMode !== initial.playMode) {
+          return;
+        }
+        baseline = {
+          ...current,
+          ...(dimension === "queue" ? { queueSignature: initial.queueSignature } : {}),
+          ...(dimension === "songId"
+            ? {
+                songId: initial.songId,
+                playing: initial.playing,
+                seekRevision: initial.seekRevision,
+              }
+            : {}),
+          ...(dimension === "mode" ? { playMode: initial.playMode } : {}),
+        };
+      };
       if (state.queueSongIds.length) {
         const initialQueue = [...state.queueSongIds];
         if (await guarded(() => reportQueue(initialQueue), issuing)) {
           localQueueIds = initialQueue;
+          claim("queue");
         } else {
           healthy = false;
         }
+      } else {
+        claim("queue");
       }
       if (state.songId) {
-        healthy =
-          (await guarded(() => reportCommand("GOTO", "", state.playing, state), issuing)) &&
-          healthy;
+        const gotoSent = await guarded(
+          () => reportCommand("GOTO", "", state.playing, state),
+          issuing,
+        );
+        healthy = gotoSent && healthy;
+        if (gotoSent) claim("songId");
+      } else {
+        claim("songId");
       }
       // 创建者即房间初始状态的权威：本地播放器模式也要一起上报，
       // 否则服务端默认值会在随后的快照里把创建者的模式覆盖掉。
@@ -449,6 +499,7 @@ const tick = async (): Promise<void> => {
       if (modeReported) {
         lastRemotePlayMode = state.playMode;
         claimingMode = state.playMode;
+        claim("mode");
       }
       // 上报期间可能已经换了房：后续阶段属于旧会话，不再继续
       if (issuing !== generation) {
