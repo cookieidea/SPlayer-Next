@@ -203,10 +203,22 @@ export const moveInQueue = (fromIndex: number, toIndex: number): void => {
   if (fromIndex === toIndex) return;
   if (fromIndex < 0 || fromIndex >= queueEntries.value.length) return;
   if (toIndex < 0 || toIndex >= queueEntries.value.length) return;
+  const moved = queueEntries.value[fromIndex];
   const next = [...queueEntries.value];
   const [item] = next.splice(fromIndex, 1);
   next.splice(toIndex, 0, item);
   queueEntries.value = next;
+  // 洗牌备份也要跟着挪：否则"关闭随机"会用旧顺序整体覆盖，
+  // 用户在随机模式下调整过的顺序白调
+  if (originalQueue.value && moved) {
+    const origIdx = originalQueue.value.findIndex((entry) => entry.track.id === moved.track.id);
+    if (origIdx >= 0) {
+      const nextOrig = [...originalQueue.value];
+      const [origItem] = nextOrig.splice(origIdx, 1);
+      nextOrig.splice(Math.min(toIndex, nextOrig.length), 0, origItem);
+      originalQueue.value = nextOrig;
+    }
+  }
   save();
 };
 

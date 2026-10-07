@@ -46,16 +46,18 @@ const finishCurrentTrack = async (): Promise<void> => {
   endedGuard = true;
   try {
     countTogetherAction("ended");
-    if (isTogetherActive()) {
-      // 多人房的下一首来自服务端，主动拉一次免得中间空等一个心跳周期
-      void refreshTogetherMulti();
-      return;
-    }
     const stopByTimer = autoClose.onTrackEnded();
     // FM 模式跳过
     const repeatOne = status.repeatMode === "one" && !status.fmMode;
     // 结算播放统计
     playStats.onTrackEnded(repeatOne && !stopByTimer);
+    // 一起听里下一首由房间决定，本地不推进；但上面这些与房间无关的收尾
+    // （定时关闭、播放统计）必须照常执行，否则"播完这首就关"会失灵、听歌记录也会漏
+    if (isTogetherActive()) {
+      // 多人房的下一首来自服务端，主动拉一次免得中间空等一个心跳周期
+      void refreshTogetherMulti();
+      return;
+    }
     // 定时关闭"等本曲结束"模式
     if (stopByTimer) return;
     // 单曲循环：seek 回开头继续播放

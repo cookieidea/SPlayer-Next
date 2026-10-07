@@ -103,6 +103,21 @@ describe("queue", () => {
     expect(findTrackIndex("a")).toBe(2);
   });
 
+  it("随机模式下移动曲目后，取消随机仍保留新顺序", () => {
+    queueEntries.value = [entry("a"), entry("b"), entry("c")];
+    shuffleQueue(0);
+    // 随机模式下把队尾拖到最前
+    const last = queue.value.length - 1;
+    moveInQueue(last, 0);
+    const moved = queue.value[0].id;
+
+    unshuffleQueue(moved);
+
+    // 洗牌备份不同步的话，这里会退回成洗牌前的旧顺序，用户调整白费
+    expect(queue.value[0].id).toBe(moved);
+    expect(queue.value.map(({ id }) => id).sort()).toEqual(["a", "b", "c"]);
+  });
+
   it("取消随机播放时恢复原顺序并返回当前歌曲索引", () => {
     queueEntries.value = [entry("a"), entry("b"), entry("c")];
     vi.spyOn(Math, "random").mockReturnValue(0);
