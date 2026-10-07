@@ -384,6 +384,15 @@ const inviteJoin = async (roomId: string, inviterId: string, userId: string): Pr
 export const acceptInvite = async (card: TogetherInviteCard, userId: string): Promise<boolean> =>
   inviteJoin(card.roomId, card.inviterId, userId);
 
+/** 拒绝邀请：服务端不再把它算作待处理，本地也立刻移出列表 */
+export const rejectInvite = async (roomId: string): Promise<void> => {
+  try {
+    await window.api.together.rejectInvitation(roomId);
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  }
+};
+
 export const loadFriends = async (userId: string): Promise<TogetherFriend[]> => {
   try {
     return await window.api.together.friends(userId);

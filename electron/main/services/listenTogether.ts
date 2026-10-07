@@ -954,6 +954,13 @@ export const friends = async (userId: string): Promise<TogetherFriend[]> => {
   }));
 };
 
+/** 拒绝邀请：服务端据此不再把该房算作待处理，本地也要把它移出列表 */
+export const rejectInvitation = async (roomId: string): Promise<void> => {
+  const id = str(roomId).trim();
+  if (!id) return;
+  await callNetease("listen_together_invitation_reject", { roomId: id });
+};
+
 export const invite = async (acceptorId: string): Promise<void> => {
   if (!session) throw new Error("请先进入一起听房间");
   const id = str(acceptorId).trim();

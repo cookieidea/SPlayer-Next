@@ -1726,4 +1726,19 @@ describe("一起听房间状态机", () => {
     expect(snapshotCalls).toBeGreaterThan(0);
     expect(snapshotCalls).toBeLessThanOrEqual(SNAPSHOT_POLL_TICKS);
   });
+
+  it("拒绝邀请调用官方 rejection 端点", async () => {
+    const service = await load();
+    mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+
+    await service.rejectInvitation("R9");
+
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_invitation_reject", { roomId: "R9" });
+  });
+
+  it("空 roomId 不发请求", async () => {
+    const service = await load();
+    await service.rejectInvitation("  ");
+    expect(mocks.call).not.toHaveBeenCalled();
+  });
 });

@@ -528,6 +528,7 @@
       "pendingInvites": "收到的一起听邀请",
       "invitedBy": "{name} 邀请你一起听",
       "accept": "接受",
+      "reject": "拒绝",
       "addToRoom": "加入一起听房间",
       "topInRoom": "在房间里置顶",
       "roomQueue": "房间队列",

@@ -540,6 +540,7 @@
       "pendingInvites": "Listen Together invites",
       "invitedBy": "{name} invited you",
       "accept": "Accept",
+      "reject": "Decline",
       "addToRoom": "Add to listen-together room",
       "topInRoom": "Pin in room",
       "roomQueue": "Room queue",

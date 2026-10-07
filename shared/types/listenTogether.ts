@@ -149,6 +149,7 @@ export interface TogetherApi {
   pendingInvites: () => Promise<TogetherInviteCard[]>;
   friends: (userId: string) => Promise<TogetherFriend[]>;
   invite: (acceptorId: string) => Promise<void>;
+  rejectInvitation: (roomId: string) => Promise<void>;
   leave: () => Promise<void>;
   sync: (state: TogetherLocalState) => void;
   onEvent: (callback: (event: TogetherSyncEvent) => void) => () => void;

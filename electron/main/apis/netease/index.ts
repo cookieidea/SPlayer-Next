@@ -82,6 +82,7 @@ const NON_CACHEABLE: ReadonlySet<string> = new Set([
   "listen_together_room_create",
   "listen_together_status",
   "listen_together_room_check",
+  "listen_together_invitation_reject",
   "listen_together_multi_ack",
   "listen_together_multi_status_get",
   "listen_together_multi_heartbeat",

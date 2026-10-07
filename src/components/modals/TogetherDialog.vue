@@ -193,6 +193,11 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   snapRoom();
 };
 
+const onRejectInvite = async (card: TogetherInviteCard): Promise<void> => {
+  await together.rejectInvite(card.roomId);
+  invites.value = invites.value.filter((item) => item.roomId !== card.roomId);
+};
+
 let friendsPending = false;
 
 const loadFriends = async (): Promise<void> => {
@@ -388,6 +393,9 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
               </span>
               <span class="text-xs text-on-surface-variant truncate">{{ card.title }}</span>
             </div>
+            <SButton size="small" variant="secondary" @click="onRejectInvite(card)">
+              {{ t("player.together.reject") }}
+            </SButton>
             <SButton size="small" type="primary" :loading="store.busy" @click="onAccept(card)">
               {{ t("player.together.accept") }}
             </SButton>

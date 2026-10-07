@@ -442,6 +442,7 @@ const api = {
     pendingInvites: () => ipcRenderer.invoke("together:pendingInvites"),
     friends: (userId: string) => ipcRenderer.invoke("together:friends", userId),
     invite: (acceptorId: string) => ipcRenderer.invoke("together:invite", acceptorId),
+    rejectInvitation: (roomId: string) => ipcRenderer.invoke("together:rejectInvitation", roomId),
     leave: () => ipcRenderer.invoke("together:leave"),
     sync: (state: TogetherLocalState) => ipcRenderer.send("together:sync", state),
     onEvent: (callback: (event: TogetherSyncEvent) => void) =>
