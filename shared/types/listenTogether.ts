@@ -51,6 +51,12 @@ export interface TogetherMultiApi {
   roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;
+  startMultiMatch: (songId: string) => Promise<{
+    matching: boolean;
+    maxWaitMs: number;
+    roomId: string;
+  }>;
+  cancelMultiMatch: () => Promise<void>;
   addSong: (songId: string, songBizId: number) => Promise<void>;
   topSong: (songId: string, songBizId: number) => Promise<void>;
   removeSong: (songId: string, songBizId: number) => Promise<void>;
@@ -162,6 +168,12 @@ export interface TogetherApi {
   roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;
+  startMultiMatch: (songId: string) => Promise<{
+    matching: boolean;
+    maxWaitMs: number;
+    roomId: string;
+  }>;
+  cancelMultiMatch: () => Promise<void>;
   sync: (state: TogetherLocalState) => void;
   onEvent: (callback: (event: TogetherSyncEvent) => void) => () => void;
 }

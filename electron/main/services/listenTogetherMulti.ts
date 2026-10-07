@@ -179,6 +179,37 @@ export const cancelStrangerMatch = async (): Promise<void> => {
   await callNetease("listen_together_song_match_cancel", {});
 };
 
+export interface MultiMatchState {
+  matching: boolean;
+  maxWaitMs: number;
+  roomId: string;
+}
+
+/**
+ * 多人匹配。实测参数是 { songId, checkToken: "null" }，
+ * 与双人匹配（song/match/start 的 matchType）是两套
+ */
+export const startMultiMatch = async (songId: string): Promise<MultiMatchState> => {
+  const response = await callNetease("listen_together_multi_match", {
+    songId: songId || "0",
+    checkToken: "null",
+  });
+  const body = obj(obj(response)?.body) ?? {};
+  const data = obj(body.data) ?? {};
+  if (body.code !== 200) {
+    throw new Error(str(body.message) || "开始多人匹配失败");
+  }
+  return {
+    matching: data.success === true,
+    maxWaitMs: Number(data.maxWaitTimeMills) || 0,
+    roomId: str(data.existedRoomId),
+  };
+};
+
+export const cancelMultiMatch = async (): Promise<void> => {
+  await callNetease("listen_together_multi_match_cancel", {});
+};
+
 /**
  * 加入多人房。multi/room/create 端点确实存在，但参数未知（试遍常见组合都是 400），
  * 所以目前只能走接受邀请这条已验证的路

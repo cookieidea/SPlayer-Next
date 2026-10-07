@@ -115,6 +115,8 @@ import listen_together_song_match_start from "./listen_together_song_match_start
 import listen_together_song_match_cancel from "./listen_together_song_match_cancel";
 import listen_together_song_match_ack from "./listen_together_song_match_ack";
 import listen_together_multi_ack from "./listen_together_multi_ack";
+import listen_together_multi_match from "./listen_together_multi_match";
+import listen_together_multi_match_cancel from "./listen_together_multi_match_cancel";
 import listen_together_multi_status_get from "./listen_together_multi_status_get";
 import listen_together_multi_heartbeat from "./listen_together_multi_heartbeat";
 import listen_together_multi_exit from "./listen_together_multi_exit";
@@ -228,6 +230,8 @@ export const modules: Record<string, NeteaseModule> = {
   listen_together_song_match_cancel,
   listen_together_song_match_ack,
   listen_together_multi_ack,
+  listen_together_multi_match,
+  listen_together_multi_match_cancel,
   listen_together_multi_status_get,
   listen_together_multi_heartbeat,
   listen_together_multi_exit,

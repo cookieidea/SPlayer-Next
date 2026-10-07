@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTogetherStore } from "@/stores/together";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { useStatusStore } from "@/stores/status";
 import { useUserStore } from "@/stores/user";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
@@ -193,20 +194,32 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   snapRoom();
 };
 
-const matching = ref(false);
+/** 空串表示未在匹配；否则标明在匹配哪一类 */
+const matching = ref<"" | "duo" | "multi">("");
+
+const needLogin = (): boolean => {
+  if (userId.value) return false;
+  toast.warning(t("player.together.needLogin"));
+  return true;
+};
 
 const onStartMatch = async (): Promise<void> => {
-  if (!userId.value) {
-    toast.warning(t("player.together.needLogin"));
-    return;
-  }
-  matching.value = true;
+  if (needLogin()) return;
+  matching.value = "duo";
   await togetherMulti.startStrangerMatch(userId.value);
 };
 
+const onStartMultiMatch = async (): Promise<void> => {
+  if (needLogin()) return;
+  matching.value = "multi";
+  // 多人匹配要带当前播放的歌曲，没有就传 0
+  await togetherMulti.startMultiMatch(String(useStatusStore().currentTrack?.id ?? "0"));
+};
+
 const onCancelMatch = async (): Promise<void> => {
-  await togetherMulti.cancelStrangerMatch();
-  matching.value = false;
+  if (matching.value === "multi") await togetherMulti.cancelMultiMatch();
+  else await togetherMulti.cancelStrangerMatch();
+  matching.value = "";
 };
 
 const onRejectInvite = async (card: TogetherInviteCard): Promise<void> => {
@@ -424,16 +437,26 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
         <SButton type="primary" :loading="store.busy" :disabled="!userId" @click="onCreate">
           {{ t("player.together.create") }}
         </SButton>
-        <SButton
-          v-if="!matching"
-          type="info"
-          variant="secondary"
-          :loading="multiStore.busy"
-          :disabled="!userId"
-          @click="onStartMatch"
-        >
-          {{ t("player.together.strangerMatch") }}
-        </SButton>
+        <template v-if="!matching">
+          <SButton
+            type="info"
+            variant="secondary"
+            :loading="multiStore.busy"
+            :disabled="!userId"
+            @click="onStartMatch"
+          >
+            {{ t("player.together.matchDuo") }}
+          </SButton>
+          <SButton
+            type="info"
+            variant="secondary"
+            :loading="multiStore.busy"
+            :disabled="!userId"
+            @click="onStartMultiMatch"
+          >
+            {{ t("player.together.matchMulti") }}
+          </SButton>
+        </template>
         <SButton v-else type="error" variant="secondary" @click="onCancelMatch">
           {{ t("player.together.cancelMatch") }}
         </SButton>

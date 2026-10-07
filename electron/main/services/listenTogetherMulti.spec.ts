@@ -8,9 +8,11 @@ import {
   joinMultiRoom,
   onMultiEnd,
   onMultiError,
+  cancelMultiMatch,
   cancelStrangerMatch,
   onMultiRoom,
   roomSongsList,
+  startMultiMatch,
   startStrangerMatch,
   removeMultiSong,
   voteSkipMultiSong,
@@ -324,5 +326,40 @@ describe("多人一起听", () => {
 
   it("不在房间时房间歌曲列表返回空", async () => {
     await expect(roomSongsList()).resolves.toEqual({ songIds: [], followers: [] });
+  });
+
+  it("多人匹配带 songId 与 checkToken=null 字符串", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { success: true, maxWaitTimeMills: 30000, existedRoomId: null } },
+    });
+
+    const state = await startMultiMatch("1345872140");
+
+    // checkToken 传空串会被服务端拒（token校验失败[2020]）
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_match", {
+      songId: "1345872140",
+      checkToken: "null",
+    });
+    expect(state.matching).toBe(true);
+    expect(state.maxWaitMs).toBe(30000);
+  });
+
+  it("多人匹配已进房时从 existedRoomId 取房间", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: { success: false, existedRoomId: "M_1", existedRoomType: "MULTI_MATCH_SONG" },
+      },
+    });
+    const state = await startMultiMatch("1");
+    expect(state.roomId).toBe("M_1");
+  });
+
+  it("取消多人匹配走 multi/match/cancel", async () => {
+    mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+    await cancelMultiMatch();
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_match_cancel", {});
   });
 });

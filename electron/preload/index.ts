@@ -457,6 +457,9 @@ const api = {
     roomSongs: () => ipcRenderer.invoke("togetherMulti:roomSongs"),
     startMatch: () => ipcRenderer.invoke("togetherMulti:startMatch"),
     cancelMatch: () => ipcRenderer.invoke("togetherMulti:cancelMatch"),
+    startMultiMatch: (songId: string) =>
+      ipcRenderer.invoke("togetherMulti:startMultiMatch", songId),
+    cancelMultiMatch: () => ipcRenderer.invoke("togetherMulti:cancelMultiMatch"),
     addSong: (songId: string, songBizId: number) =>
       ipcRenderer.invoke("togetherMulti:addSong", songId, songBizId),
     topSong: (songId: string, songBizId: number) =>
