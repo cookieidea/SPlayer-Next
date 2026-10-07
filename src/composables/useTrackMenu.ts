@@ -181,7 +181,7 @@ export const useTrackMenu = (
         ],
       },
     ];
-    // 多人房没有站内邀请接口，加歌与置顶都走 song/operate，只在房内才出现
+    // 加歌与置顶都走 song/operate，只在房内才出现
     if (multiStore.inRoom) {
       base.push({
         key: "togetherAdd",
