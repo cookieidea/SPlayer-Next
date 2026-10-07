@@ -140,6 +140,9 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
       inviterName: str(params.get("inviterName") || user?.nickname),
       inviterAvatarUrl: safeDecode(str(params.get("inviterAvatarUrl"))),
       title: str(general?.title) || "加入一起听",
+      // 多人大厅与双人共用同一个卡片通道，只能靠路径区分；
+      // 不区分的话接收时会用双人协议去加入多人房
+      multi: /multishare/i.test(nativeUrl),
       receivedAt: num(conversation?.lastMsgTime ?? user?.lastMsgTime),
     });
   }

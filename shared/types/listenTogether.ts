@@ -168,6 +168,8 @@ export interface TogetherInviteCard {
   inviterAvatarUrl: string;
   title: string;
   receivedAt: number;
+  /** 多人大厅的邀请：接收时要走多人协议，不能按双人加入 */
+  multi: boolean;
 }
 
 export interface TogetherApi {

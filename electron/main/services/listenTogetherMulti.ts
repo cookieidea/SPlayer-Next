@@ -262,13 +262,16 @@ export const startMultiMatch = async (songId: string): Promise<MultiMatchState> 
   });
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
-  if (body.code !== 200) {
-    throw new Error(str(body.message) || "开始多人匹配失败");
+  const roomId = str(data.existedRoomId);
+  // success:false 是服务端的拒绝（如 ALREADY_IN_MATCH，两种匹配共用同一份匹配状态），
+  // 只判 code 会把它当成"还没匹配到"，界面白轮询三分钟才报没找到人
+  if (!roomId && data.success !== true) {
+    throw new Error(str(data.failedMsg) || str(data.failedType) || "开始多人匹配失败");
   }
   return {
-    matching: data.success === true,
+    matching: true,
     maxWaitMs: Number(data.maxWaitTimeMills) || 0,
-    roomId: str(data.existedRoomId),
+    roomId,
   };
 };
 
@@ -327,7 +330,9 @@ export const getStrangerVisible = async (): Promise<boolean> => {
   const response = await callNetease("listen_together_listening_privacy_get", {});
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
-  return Number(data.visibleStatus) !== 0;
+  const status = Number(data.visibleStatus);
+  // 字段缺失时不能当成"公开"：这是账号级隐私开关，宁可显示为关闭
+  return Number.isFinite(status) && status !== 0;
 };
 
 export const setStrangerVisible = async (visible: boolean): Promise<void> => {

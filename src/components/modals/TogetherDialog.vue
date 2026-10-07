@@ -7,7 +7,7 @@ import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
 import * as togetherMulti from "@/services/listenTogetherMulti";
-import { isMultiInvitation } from "@shared/utils/togetherInvitation";
+import { buildMultiInvitation, isMultiInvitation } from "@shared/utils/togetherInvitation";
 import { togetherSongAction } from "@/utils/togetherRoom";
 import type { TogetherSongAction } from "@/utils/togetherRoom";
 import type {
@@ -287,6 +287,13 @@ const loadInbox = async (): Promise<void> => {
 };
 
 const onAccept = async (card: TogetherInviteCard): Promise<void> => {
+  // 多人大厅的邀请必须走多人协议：双人的 ack 接口加入不了多人房
+  if (card.multi) {
+    const link = buildMultiInvitation(card.roomId, card.inviterId);
+    if (!(await togetherMulti.joinTogetherMulti(link, userId.value))) return;
+    invites.value = [];
+    return;
+  }
   if (!(await together.acceptInvite(card, userId.value))) return;
   invites.value = [];
   roomView.value = true;

@@ -436,6 +436,17 @@ describe("卡片消息甄别（实测样本）", () => {
     expect(first.inviterId).toBe("88");
   });
 
+  it("多人大厅的卡片标记为多人，接收时才不会走错协议", () => {
+    const inner =
+      "https://st.music.163.com/listen-together/multishare/index.html?roomId=R2_1&inviterUid=88";
+    const inbox = {
+      status: 200,
+      body: { msgs: [card(`orpheus://open?url1=${encodeURIComponent(inner)}&url2=x`, 88)] },
+    };
+
+    expect(invitesFromInbox(inbox)[0].multi).toBe(true);
+  });
+
   it("连字符拼写的路径也能收下", () => {
     const inner = "orpheus://nm/play/listen-together?roomId=R3_1&inviterId=7";
     const inbox = {

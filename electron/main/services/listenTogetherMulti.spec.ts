@@ -347,6 +347,34 @@ describe("多人一起听", () => {
     await expect(startStrangerMatch()).rejects.toThrow("当前人数过多");
   });
 
+  it("多人匹配被服务端拒绝时抛原因，不静默当成未匹配", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: { success: false, failedType: "ALREADY_IN_MATCH", existedRoomId: null },
+      },
+    });
+
+    // 两种匹配共用同一份服务端匹配状态：若吞掉这个原因，
+    // 界面会显示"寻找听友中"并白轮询到超时
+    await expect(startMultiMatch("123")).rejects.toThrow("ALREADY_IN_MATCH");
+  });
+
+  it("多人匹配成功时带出房间号", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: { success: true, maxWaitTimeMills: 30000, existedRoomId: "R_MM" },
+      },
+    });
+
+    const result = await startMultiMatch("123");
+
+    expect(result).toMatchObject({ matching: true, roomId: "R_MM" });
+  });
+
   it("取消匹配走 song/match/cancel", async () => {
     mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
     await cancelStrangerMatch();

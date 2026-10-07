@@ -312,6 +312,7 @@ describe("一起听渲染端服务", () => {
         inviterAvatarUrl: "",
         title: "",
         receivedAt: 0,
+        multi: false,
       },
       "7",
     );
@@ -333,6 +334,7 @@ describe("一起听渲染端服务", () => {
         inviterAvatarUrl: "",
         title: "",
         receivedAt: 0,
+        multi: false,
       },
       "7",
     );
