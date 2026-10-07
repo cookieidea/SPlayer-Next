@@ -54,6 +54,22 @@ const multiQueueSongs = computed(() => {
   return [...(room.playSong ? [room.playSong] : []), ...room.nextSongs];
 });
 
+/** 建房前选择要邀请的好友：0~1 人建双人房，2 人以上建多人房 */
+const createFriends = shallowRef<TogetherFriend[]>([]);
+const pickedFriends = ref<string[]>([]);
+
+const loadCreateFriends = async (): Promise<void> => {
+  if (!userId.value) return;
+  createFriends.value = await together.loadFriends(userId.value);
+};
+
+const togglePick = (friend: TogetherFriend): void => {
+  const id = friend.userId;
+  pickedFriends.value = pickedFriends.value.includes(id)
+    ? pickedFriends.value.filter((item) => item !== id)
+    : [...pickedFriends.value, id];
+};
+
 /** 房间队列 / 邀请好友 两个面板 */
 const multiPane = ref("queue");
 const multiPanes = computed(() => [
@@ -149,6 +165,7 @@ watch(
     snapRoom();
     void loadInbox();
     if (store.inRoom) void loadFriends();
+    else void loadCreateFriends();
   },
 );
 
@@ -167,12 +184,29 @@ watch(
   },
 );
 
+/**
+ * 建房。选 0~1 位好友建双人房，选 2 位以上建多人房
+ * （多人房需要一首起播歌，因此要求当前正在播放）
+ */
 const onCreate = async (): Promise<void> => {
   if (!userId.value) {
     toast.warning(t("player.together.needLogin"));
     return;
   }
+  const picked = pickedFriends.value;
+  if (picked.length >= 2) {
+    if (!(await togetherMulti.createMultiRoom(userId.value))) return;
+    await togetherMulti.inviteMultiFriends(picked);
+    pickedFriends.value = [];
+    emit("update:open", false);
+    return;
+  }
   if (!(await together.createRoom(userId.value))) return;
+  if (picked.length === 1) {
+    const friend = createFriends.value.find((item) => item.userId === picked[0]);
+    if (friend) await together.inviteFriend(friend);
+  }
+  pickedFriends.value = [];
   roomView.value = true;
   snapRoom();
 };
@@ -518,8 +552,40 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
         <p class="text-sm text-on-surface-variant leading-relaxed">
           {{ userId ? t("player.together.hint") : t("player.together.needLogin") }}
         </p>
+        <div class="flex flex-col gap-2">
+          <span class="text-xs text-on-surface-variant">
+            {{ t("player.together.pickFriendsHint") }}
+          </span>
+          <p v-if="createFriends.length === 0" class="text-xs text-on-surface-variant/70">
+            {{ t("player.together.noFriends") }}
+          </p>
+          <div v-else class="flex flex-col gap-1 max-h-[140px] overflow-y-auto pr-1">
+            <div
+              v-for="friend in createFriends"
+              :key="friend.userId"
+              class="flex items-center gap-2 px-1 py-1 rounded-lg cursor-pointer hover:bg-on-surface/5"
+              :class="pickedFriends.includes(friend.userId) ? 'bg-primary/10' : ''"
+              @click="togglePick(friend)"
+            >
+              <SImg :src="friend.avatarUrl" class="w-7 h-7 rounded-full shrink-0" />
+              <span class="flex-1 text-sm truncate">{{ friend.nickname || friend.userId }}</span>
+              <STag
+                v-if="pickedFriends.includes(friend.userId)"
+                size="small"
+                type="primary"
+                variant="soft"
+              >
+                {{ t("player.together.picked") }}
+              </STag>
+            </div>
+          </div>
+        </div>
         <SButton type="primary" :loading="store.busy" :disabled="!userId" @click="onCreate">
-          {{ t("player.together.create") }}
+          {{
+            pickedFriends.length >= 2
+              ? t("player.together.createMulti")
+              : t("player.together.create")
+          }}
         </SButton>
         <SButton
           variant="secondary"

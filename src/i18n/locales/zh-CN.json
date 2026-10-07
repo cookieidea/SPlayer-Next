@@ -532,6 +532,8 @@
       "strangerMatch": "与同好听歌（双人）",
       "matchDuo": "双人匹配",
       "createMulti": "创建多人房间",
+      "pickFriendsHint": "选择好友一起听（选 2 位以上将创建多人房间）",
+      "picked": "已选",
       "matchMulti": "多人匹配",
       "me": "我",
       "recommended": "推荐",
