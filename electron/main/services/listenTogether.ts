@@ -4,6 +4,7 @@ import { fetchWithProxy } from "@main/utils/proxy";
 import {
   ADVANCE_HANDOVER_MS,
   HEARTBEAT_TICKS,
+  SNAPSHOT_POLL_TICKS,
   SYNC_INTERVAL_MS,
   baselineOf,
   commandSignature,
@@ -304,6 +305,9 @@ const reportQueue = async (
     songIds: [...songIds],
     anchorSongId: anchorSongId || "",
     anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
+    // 参考实现把播放模式放在列表上报里；我们另走 PLAYMODE_CHANGE 命令，
+    // 两边都带上才能覆盖"官方客户端从列表读模式"这种可能
+    playMode: lastState.playMode,
   });
 };
 
@@ -434,12 +438,15 @@ const beat = async (): Promise<boolean> => {
   const issuingBeat = generation;
   let healthy = true;
   try {
-    await callNetease("listen_together_heartbeat", {
-      roomId,
-      songId: lastState.songId || "0",
-      playing: lastState.playing,
-      progressMs: lastState.positionMs,
-    });
+    // 没有歌就不发心跳：参考实现同样跳过，避免空放时白刷请求
+    if (lastState.songId) {
+      await callNetease("listen_together_heartbeat", {
+        roomId,
+        songId: lastState.songId,
+        playing: lastState.playing,
+        progressMs: lastState.positionMs,
+      });
+    }
   } catch (error) {
     if (isRoomGone(error)) {
       endSession("server", issuingBeat);
@@ -768,10 +775,13 @@ const tick = async (): Promise<void> => {
       tickCount += 1;
       return;
     }
-    healthy =
-      (await guarded(async () => {
-        await applySnapshot(false);
-      }, issuing)) && healthy;
+    // 拉取按更低频率进行：每秒一次是每秒一个请求，风控风险明显
+    if (tickCount % SNAPSHOT_POLL_TICKS === 0) {
+      healthy =
+        (await guarded(async () => {
+          await applySnapshot(false);
+        }, issuing)) && healthy;
+    }
     tickCount += 1;
     if (issuing !== generation) return;
     if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await beat()) && healthy;

@@ -13,6 +13,7 @@ const listenTogetherSyncListReport: NeteaseModule = (query, request) => {
     anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
     randomList: songIds,
     displayList: songIds,
+    playMode: typeof query.playMode === "string" ? query.playMode : "",
   };
   const data = {
     roomId: query.roomId,

@@ -6,9 +6,15 @@ import type {
 
 export const ADVANCE_HANDOVER_MS = 3500;
 
+/** 本地状态检测周期：只做本地比对，不产生 HTTP 请求 */
 export const SYNC_INTERVAL_MS = 1000;
 
-export const HEARTBEAT_TICKS = 5;
+/** 拉取房间播放列表（sync/playlist/get）的间隔：每 4 个 tick 一次。
+ *  1 秒一次是每秒一个请求，参考实现用的是 4 秒——这是延迟与风控的取舍点 */
+export const SNAPSHOT_POLL_TICKS = 4;
+
+/** 心跳 + 房间存活性探测间隔：参考实现用 20s 心跳 / 15s 状态，这里统一 15s */
+export const HEARTBEAT_TICKS = 15;
 
 export const songIdsSignature = (ids: readonly (string | number)[]): string => ids.join(",");
 
