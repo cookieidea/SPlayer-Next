@@ -7,6 +7,8 @@ export interface TogetherMember {
 export interface TogetherRoom {
   roomId: string;
   creatorId: string;
+  /** FRIEND=双人，MATCH_SONG=匹配房，MULTI_* =多人。服务端在有人加入时会自动把 FRIEND 转成多人 */
+  roomType: string;
   members: TogetherMember[];
 }
 

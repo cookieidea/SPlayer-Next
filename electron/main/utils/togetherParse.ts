@@ -72,6 +72,7 @@ const toRoom = (raw: unknown): TogetherRoom | null => {
   return {
     roomId,
     creatorId: str(room.creatorId),
+    roomType: str(room.roomType).toUpperCase(),
     members: users.map(toMember).filter((member) => member.userId),
   };
 };

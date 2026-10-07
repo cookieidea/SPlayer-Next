@@ -1,6 +1,8 @@
 import { useTogetherStore } from "@/stores/together";
 import { useStatusStore } from "@/stores/status";
 import * as queue from "@/stores/queue";
+import { restoreTogetherMulti } from "@/services/listenTogetherMulti";
+import { isMultiRoomType } from "@shared/utils/togetherRoom";
 import * as player from "@/core/player";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
@@ -283,11 +285,28 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
   if (next.type === "room") {
     const names = next.room.members.map((member) => member.nickname || member.userId).join("、");
     if (names) toast.info(`一起听：${names}`);
+    // 服务端在第二个人加入时会把双人房自动转成多人房。
+    // 房型一变就得换成多人那套协议（心跳是拉取、歌曲来自响应），
+    // 否则双人轮询会继续按旧协议跑，队列会被反复覆盖
+    if (isMultiRoomType(next.room.roomType)) void switchToMultiProtocol();
     return;
   }
   if (next.playMode) applyPlayMode(next.playMode);
   await applyRemote(next.songIds, next.command, next.initial, next.autoPlay);
   if (next.command && !next.initial) toast.info(commandToast(next.command));
+};
+
+let switchedToMulti = false;
+
+const switchToMultiProtocol = async (): Promise<void> => {
+  if (switchedToMulti) return;
+  switchedToMulti = true;
+  toast.success("房间已升级为多人一起听");
+  // 不能先 leave：那会发 multi/match/exit 把刚升级的房间退掉。
+  // 直接让多人侧接管同一个房间，再把双人侧停掉
+  const userId = String(useTogetherStore().session?.userId ?? "");
+  await restoreTogetherMulti(userId);
+  await window.api.together.leave();
 };
 
 const startReporting = (): void => {

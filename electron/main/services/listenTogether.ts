@@ -214,8 +214,15 @@ const emitError = (error: unknown): void => {
   for (const listener of errorListeners) listener(message);
 };
 
+// roomType 必须参与：双人房被服务端自动转成多人房时，成员可能不变，
+// 只有房型变了。不含它就不会推送，渲染端也就无法切换协议
 const signatureOf = (value: TogetherRoom): string =>
-  [value.roomId, value.creatorId, value.members.map((member) => member.userId).join("_")].join("|");
+  [
+    value.roomId,
+    value.creatorId,
+    value.roomType,
+    value.members.map((member) => member.userId).join("_"),
+  ].join("|");
 
 const publishRoom = (value: TogetherRoom): void => {
   if (!session) return;
@@ -906,7 +913,11 @@ export const join = async (
     }),
   );
   ensureCurrent();
-  return enterRoom(accepted ?? { roomId, creatorId: "", members: [] }, userId, "join");
+  return enterRoom(
+    accepted ?? { roomId, creatorId: "", roomType: "", members: [] },
+    userId,
+    "join",
+  );
 };
 
 export const resolveLink = async (url: string): Promise<string> => {
