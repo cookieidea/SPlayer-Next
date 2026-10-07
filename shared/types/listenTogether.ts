@@ -61,6 +61,7 @@ export interface TogetherMultiApi {
   restore: (userId: string) => Promise<TogetherMultiRoom | null>;
   leave: () => Promise<void>;
   inviteFriends: (uids: string[]) => Promise<void>;
+  refresh: () => Promise<void>;
   getStrangerVisible: () => Promise<boolean>;
   setStrangerVisible: (visible: boolean) => Promise<void>;
   createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;
@@ -181,6 +182,7 @@ export interface TogetherApi {
   rejectInvitation: (roomId: string) => Promise<void>;
   leave: () => Promise<void>;
   inviteFriends: (uids: string[]) => Promise<void>;
+  refresh: () => Promise<void>;
   getStrangerVisible: () => Promise<boolean>;
   setStrangerVisible: (visible: boolean) => Promise<void>;
   createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;

@@ -98,6 +98,11 @@ const handleEvent = (): void => {
         void followRoom(event.room);
         void syncRoomQueue(event.room);
       }
+      if (event.type === "session-end" && event.reason !== "left") {
+        // 自己退出不用提示；房间被服务端结束（过期/被移出）必须说一声，
+        // 否则界面会"莫名其妙"退回普通状态
+        toast.warning("一起听房间已结束");
+      }
       if (event.type === "error") toast.error(event.message);
     });
   }
@@ -235,6 +240,19 @@ export const cancelStrangerMatch = (): Promise<void> =>
     stopMatchPoll();
     await window.api.togetherMulti.cancelMatch();
   }).then(() => undefined);
+
+/**
+ * 本曲播完时立刻拉一次心跳：房间的下一首由服务端决定，
+ * 不主动拉就要等 8 秒周期，中间是一段静音
+ */
+export const refreshTogetherMulti = async (): Promise<void> => {
+  if (!useTogetherMultiStore().inRoom) return;
+  try {
+    await window.api.togetherMulti.refresh();
+  } catch {
+    void 0;
+  }
+};
 
 /** 账号对陌生人的可见性：开着才会被陌生人匹配到 */
 export const getStrangerVisible = (): Promise<boolean> =>

@@ -455,6 +455,7 @@ const api = {
     restore: (userId: string) => ipcRenderer.invoke("togetherMulti:restore", userId),
     leave: () => ipcRenderer.invoke("togetherMulti:leave"),
     inviteFriends: (uids: string[]) => ipcRenderer.invoke("togetherMulti:invite", uids),
+    refresh: () => ipcRenderer.invoke("togetherMulti:refresh"),
     getStrangerVisible: () => ipcRenderer.invoke("togetherMulti:getStrangerVisible"),
     setStrangerVisible: (visible: boolean) =>
       ipcRenderer.invoke("togetherMulti:setStrangerVisible", visible),

@@ -160,6 +160,15 @@ export interface StrangerMatchResult {
  * 创建多人房。实测只要 { type: 1, songId }，且 songId 必须是真实可播的歌曲；
  * 传 songId=0 会返回 failedType=MULTI_SONG_NOT_SATISFIED
  */
+/**
+ * 本曲播完时立刻拉一次心跳。
+ * 房间的推进权在服务端，而心跳周期是 8 秒——不主动拉的话歌放完会先静音一段
+ */
+export const refreshMultiRoom = async (): Promise<void> => {
+  if (!session) return;
+  await tick();
+};
+
 export const createMultiRoom = async (
   songId: string,
   userId: string,

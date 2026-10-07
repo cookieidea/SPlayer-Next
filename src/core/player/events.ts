@@ -34,6 +34,7 @@ import {
 } from "./index";
 import { countTogetherAction } from "@/services/togetherCounter";
 import { isTogetherActive } from "@/services/listenTogether";
+import { refreshTogetherMulti } from "@/services/listenTogetherMulti";
 
 /** 防止 ended 事件重入 */
 let endedGuard = false;
@@ -45,7 +46,11 @@ const finishCurrentTrack = async (): Promise<void> => {
   endedGuard = true;
   try {
     countTogetherAction("ended");
-    if (isTogetherActive()) return;
+    if (isTogetherActive()) {
+      // 多人房的下一首来自服务端，主动拉一次免得中间空等一个心跳周期
+      void refreshTogetherMulti();
+      return;
+    }
     const stopByTimer = autoClose.onTrackEnded();
     // FM 模式跳过
     const repeatOne = status.repeatMode === "one" && !status.fmMode;

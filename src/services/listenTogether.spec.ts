@@ -111,6 +111,15 @@ describe("一起听渲染端服务", () => {
     expect(mods.isTogetherActive()).toBe(true);
   });
 
+  it("在多人房里也算一起听中：否则本曲播完会先播成本地队列的下一首", async () => {
+    const { useTogetherMultiStore } = await import("@/stores/togetherMulti");
+    mods.initTogether();
+    // 只进多人房，双人 store 仍是空的
+    useTogetherMultiStore().session = { roomId: "R", userId: "7", generation: 1 };
+
+    expect(mods.isTogetherActive()).toBe(true);
+  });
+
   it("会话结束后退出房间状态并提示", async () => {
     mods.initTogether();
     emit?.(sessionEvent());

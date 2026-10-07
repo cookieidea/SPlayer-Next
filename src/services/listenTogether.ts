@@ -1,4 +1,5 @@
 import { useTogetherStore } from "@/stores/together";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { useStatusStore } from "@/stores/status";
 import * as queue from "@/stores/queue";
 import { restoreTogetherMulti } from "@/services/listenTogetherMulti";
@@ -336,7 +337,15 @@ const stopReporting = (): void => {
   reportTimer = null;
 };
 
-export const isTogetherActive = (): boolean => useTogetherStore().inRoom;
+/**
+ * 是否处于一起听中（双人或多人）。
+ *
+ * 播放器靠它决定"本曲播完要不要自动下一首"：房间里推进权属于服务端，
+ * 本地自己往下播会先切到无关的歌，等下一轮心跳再被拉回房间的歌——
+ * 表现出来就是"莫名其妙切歌"。所以两种房型都必须拦住本地推进
+ */
+export const isTogetherActive = (): boolean =>
+  useTogetherStore().inRoom || useTogetherMultiStore().inRoom;
 
 export { countTogetherAction, setTogetherCounting } from "@/services/togetherCounter";
 

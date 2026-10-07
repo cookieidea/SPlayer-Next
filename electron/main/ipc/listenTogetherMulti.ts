@@ -37,6 +37,8 @@ export const registerTogetherMultiIpc = (): void => {
     return room;
   });
 
+  ipcMain.handle("togetherMulti:refresh", () => multi.refreshMultiRoom());
+
   ipcMain.handle("togetherMulti:getStrangerVisible", () => multi.getStrangerVisible());
 
   ipcMain.handle("togetherMulti:setStrangerVisible", (_event, visible: boolean) =>
