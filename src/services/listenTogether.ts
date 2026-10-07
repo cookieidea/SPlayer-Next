@@ -46,10 +46,13 @@ const collectState = (): TogetherLocalState => {
   const track = status.currentTrack;
   const isNetease = track?.source === "netease" && !track.serverId;
   const counters = readTogetherCounters();
+  // 本地洗牌是播放行为（网易云那边叫"随机"，列表本身不变），
+  // 共享歌单必须始终用原始顺序，否则本地一开随机就把打乱结果写进了房间
+  const trackList = queue.originalQueue.value
+    ? queue.originalQueue.value.map((entry) => entry.track)
+    : queue.queue.value;
   const songIds = isNetease
-    ? queue.queue.value
-        .filter((item) => item.source === "netease" && !item.serverId)
-        .map((item) => item.id)
+    ? trackList.filter((item) => item.source === "netease" && !item.serverId).map((item) => item.id)
     : [];
   return {
     songId: isNetease ? track.id : "",
@@ -88,22 +91,36 @@ const tracksForIds = async (songIds: readonly string[]): Promise<Track[]> => {
   return songIds.map((id) => known.get(id)).filter((track): track is Track => track !== undefined);
 };
 
-const respondCommand = async (command: TogetherCommand, index: number): Promise<void> => {
+const respondCommand = async (
+  command: TogetherCommand,
+  index: number,
+  list: readonly Track[],
+): Promise<void> => {
   const status = useStatusStore();
   if (command.type === "PLAYMODE_CHANGE") return;
   const seekOnly = command.type === "PROGRESS";
   if (status.currentTrack?.id !== command.targetSongId) {
-    await player.playFrom(
-      queue.queue.value,
-      index,
-      status.currentPlaybackContext,
-      !seekOnly && command.playing,
-    );
+    // 必须交原始顺序：传洗牌后的顺序回 playFrom，setQueue 会把它当成新的原始顺序，
+    // 之后"关闭随机"就再也还原不回来了
+    await player.playFrom(list, index, status.currentPlaybackContext, !seekOnly && command.playing);
+    reapplyLocalShuffle();
   }
   await player.seek(command.progressMs);
   if (seekOnly) return;
   if (command.playing) await player.play();
   else await player.pause();
+};
+
+/**
+ * 采纳共享队列后重建本地洗牌的备份。
+ * setQueue 会清掉 originalQueue 但保留 shuffleMode，不重新洗牌的话
+ * 之后"关闭随机"再也无法还原顺序
+ */
+const reapplyLocalShuffle = (): void => {
+  const status = useStatusStore();
+  if (status.shuffleMode !== "on") return;
+  queue.shuffleQueue(status.playIndex);
+  status.playIndex = 0;
 };
 
 const applyRemote = async (
@@ -135,10 +152,12 @@ const applyRemote = async (
         } finally {
           pendingLoad = false;
         }
+        reapplyLocalShuffle();
         return;
       }
       queue.setQueue(tracks, TOGETHER_CONTEXT);
       useStatusStore().playIndex = keep;
+      reapplyLocalShuffle();
       return;
     }
     // 播放模式命令只改模式，不触碰播放器
@@ -151,6 +170,7 @@ const applyRemote = async (
       try {
         if (useStatusStore().currentTrack?.id !== command.targetSongId) {
           await player.playFrom(tracks, index, TOGETHER_CONTEXT, false);
+          reapplyLocalShuffle();
         }
         await player.seek(command.progressMs);
         // 入场时进度命令也要起播：PROGRESS 被解析为 neutral，playing 恒为 false，
@@ -172,6 +192,7 @@ const applyRemote = async (
       } finally {
         pendingLoad = false;
       }
+      reapplyLocalShuffle();
       return;
     }
     pendingLoad = true;
@@ -180,16 +201,20 @@ const applyRemote = async (
     } finally {
       pendingLoad = false;
     }
+    reapplyLocalShuffle();
     if (!command.playing) await player.pause();
     return;
   }
   if (!command || command.type === "PLAYMODE_CHANGE") return;
   if (!command.targetSongId) return;
-  const index = queue.findTrackIndex(command.targetSongId);
+  const list = queue.originalQueue.value
+    ? queue.originalQueue.value.map((entry) => entry.track)
+    : queue.queue.value;
+  const index = list.findIndex((item) => item.id === command.targetSongId);
   if (index < 0) return;
   pendingLoad = true;
   try {
-    await respondCommand(command, index);
+    await respondCommand(command, index, list);
   } finally {
     pendingLoad = false;
   }

@@ -37,6 +37,7 @@ let useTogetherStore: typeof import("@/stores/together").useTogetherStore;
 let useStatusStore: typeof import("@/stores/status").useStatusStore;
 let queue: {
   setQueue: (items: readonly Track[], context?: PlaybackContext) => void;
+  shuffleQueue: (keepIndex: number) => void;
   queue: { value: Track[] };
 };
 let mods: typeof ServiceModule;
@@ -560,5 +561,27 @@ describe("一起听渲染端服务", () => {
     // 常规路径仍直接起播，且不额外定位
     expect((mocks.playFrom.mock.calls[0] as unknown[])[3]).toBe(true);
     expect(mocks.seek).not.toHaveBeenCalled();
+  });
+  it("开着随机时上报的仍是原始顺序", async () => {
+    const ids = ["1", "2", "3", "4", "5", "6"];
+    queue.setQueue(ids.map(track));
+    useStatusStore().playIndex = 0;
+    const sync = (window as unknown as { api: { together: { sync: ReturnType<typeof vi.fn> } } })
+      .api.together.sync;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    await vi.waitFor(() => expect(sync).toHaveBeenCalled());
+
+    const before = sync.mock.calls.at(-1)?.[0] as { queueSongIds: string[] };
+    expect(before.queueSongIds).toEqual(ids);
+
+    // 本地开随机：queueEntries 被打乱，但共享歌单必须保持原序
+    queue.shuffleQueue(0);
+    const calls = sync.mock.calls.length;
+    emit?.(sessionEvent());
+    await vi.waitFor(() => expect(sync.mock.calls.length).toBeGreaterThan(calls));
+
+    const after = sync.mock.calls.at(-1)?.[0] as { queueSongIds: string[] };
+    expect(after.queueSongIds).toEqual(ids);
   });
 });
