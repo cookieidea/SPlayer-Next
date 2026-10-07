@@ -94,9 +94,24 @@ export const useTrackMenu = (
         key: "addToPlaylist",
         label: t("collection.addTo", { type: t("collection.playlist") }),
         icon: markRaw(IconListPlus),
+        // 加歌是房内高频动作，紧跟在「添加到歌单」之后，不再压到末尾
         separator: showPlay,
         show: canAddToPlaylist,
       },
+      ...(multiStore.inRoom
+        ? [
+            {
+              key: "togetherAdd",
+              label: t("player.together.addToRoom"),
+              icon: markRaw(IconUsers),
+            },
+            {
+              key: "togetherTop",
+              label: t("player.together.topInRoom"),
+              icon: markRaw(IconChevronsUp),
+            },
+          ]
+        : []),
       {
         key: "showInExplorer",
         label: t("songList.context.showInExplorer"),
@@ -181,20 +196,6 @@ export const useTrackMenu = (
         ],
       },
     ];
-    // 加歌与置顶都走 song/operate，只在房内才出现
-    if (multiStore.inRoom) {
-      base.push({
-        key: "togetherAdd",
-        label: t("player.together.addToRoom"),
-        icon: markRaw(IconUsers),
-        separator: true,
-      });
-      base.push({
-        key: "togetherTop",
-        label: t("player.together.topInRoom"),
-        icon: markRaw(IconChevronsUp),
-      });
-    }
     // 插件贡献：每个有 ui 权限的插件折叠成一个以插件名命名的子菜单
     const pluginGroups: DropdownMenuItem[] = [];
     for (const group of plugins.menuContributions) {

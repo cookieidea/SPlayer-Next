@@ -2,11 +2,18 @@
 import type { Track } from "@shared/types/player";
 import type { SVirtualListExposed } from "@/components/ui/SVirtualList.vue";
 import { useQueuePanel } from "@/composables/useQueuePanel";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { addMultiSong } from "@/services/listenTogetherMulti";
 
 defineEmits<{ close: [] }>();
 
 const { t } = useI18n();
+const multiStore = useTogetherMultiStore();
 const listRef = shallowRef<SVirtualListExposed | null>(null);
+
+const onAddToRoom = async (item: Track): Promise<void> => {
+  await addMultiSong(item);
+};
 const {
   statusStore,
   queue,
@@ -104,6 +111,18 @@ const {
                   {{ formatArtists(item.artists) }}
                 </div>
               </div>
+              <SButton
+                v-if="multiStore.inRoom"
+                type="cover"
+                variant="ghost"
+                circle
+                size="tiny"
+                class="opacity-0 group-hover:opacity-100"
+                :title="t('player.together.addToRoom')"
+                @click.stop="onAddToRoom(item)"
+              >
+                <template #icon><IconLucideUsers /></template>
+              </SButton>
               <SButton
                 type="cover"
                 variant="ghost"
