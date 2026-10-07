@@ -31,7 +31,9 @@ import type {
   TogetherSession,
 } from "@shared/types/listenTogether";
 
-const ADOPT_CONFIRM_TICKS = 3;
+// 采纳回声的最长存活 tick 数。必须覆盖渲染端加载房间曲目的耗时：
+// 加载完成前它不会跟随本地状态，回声若先过期，随后的跟随会被当成用户切歌上报
+const ADOPT_CONFIRM_TICKS = 15;
 
 const FRIENDS_LIMIT = 100;
 
@@ -264,6 +266,7 @@ const reportCommand = async (
   // 在这里重读会让请求内容与本次 delta 不再对应
   const targetSongId = state.songId || "0";
   if (issuing !== generation) return;
+  neteaseLog.info(`[一起听] 上报 ${type} target=${targetSongId} former=${formerSongId || "-"}`);
   await callNetease("listen_together_play_command_report", {
     roomId,
     type,
@@ -288,6 +291,9 @@ const reportQueue = async (
   const userId = Number(session.userId) || 0;
   const version = playlistVersion;
   if (issuing !== generation) return;
+  neteaseLog.info(
+    `[一起听] 上报队列 ${songIds.length}首 anchor=${anchorSongId || "-"}@${anchorPosition}`,
+  );
   await callNetease("listen_together_sync_list_report", {
     roomId,
     userId,
@@ -357,11 +363,9 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   }
   if (replaceQueue) {
     localQueueIds = [...snapshot.songIds];
-    // 只在该维度已经确认同步时才推进基线：首帧队列上报失败时基线仍是
-    // 未确认的哨兵，这里直接写服务端值会把"待上报"抹平成"已同步"
-    if (baseline && baseline.queueSignature !== "") {
-      baseline.queueSignature = songIdsSignature(snapshot.songIds);
-    }
+    // 这里不再直接推进队列基线：渲染端此刻还没跟随，提前写会让下一轮
+    // 把"本地仍是旧队列"当成变化而把自己的队列上报出去。交给回声机制，
+    // 渲染端真正跟随到房间队列时再提交
   }
   const restored = mode === "restore" && initial;
   if (modeChanged) {
@@ -371,29 +375,38 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   // 登记接下来会出现的回声：采纳远端后，渲染端会把这几个维度改成本地状态，
   // 随后的上报是回声而非用户操作。只登记真正会变的维度，其余照常上报，
   // 这样远程采纳期间用户自己的操作不会被连带吞掉
-  // 只登记本地确实会跟随远端的那几个维度：本地值已经等于远端值时不会有回声，
-  // 未确认的维度（哨兵）更不能登记，否则会把待上报的操作当成回声吞掉
-  adoptionTicks = ADOPT_CONFIRM_TICKS;
-  adoptionEcho = [];
-  if (
+  // 回声清单只在真正应用了一条新的远端命令时重建。每轮都清空会把上次登记的
+  // 回声丢掉：后续轮次 fresh 为假，track 回声不会重新登记，跟随就会被当成切歌上报
+  if (fresh && command) {
+    adoptionEcho = [];
+    adoptionTicks = ADOPT_CONFIRM_TICKS;
+    if (
+      replaceQueue &&
+      songIdsSignature(lastState.queueSongIds) !== songIdsSignature(snapshot.songIds)
+    ) {
+      adoptionEcho.push({ dim: "queue", value: songIdsSignature(snapshot.songIds) });
+    }
+    if (modeChanged && lastState.playMode !== snapshot.playMode) {
+      adoptionEcho.push({ dim: "playMode", value: snapshot.playMode });
+    }
+    if (command.targetSongId && lastState.songId !== command.targetSongId) {
+      adoptionEcho.push({ dim: "track", value: command.targetSongId });
+    }
+    if (
+      (command.type === "PLAY" || command.type === "PAUSE") &&
+      lastState.playing !== command.playing
+    ) {
+      adoptionEcho.push({ dim: "playState", value: String(command.playing) });
+    }
+  } else if (
     replaceQueue &&
-    songIdsSignature(lastState.queueSongIds) !== songIdsSignature(snapshot.songIds)
+    baseline?.queueSignature !== "" &&
+    !adoptionEcho.some((entry) => entry.dim === "queue")
   ) {
+    // 纯队列对齐（没有新命令）：补登记队列回声，但不清空已有回声。
+    // 基线还是哨兵时不能登记——那说明队列尚未上报成功，需要的是重试而不是吞掉
     adoptionEcho.push({ dim: "queue", value: songIdsSignature(snapshot.songIds) });
-  }
-  if (modeChanged && lastState.playMode !== snapshot.playMode) {
-    adoptionEcho.push({ dim: "playMode", value: snapshot.playMode });
-  }
-  if (fresh && command?.targetSongId && lastState.songId !== command.targetSongId) {
-    adoptionEcho.push({ dim: "track", value: command.targetSongId });
-  }
-  if (
-    fresh &&
-    command &&
-    (command.type === "PLAY" || command.type === "PAUSE") &&
-    lastState.playing !== command.playing
-  ) {
-    adoptionEcho.push({ dim: "playState", value: String(command.playing) });
+    adoptionTicks = Math.max(adoptionTicks, ADOPT_CONFIRM_TICKS);
   }
   for (const listener of commandListeners) {
     listener({
@@ -964,8 +977,14 @@ export const restore = async (userId: string): Promise<TogetherRoom | null> => {
 export const updateLocal = (state: TogetherLocalState): void => {
   if (!session) return;
   const previousId = lastState.songId;
+  const previousQueue = songIdsSignature(lastState.queueSongIds);
   lastState = state;
   hasLocalState = true;
+  if (state.songId !== previousId || songIdsSignature(state.queueSongIds) !== previousQueue) {
+    neteaseLog.info(
+      `[一起听] 本地状态 song=${state.songId || "-"} 队列=${state.queueSongIds.length}首 模式=${state.playMode}`,
+    );
+  }
   if (state.songId !== previousId) previousSongId = previousId;
   if (!baseline) {
     baseline = baselineOf(state);

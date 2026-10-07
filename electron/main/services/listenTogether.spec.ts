@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@main/apis/netease", () => ({ callNetease: mocks.call }));
-vi.mock("@main/utils/logger", () => ({ neteaseLog: { warn: mocks.warn } }));
+vi.mock("@main/utils/logger", () => ({ neteaseLog: { warn: mocks.warn, info: mocks.warn } }));
 vi.mock("@main/utils/proxy", () => ({ fetchWithProxy: vi.fn() }));
 
 const localState = (patch: Partial<TogetherLocalState> = {}): TogetherLocalState => ({
@@ -1529,5 +1529,66 @@ describe("一起听房间状态机", () => {
     releaseStatus(statusBody(false));
     await expect(joinPromise).resolves.toEqual(expect.objectContaining({ roomId: "R2" }));
     expect(service.getSession()?.roomId).toBe("R2");
+  });
+  it("入场后渲染端慢跟进也不会把房间歌曲当用户切歌上报", async () => {
+    const service = await load();
+    const gotos: string[] = [];
+    let statusCalls = 0;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_status") {
+        statusCalls += 1;
+        // 只有 join 的首次探测不在房间，之后都在房间里
+        return statusCalls === 1 ? statusBody(false) : statusBody(true, "R1", [8]);
+      }
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true, status: "AVAILABLE" } } };
+      }
+      if (name === "listen_together_invitation_accept") {
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: { roomInfo: { roomId: "R1", creatorId: 8, roomUsers: [{ userId: 8 }] } },
+          },
+        };
+      }
+      if (name === "listen_together_play_command_report") {
+        if (params.type === "GOTO") gotos.push(String(params.targetSongId));
+        return { status: 200, body: { code: 200 } };
+      }
+      if (name === "listen_together_sync_playlist_get") {
+        return snapshotBody(["200"], "", -1, "ORDER_LOOP", {
+          userId: "8",
+          commandType: "GOTO",
+          playStatus: "PLAY",
+          formerSongId: "0",
+          targetSongId: "200",
+          progress: 0,
+          serverSeq: 5,
+        });
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.join("R1", "8", "7");
+    // 入场前本地放的是 100
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], currentIndex: 0 }));
+    await vi.advanceTimersByTimeAsync(1000);
+    gotos.length = 0;
+
+    // 渲染端加载房间歌曲较慢：连续 8 个 tick 仍报旧歌曲（远超旧的 3 tick 窗口）
+    for (let i = 0; i < 8; i++) {
+      service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], currentIndex: 0 }));
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(gotos).toHaveLength(0);
+
+    // 渲染端终于跟随到房间歌曲
+    service.updateLocal(localState({ songId: "200", queueSongIds: ["200"], currentIndex: 0 }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 这是对采纳的跟随，不是用户切歌
+    expect(gotos).toHaveLength(0);
   });
 });
