@@ -13,6 +13,7 @@ import {
   createMultiRoom,
   getStrangerVisible,
   inviteToMultiRoom,
+  refreshMultiRoom,
   setStrangerVisible,
   onMultiRoom,
   restoreMultiRoom,
@@ -495,5 +496,60 @@ describe("多人一起听", () => {
     expect(pushed[0].nextSongs.map((s) => s.songId)).toEqual(["2"]);
     // 房间的其它字段要从缓存里保留
     expect(pushed[0].roomId).toBe("R_1");
+  });
+
+  it("同一首歌里起播时刻变了要重新推送：否则对方拖进度本地不跟随", async () => {
+    const roomWithStart = (startTime: number) => ({
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          multiLtRoomSnapshot: {
+            roomId: "R_1",
+            multiRoomInfoDTO: { roomId: "R_1", creatorId: 77, chatRoomId: "chat1" },
+            multiLtRoomUserAgg: {
+              onlineUserInfos: [{ userId: 88, nickname: "B", avatarUrl: "" }],
+            },
+            roomPlaySongInfo: {
+              playSong: { songId: 123, songBizId: 5, songRcmdUid: 77 },
+              nextSongs: [{ songId: 456, songBizId: 0, songRcmdUid: 77 }],
+              startTime,
+              songDuration: 200000,
+            },
+          },
+        },
+      },
+    });
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    const pushed: TogetherMultiRoom[] = [];
+    onMultiRoom((room) => pushed.push(room));
+
+    mocks.call.mockResolvedValue(roomWithStart(1000));
+    await refreshMultiRoom();
+    const first = pushed.length;
+    expect(first).toBeGreaterThan(0);
+
+    // 队列没变，只有起播时刻往后挪（= 对方拖了进度）
+    mocks.call.mockResolvedValue(roomWithStart(31_000));
+    await refreshMultiRoom();
+
+    expect(pushed.length).toBeGreaterThan(first);
+    expect(pushed.at(-1)?.playStartTime).toBe(31_000);
+  });
+
+  it("队列与起播时刻都没变时不重复推送", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    const pushed: TogetherMultiRoom[] = [];
+    onMultiRoom((room) => pushed.push(room));
+
+    mocks.call.mockResolvedValue(multiBody());
+    await refreshMultiRoom();
+    const first = pushed.length;
+
+    await refreshMultiRoom();
+
+    expect(pushed.length).toBe(first);
   });
 });

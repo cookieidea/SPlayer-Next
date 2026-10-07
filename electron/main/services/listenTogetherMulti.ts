@@ -75,7 +75,13 @@ export const getMultiSession = (): TogetherMultiSession | null => session;
 export const getMultiRoom = (): TogetherMultiRoom | null => room;
 
 const songKeyOf = (room: TogetherMultiRoom): string =>
-  [room.playSong?.songId ?? "", ...room.nextSongs.map((song) => song.songId)].join(",");
+  [
+    room.playSong?.songId ?? "",
+    ...room.nextSongs.map((song) => song.songId),
+    // 起播时刻也进键：同一首歌里对方拖了进度时服务端会改 startTime，
+    // 不去重的话本地进度不会跟着对齐。正常播放时它是恒定值，不会造成重复推送
+    String(room.playStartTime ?? ""),
+  ].join(",");
 
 const publish = (next: TogetherMultiRoom, issuing: number): void => {
   if (generation !== issuing) return;
