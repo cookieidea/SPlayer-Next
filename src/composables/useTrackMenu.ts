@@ -7,6 +7,8 @@ import * as player from "@/core/player";
 import { useSettingsStore } from "@/stores/settings";
 import { usePluginsStore } from "@/stores/plugins";
 import { useStatusStore } from "@/stores/status";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { addMultiSong, topMultiSong } from "@/services/listenTogetherMulti";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import { buildDownloadQualityItems } from "@/composables/useDownload";
@@ -26,6 +28,8 @@ import IconSearch from "~icons/lucide/search";
 import IconMessageCircle from "~icons/lucide/message-circle";
 import IconMoreHorizontal from "~icons/lucide/more-horizontal";
 import IconPuzzle from "~icons/lucide/puzzle";
+import IconUsers from "~icons/lucide/users";
+import IconChevronsUp from "~icons/lucide/chevrons-up";
 
 export interface TrackMenuOptions {
   /** 集合类型 */
@@ -64,6 +68,7 @@ export const useTrackMenu = (
   const status = useStatusStore();
   const settings = useSettingsStore();
   const plugins = usePluginsStore();
+  const multiStore = useTogetherMultiStore();
   const { copy } = useCopyText();
   const isPlaylist = options.collectionType === "playlist";
   const isCloudView = options.collectionType === "cloud";
@@ -176,6 +181,20 @@ export const useTrackMenu = (
         ],
       },
     ];
+    // 多人房没有站内邀请接口，加歌与置顶都走 song/operate，只在房内才出现
+    if (multiStore.inRoom) {
+      base.push({
+        key: "togetherAdd",
+        label: t("player.together.addToRoom"),
+        icon: markRaw(IconUsers),
+        separator: true,
+      });
+      base.push({
+        key: "togetherTop",
+        label: t("player.together.topInRoom"),
+        icon: markRaw(IconChevronsUp),
+      });
+    }
     // 插件贡献：每个有 ui 权限的插件折叠成一个以插件名命名的子菜单
     const pluginGroups: DropdownMenuItem[] = [];
     for (const group of plugins.menuContributions) {
@@ -197,6 +216,14 @@ export const useTrackMenu = (
   const handleSelect = async (key: string): Promise<void> => {
     const current = track.value;
     if (!current) return;
+    if (key === "togetherAdd") {
+      await addMultiSong(current);
+      return;
+    }
+    if (key === "togetherTop") {
+      await topMultiSong(current);
+      return;
+    }
     // 下载子菜单：download:<音质>，空音质表示默认
     if (key.startsWith("download:")) {
       const quality = key.slice("download:".length);
