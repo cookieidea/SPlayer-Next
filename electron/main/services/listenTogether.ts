@@ -163,6 +163,8 @@ const registerFailure = (error: unknown, expected?: number): void => {
     endSession("server", expected);
     return;
   }
+  // 旧代次的失败不该污染新房间：跳过限流计数与提示
+  if (expected !== undefined && expected !== generation) return;
   emitError(message);
   if (!isRateLimited(error)) return;
   rateLimitFailures += 1;
@@ -209,18 +211,20 @@ const pickLeader = (value: TogetherRoom, selfUserId: string): string => {
   return sorted[0] ?? selfUserId;
 };
 
-const reportFor = (
-  changes: readonly string[],
-  playing: boolean,
-): {
+type ReportAction = {
   type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE" | "PLAYMODE_CHANGE";
   playing: boolean;
-} | null => {
-  if (changes.includes("track")) return { type: "GOTO", playing };
-  if (changes.includes("progress")) return { type: "PROGRESS", playing };
-  if (changes.includes("playState")) return { type: playing ? "PLAY" : "PAUSE", playing };
-  if (changes.includes("playMode")) return { type: "PLAYMODE_CHANGE", playing };
-  return null;
+};
+
+const reportFor = (changes: readonly string[], playing: boolean): ReportAction[] => {
+  const actions: ReportAction[] = [];
+  if (changes.includes("playMode")) actions.push({ type: "PLAYMODE_CHANGE", playing });
+  if (changes.includes("track")) actions.push({ type: "GOTO", playing });
+  else if (changes.includes("progress")) actions.push({ type: "PROGRESS", playing });
+  if (changes.includes("playState")) {
+    actions.push({ type: playing ? "PLAY" : "PAUSE", playing });
+  }
+  return actions;
 };
 
 const reportCommand = async (
@@ -409,8 +413,8 @@ const tick = async (): Promise<void> => {
           localQueueIds = [...lastState.queueSongIds];
         }
         if (delta.changes.includes("ended")) handleEnded();
-        const action = lastState.songId ? reportFor(delta.changes, lastState.playing) : null;
-        if (action) {
+        const actions = lastState.songId ? reportFor(delta.changes, lastState.playing) : [];
+        for (const action of actions) {
           if (action.type === "GOTO") leaderId = selfUserId;
           healthy =
             (await guarded(

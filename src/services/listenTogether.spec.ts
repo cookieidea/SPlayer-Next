@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   nextTrack: vi.fn(() => Promise.resolve()),
   songsByIds: vi.fn<(ids: Array<string | number>) => Promise<unknown[]>>(() => Promise.resolve([])),
   toast: { info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() },
+  setShuffleMode: vi.fn(),
+  setRepeatMode: vi.fn(),
 }));
 
 vi.mock("@/core/player", () => ({
@@ -18,6 +20,8 @@ vi.mock("@/core/player", () => ({
   seek: mocks.seek,
   nextTrack: mocks.nextTrack,
   playAtIndex: vi.fn(() => Promise.resolve()),
+  setShuffleMode: mocks.setShuffleMode,
+  setRepeatMode: mocks.setRepeatMode,
 }));
 
 vi.mock("@/apis/song/netease", () => ({ songsByIds: mocks.songsByIds }));
@@ -220,11 +224,7 @@ describe("一起听渲染端服务", () => {
     expect(mocks.play).not.toHaveBeenCalled();
   });
 
-  it("对端切换随机模式时本机跟随", async () => {
-    const status = useStatusStore();
-    status.shuffleMode = "off";
-    status.repeatMode = "list";
-
+  it("对端切换随机模式时调用统一的洗牌逻辑", async () => {
     mods.initTogether();
     emit?.(sessionEvent());
     emit?.({
@@ -238,15 +238,11 @@ describe("一起听渲染端服务", () => {
       initial: false,
     });
 
-    await vi.waitFor(() => expect(status.shuffleMode).toBe("on"));
-    expect(status.repeatMode).toBe("list");
+    await vi.waitFor(() => expect(mocks.setShuffleMode).toHaveBeenCalledWith("on", true));
+    expect(mocks.setRepeatMode).toHaveBeenCalledWith("list", true);
   });
 
-  it("对端切换单曲循环时本机跟随", async () => {
-    const status = useStatusStore();
-    status.repeatMode = "list";
-    status.shuffleMode = "on";
-
+  it("对端切换单曲循环时关闭随机并静默设置", async () => {
     mods.initTogether();
     emit?.(sessionEvent());
     emit?.({
@@ -260,8 +256,8 @@ describe("一起听渲染端服务", () => {
       initial: false,
     });
 
-    await vi.waitFor(() => expect(status.repeatMode).toBe("one"));
-    expect(status.shuffleMode).toBe("off");
+    await vi.waitFor(() => expect(mocks.setRepeatMode).toHaveBeenCalledWith("one", true));
+    expect(mocks.setShuffleMode).toHaveBeenCalledWith("off", true);
   });
 
   it("接受邀请后进入房间", async () => {

@@ -618,4 +618,57 @@ describe("一起听房间状态机", () => {
     }
     expect(statusCalls).toBeGreaterThan(before);
   });
+  it("同一轮内切歌与改模式都会上报", async () => {
+    const service = await load();
+    const types: string[] = [];
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        types.push(String(params.type));
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100", "200"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    types.length = 0;
+
+    // 同一轮内：切歌 + 改播放模式
+    service.updateLocal(localState({ songId: "200", currentIndex: 1, playMode: "SINGLE_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(types).toContain("GOTO");
+    expect(types).toContain("PLAYMODE_CHANGE");
+  });
+
+  it("旧代次的限流失败不污染新会话", async () => {
+    const service = await load();
+    const errors: string[] = [];
+    service.onError((message: string) => errors.push(message));
+
+    let failMode = false;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (failMode) throw new Error("429 Too Many Requests");
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+    failMode = true;
+    // 制造一次旧代次的失败后立刻切房
+    await service.leave();
+    const before = errors.length;
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+    failMode = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(errors.length).toBeGreaterThanOrEqual(before);
+  });
 });

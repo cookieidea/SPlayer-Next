@@ -90,6 +90,7 @@ const tracksForIds = async (songIds: readonly string[]): Promise<Track[]> => {
 
 const respondCommand = async (command: TogetherCommand, index: number): Promise<void> => {
   const status = useStatusStore();
+  if (command.type === "PLAYMODE_CHANGE") return;
   const seekOnly = command.type === "PROGRESS";
   if (status.currentTrack?.id !== command.targetSongId) {
     await player.playFrom(
@@ -128,6 +129,8 @@ const applyRemote = async (
       useStatusStore().playIndex = keep;
       return;
     }
+    // 播放模式命令只改模式，不触碰播放器
+    if (command.type === "PLAYMODE_CHANGE") return;
     const index = tracks.findIndex((track) => track.id === command.targetSongId);
     if (index < 0) return;
     // 纯时间轴命令：只对齐曲目与进度，不改播放态
@@ -153,7 +156,8 @@ const applyRemote = async (
     if (!command.playing) await player.pause();
     return;
   }
-  if (!command?.targetSongId) return;
+  if (!command || command.type === "PLAYMODE_CHANGE") return;
+  if (!command.targetSongId) return;
   const index = queue.findTrackIndex(command.targetSongId);
   if (index < 0) return;
   pendingLoad = true;
@@ -165,20 +169,19 @@ const applyRemote = async (
 };
 
 const applyPlayMode = (mode: string): void => {
-  const status = useStatusStore();
   if (mode === "RANDOM") {
-    status.shuffleMode = "on";
-    status.repeatMode = "list";
+    player.setRepeatMode("list", true);
+    player.setShuffleMode("on", true);
     return;
   }
   if (mode === "SINGLE_LOOP") {
-    status.shuffleMode = "off";
-    status.repeatMode = "one";
+    player.setShuffleMode("off", true);
+    player.setRepeatMode("one", true);
     return;
   }
   if (mode === "ORDER_LOOP") {
-    status.shuffleMode = "off";
-    status.repeatMode = "list";
+    player.setShuffleMode("off", true);
+    player.setRepeatMode("list", true);
   }
 };
 
