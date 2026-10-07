@@ -441,6 +441,8 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
         songId: lastState.songId,
         playing: lastState.playing,
         progressMs: lastState.positionMs,
+        // 官方心跳带队列版本，用于服务端判断本地队列是否过期
+        playlistVersion,
       });
     }
   } catch (error) {

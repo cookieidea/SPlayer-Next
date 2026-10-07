@@ -201,7 +201,10 @@ describe("多人一起听", () => {
     await exitMultiRoom();
 
     expect(reasons).toEqual(["left"]);
-    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_exit", { roomId: "R_1" });
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_exit", {
+      roomId: "R_1",
+      exitType: "NORMAL_END",
+    });
     expect(getMultiSession()).toBeNull();
     expect(getMultiRoom()).toBeNull();
   });

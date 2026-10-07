@@ -347,7 +347,10 @@ export const exitMultiRoom = async (): Promise<void> => {
   const current = session;
   if (!current) return;
   stop("left");
-  await callNetease("listen_together_multi_exit", { roomId: current.roomId });
+  await callNetease("listen_together_multi_exit", {
+    roomId: current.roomId,
+    exitType: "NORMAL_END",
+  });
 };
 
 export const endMultiOnLogout = (): void => {

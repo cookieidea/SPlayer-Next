@@ -1741,4 +1741,26 @@ describe("一起听房间状态机", () => {
     await service.rejectInvitation("  ");
     expect(mocks.call).not.toHaveBeenCalled();
   });
+
+  it("心跳带上队列版本号", async () => {
+    const service = await load();
+    const beats: Record<string, unknown>[] = [];
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_heartbeat") {
+        beats.push(params);
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100" }));
+    await cycle();
+
+    expect(beats.length).toBeGreaterThan(0);
+    // 服务端靠它判断本地队列是否过期，缺了会一直当成旧队列
+    expect(Number(beats[0].playlistVersion)).toBeGreaterThan(0);
+  });
 });
