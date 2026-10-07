@@ -624,4 +624,44 @@ describe("一起听渲染端服务", () => {
     const list = call[0] as Track[];
     expect(list[call[1] as number as number]?.id).toBe(target);
   });
+  it("入场只保留窗口内的歌，其余不留在本地", async () => {
+    const big = Array.from({ length: 1000 }, (_, i) => String(i + 1));
+    const target = "500";
+    mocks.songsByIds.mockImplementation(async (ids) =>
+      (ids as Array<string | number>).map((id) => track(String(id))),
+    );
+    queue.setQueue([track("9999")]);
+    useStatusStore().playIndex = 0;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "GOTO",
+        formerSongId: "0",
+        targetSongId: target,
+        progressMs: 0,
+        playing: true,
+        serverSeq: 1,
+      },
+      songIds: big,
+      playMode: "",
+      anchorSongId: target,
+      anchorPosition: 499,
+      initial: true,
+      autoPlay: true,
+    });
+
+    await vi.waitFor(() => expect(mocks.playFrom).toHaveBeenCalled());
+    const call = mocks.playFrom.mock.calls[0] as unknown[];
+    const list = call[0] as Track[];
+    // 上千首只取窗口，其余不保留
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.length).toBeLessThanOrEqual(200);
+    expect(list[call[1] as number as number]?.id).toBe(target);
+  });
 });

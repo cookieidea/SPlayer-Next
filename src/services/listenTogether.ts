@@ -82,14 +82,18 @@ const pushState = (): void => {
   window.api.together.sync(collectState());
 };
 
-/** 以目标曲目为中心取一段窗口，务必包含目标本身 */
-const windowAround = (ids: readonly string[], targetId: string, size: number): string[] => {
-  if (ids.length <= size) return [...ids];
+/** 以目标曲目为中心取一段窗口（务必包含目标本身），并给出它在原列表中的起始偏移 */
+const windowAround = (
+  ids: readonly string[],
+  targetId: string,
+  size: number,
+): { ids: string[]; offset: number } => {
+  if (ids.length <= size) return { ids: [...ids], offset: 0 };
   const at = ids.indexOf(targetId);
-  if (at < 0) return ids.slice(0, size);
+  if (at < 0) return { ids: ids.slice(0, size), offset: 0 };
   const half = Math.floor(size / 2);
   const start = Math.max(0, Math.min(at - half, ids.length - size));
-  return ids.slice(start, start + size);
+  return { ids: ids.slice(start, start + size), offset: start };
 };
 
 const tracksForIds = async (songIds: readonly string[]): Promise<Track[]> => {
@@ -146,22 +150,27 @@ const applyRemote = async (
   playOnEntry = false,
 ): Promise<void> => {
   if (songIds.length > 0) {
-    const targetId = command?.targetSongId || anchorSongId;
-    let tracks = await tracksForIds(songIds);
-    // 房间歌单可能上千首：整表解析失败或目标缺失时，退化为目标附近的窗口。
-    // 否则这里会静默返回——用户看到的就是"进房什么都没发生"
-    if (targetId && !tracks.some((track) => track.id === targetId)) {
-      tracks = await tracksForIds(windowAround(songIds, targetId, ADOPT_WINDOW));
-    }
+    // 一起听只取当前曲目附近的窗口：房间歌单可能上千首，
+    // 整表解析既慢又容易整批失败，本地列表也没必要镜像那么大
+    const targetId = command?.targetSongId || anchorSongId || songIds[0];
+    const adopted = windowAround(songIds, targetId, ADOPT_WINDOW);
+    const tracks = await tracksForIds(adopted.ids);
+    // 锚点下标原本相对完整歌单：先换到窗口内，再用 id 定位。
+    // 不能直接用下标——个别曲目解析失败会让下标错位
+    const anchorInWindow =
+      anchorPosition >= adopted.offset && anchorPosition < adopted.offset + adopted.ids.length
+        ? adopted.ids[anchorPosition]
+        : "";
+    const anchorAt = anchorInWindow
+      ? tracks.findIndex((track) => track.id === anchorInWindow)
+      : tracks.findIndex((track) => track.id === targetId);
     if (tracks.length === 0) return;
     if (!command) {
       const currentId = useStatusStore().currentTrack?.id ?? "";
       let keep = tracks.findIndex((track) => track.id === currentId);
       // 本地曲目已不在共享队列里时，按服务端锚点定位
       if (keep < 0 && anchorSongId) keep = tracks.findIndex((t) => t.id === anchorSongId);
-      if (keep < 0 && anchorPosition >= 0 && anchorPosition < tracks.length) {
-        keep = anchorPosition;
-      }
+      if (keep < 0 && anchorAt >= 0) keep = anchorAt;
       if (keep < 0) keep = 0;
       // 入场采纳必须走 playFrom：只改 playIndex 不会触碰播放器，
       // 用户听到的仍是本地那首，直到对端下发新的播放命令才同步
