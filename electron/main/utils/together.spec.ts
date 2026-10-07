@@ -10,13 +10,18 @@ import {
 import {
   invitesFromInbox,
   joinableFromBody,
+  multiRoomFromBody,
   obj,
   roomFromBody,
   snapshotFromBody,
   statusFromBody,
   str,
 } from "./togetherParse";
-import { parseInvitation, buildInvitation } from "@shared/utils/togetherInvitation";
+import {
+  parseInvitation,
+  buildInvitation,
+  buildMultiInvitation,
+} from "@shared/utils/togetherInvitation";
 import type {
   TogetherCommand,
   TogetherLocalState,
@@ -569,5 +574,78 @@ describe("一起听邀请链接", () => {
   it("生成可解析的邀请链接", () => {
     const link = buildInvitation("R1", "77");
     expect(parseInvitation(link).invitation).toEqual({ roomId: "R1", inviterId: "77" });
+  });
+});
+
+describe("多人房响应解析", () => {
+  it("从 multiLtRoomSnapshot 取出房间、成员与房间当前歌曲", () => {
+    const body = {
+      status: 200,
+      body: {
+        data: {
+          success: true,
+          multiLtRoomSnapshot: {
+            roomId: "ABC_1791391074",
+            multiRoomInfoDTO: { roomId: "ABC_1791391074", creatorId: 77, chatRoomId: "chat1" },
+            multiLtRoomUserAgg: {
+              onlineUserInfos: [
+                { userId: 77, nickname: "A", avatarUrl: "http://a" },
+                { userId: 88, nickname: "B", avatarUrl: "http://b" },
+              ],
+            },
+            roomPlaySongInfo: {
+              playSong: { songId: 123, songBizId: 5 },
+              nextSongs: [{ songId: 456, songBizId: 6 }],
+            },
+          },
+        },
+      },
+    };
+    expect(multiRoomFromBody(body)).toEqual({
+      roomId: "ABC_1791391074",
+      creatorId: "77",
+      chatRoomId: "chat1",
+      members: [
+        { userId: "77", nickname: "A", avatarUrl: "http://a" },
+        { userId: "88", nickname: "B", avatarUrl: "http://b" },
+      ],
+      playSong: { songId: "123", songBizId: 5 },
+      nextSongs: [{ songId: "456", songBizId: 6 }],
+    });
+  });
+
+  it("没有房间信息时返回 null", () => {
+    expect(multiRoomFromBody({ status: 200, body: { code: 200, data: {} } })).toBeNull();
+  });
+
+  it("缺少 roomPlaySongInfo 时房间仍然有效", () => {
+    const room = multiRoomFromBody({
+      status: 200,
+      body: {
+        data: {
+          multiLtRoomSnapshot: { roomId: "R_1", multiLtRoomUserAgg: { onlineUserInfos: [] } },
+        },
+      },
+    });
+    expect(room).toMatchObject({ roomId: "R_1", playSong: null, nextSongs: [] });
+  });
+
+  it("没有 multiLtRoomUserAgg 时兼容 roomUsers", () => {
+    const room = multiRoomFromBody({
+      status: 200,
+      body: { data: { multiLtRoomSnapshot: { roomId: "R_1", roomUsers: [{ userId: 9 }] } } },
+    });
+    expect(room?.members).toEqual([{ userId: "9", nickname: "", avatarUrl: "" }]);
+  });
+});
+
+describe("多人房邀请链接", () => {
+  it("生成可解析的多人邀请链接", () => {
+    const link = buildMultiInvitation("ABC_1791391074", "77");
+    expect(link).toContain("/listen-together/multishare/index.html");
+    expect(parseInvitation(link).invitation).toEqual({
+      roomId: "ABC_1791391074",
+      inviterId: "77",
+    });
   });
 });

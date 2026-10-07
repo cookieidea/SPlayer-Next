@@ -3,7 +3,9 @@ import type {
   TogetherCommandType,
   TogetherInviteCard,
   TogetherMember,
+  TogetherMultiRoom,
   TogetherRoom,
+  TogetherRoomSong,
   TogetherSnapshot,
 } from "@shared/types/listenTogether";
 
@@ -53,6 +55,11 @@ const toMember = (raw: unknown): TogetherMember => {
     nickname: str(item.nickname),
     avatarUrl: str(item.avatarUrl),
   };
+};
+
+const toRoomSong = (raw: unknown): TogetherRoomSong => {
+  const item = obj(raw) ?? {};
+  return { songId: str(item.songId), songBizId: num(item.songBizId) };
 };
 
 const toRoom = (raw: unknown): TogetherRoom | null => {
@@ -179,3 +186,38 @@ export const roomCheckFromBody = (
 };
 
 export const joinableFromBody = (value: unknown): boolean => roomCheckFromBody(value).joinable;
+
+/**
+ * 多人房快照：ack 与 status/get 的响应结构一致，
+ * 房间信息、成员、房间当前歌曲都裹在 multiLtRoomSnapshot 里，
+ * 与双人的 roomUsers / playCommand 是两套结构
+ */
+export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
+  const body = obj(unwrap(value)) ?? {};
+  const data = obj(body.data) ?? body;
+  const root =
+    obj(data.multiLtRoomSnapshot) ?? obj(data.multiRoomInfo) ?? obj(data.multiLtRoomInfo) ?? data;
+  const dto = obj(root.multiRoomInfoDTO) ?? root;
+  const roomId = str(root.roomId) || str(dto.roomId);
+  if (!roomId) return null;
+
+  const agg = obj(root.multiLtRoomUserAgg) ?? obj(root.roomUserList);
+  const users = Array.isArray(agg)
+    ? agg
+    : agg
+      ? list(agg.onlineUserInfos ?? agg.userList ?? agg.list)
+      : list(root.roomUsers);
+
+  const songInfo = obj(root.roomPlaySongInfo);
+  const playSong = obj(songInfo?.playSong);
+  return {
+    roomId,
+    creatorId: str(dto.creatorId) || str(root.creatorId) || str(root.creatorUid),
+    chatRoomId: str(dto.chatRoomId) || str(root.chatRoomId) || str(obj(root.imRoomInfo)?.roomId),
+    members: users.map(toMember).filter((member) => member.userId),
+    playSong: playSong ? toRoomSong(playSong) : null,
+    nextSongs: list(songInfo?.nextSongs)
+      .map(toRoomSong)
+      .filter((song) => song.songId),
+  };
+};

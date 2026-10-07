@@ -10,6 +10,20 @@ export interface TogetherRoom {
   members: TogetherMember[];
 }
 
+export interface TogetherRoomSong {
+  songId: string;
+  songBizId: number;
+}
+
+export interface TogetherMultiRoom {
+  roomId: string;
+  creatorId: string;
+  chatRoomId: string;
+  members: TogetherMember[];
+  playSong: TogetherRoomSong | null;
+  nextSongs: TogetherRoomSong[];
+}
+
 export type TogetherCommandType =
   "GOTO" | "NEXT" | "PREV" | "PLAY" | "PAUSE" | "PROGRESS" | "ADD" | "REPLACE" | "PLAYMODE_CHANGE";
 

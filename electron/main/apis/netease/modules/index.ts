@@ -109,6 +109,11 @@ import artist_sublist from "./artist_sublist";
 import listen_together_room_create from "./listen_together_room_create";
 import listen_together_status from "./listen_together_status";
 import listen_together_room_check from "./listen_together_room_check";
+import listen_together_multi_ack from "./listen_together_multi_ack";
+import listen_together_multi_status_get from "./listen_together_multi_status_get";
+import listen_together_multi_heartbeat from "./listen_together_multi_heartbeat";
+import listen_together_multi_exit from "./listen_together_multi_exit";
+import listen_together_multi_song_operate from "./listen_together_multi_song_operate";
 import listen_together_invitation_accept from "./listen_together_invitation_accept";
 import listen_together_sync_playlist_get from "./listen_together_sync_playlist_get";
 import listen_together_sync_list_report from "./listen_together_sync_list_report";
@@ -212,6 +217,11 @@ export const modules: Record<string, NeteaseModule> = {
   listen_together_room_create,
   listen_together_status,
   listen_together_room_check,
+  listen_together_multi_ack,
+  listen_together_multi_status_get,
+  listen_together_multi_heartbeat,
+  listen_together_multi_exit,
+  listen_together_multi_song_operate,
   listen_together_invitation_accept,
   listen_together_sync_playlist_get,
   listen_together_sync_list_report,

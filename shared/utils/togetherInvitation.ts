@@ -58,3 +58,8 @@ export const parseInvitation = (input: string): InvitationParseResult => {
 export const buildInvitation = (roomId: string, inviterId: string): string =>
   `https://st.music.163.com/listen-together/share/?roomId=${encodeURIComponent(roomId)}` +
   `&inviterId=${encodeURIComponent(inviterId)}`;
+
+export const buildMultiInvitation = (roomId: string, inviterUid: string): string =>
+  `https://st.music.163.com/listen-together/multishare/index.html?roomId=${encodeURIComponent(
+    roomId,
+  )}&inviterUid=${encodeURIComponent(inviterUid)}`;
