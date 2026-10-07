@@ -11,6 +11,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/core/player", () => ({
   playFrom: mocks.playFrom,
   playAtIndex: mocks.playAtIndex,
+  // 与真实语义一致：插进队列并返回实际下标（afterIndex 之后）
+  insertToQueue: (item: Track, afterIndex?: number) => {
+    const at = afterIndex === undefined ? queue.queue.value.length : afterIndex + 1;
+    queue.insertToQueue(item, at);
+    return at;
+  },
 }));
 
 const mediaMock = vi.hoisted(() => {
@@ -36,7 +42,12 @@ import type { TogetherMultiEvent, TogetherMultiRoom } from "@shared/types/listen
 import type { Track } from "@shared/types/player";
 import type * as ServiceModule from "./listenTogetherMulti";
 
-let queue: { setQueue: (items: readonly Track[]) => void; queue: { value: Track[] } };
+let queue: {
+  setQueue: (items: readonly Track[]) => void;
+  insertToQueue: (item: Track, index: number) => void;
+  findTrackIndex: (id: string) => number;
+  queue: { value: Track[] };
+};
 let mods: typeof ServiceModule;
 
 const track = (id: string): Track =>
@@ -100,67 +111,53 @@ describe("多人一起听渲染端服务", () => {
     };
   });
 
-  it("进入房间时把房间队列设为本地队列并加载当前曲目", async () => {
-    mocks.songsByIds.mockResolvedValue([track("1"), track("2")]);
+  it("进入房间时把房间当前曲目插进本地队列并播放，不顶掉用户歌单", async () => {
+    queue.setQueue([track("mine1"), track("mine2")]);
+    mocks.songsByIds.mockResolvedValue([track("room1")]);
     mods.initTogetherMulti();
 
-    emit?.(roomEvent(room("1", ["2"])));
+    emit?.(roomEvent(room("room1", ["room2"])));
 
     await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
-    expect(queue.queue.value.map((item) => item.id)).toEqual(["1", "2"]);
-    // 房间队列以当前曲目打头，落点必为 0
-    expect(loadedIndex()).toBe(0);
+    const ids = queue.queue.value.map((item) => item.id);
+    expect(ids).toContain("mine1");
+    expect(ids).toContain("mine2");
+    expect(ids).toContain("room1");
   });
 
-  it("队列内容没变且本地已在放时不重建队列、不重载", async () => {
-    mocks.songsByIds.mockResolvedValue([track("1"), track("2")]);
+  it("本地已有房间当前曲目时就地播放，不重复插入也不重排", async () => {
+    queue.setQueue([track("mine1"), track("room1"), track("mine2")]);
     mods.initTogetherMulti();
-    emit?.(roomEvent(room("1", ["2"])));
-    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
-    mediaMock.state.track = track("1");
 
-    const entries = queue.queue.value;
-    mocks.playFrom.mockClear();
-    mocks.playAtIndex.mockClear();
-    emit?.(roomEvent(room("1", ["2"])));
+    emit?.(roomEvent(room("room1", [])));
+
+    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
+    expect(queue.queue.value.map((item) => item.id)).toEqual(["mine1", "room1", "mine2"]);
+    expect(loadedIndex()).toBe(1);
+  });
+
+  it("本地已经在放房间当前曲目时不重复切歌", async () => {
+    mediaMock.state.track = track("room1");
+    queue.setQueue([track("room1")]);
+    mods.initTogetherMulti();
+
+    emit?.(roomEvent(room("room1", [])));
     await Promise.resolve();
-
-    expect(queue.queue.value).toBe(entries);
-    expect(loadCount()).toBe(0);
-  });
-
-  it("队列变了但当前曲目没变时只换队列、不重载正在放的那首", async () => {
-    mocks.songsByIds.mockResolvedValue([track("1"), track("2")]);
-    mods.initTogetherMulti();
-    emit?.(roomEvent(room("1", ["2"])));
-    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
-    mediaMock.state.track = track("1");
-
-    // 房间加了一首：队列内容变了，但当前曲目仍是 1
-    mocks.songsByIds.mockResolvedValue([track("1"), track("2"), track("3")]);
-    mocks.playFrom.mockClear();
-    mocks.playAtIndex.mockClear();
-    emit?.(roomEvent(room("1", ["2", "3"])));
-    await vi.waitFor(() => expect(queue.queue.value).toHaveLength(3));
 
     expect(loadCount()).toBe(0);
   });
 
   it("房间切歌后跟随到新曲目", async () => {
-    mocks.songsByIds.mockResolvedValue([track("1"), track("2")]);
+    queue.setQueue([track("mine1")]);
+    mediaMock.state.track = track("room1");
+    mocks.songsByIds.mockResolvedValue([track("room2")]);
     mods.initTogetherMulti();
-    emit?.(roomEvent(room("1", ["2"])));
-    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
-    mediaMock.state.track = track("1");
 
-    mocks.songsByIds.mockResolvedValue([track("2"), track("1")]);
-    mocks.playFrom.mockClear();
-    mocks.playAtIndex.mockClear();
-    emit?.(roomEvent(room("2", ["1"])));
-    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
+    emit?.(roomEvent(room("room2", [])));
 
-    expect(queue.queue.value[0]?.id).toBe("2");
-    expect(loadedIndex()).toBe(0);
+    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
+    expect(queue.queue.value.map((item) => item.id)).toContain("mine1");
+    expect(queue.queue.value.map((item) => item.id)).toContain("room2");
   });
 
   it("只有用户自己切歌才回报，跟随房间换曲不回传", () => {

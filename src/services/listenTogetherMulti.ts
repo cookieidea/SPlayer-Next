@@ -18,11 +18,6 @@ let unsubscribe: (() => void) | null = null;
 // 按「房间设的那首」逐值抑制，而不是开时间窗：时间窗会把用户随后的真实切歌一起吞掉
 let remoteSongId = "";
 
-const roomSongs = (room: TogetherMultiRoom): string[] => [
-  ...(room.playSong ? [room.playSong.songId] : []),
-  ...room.nextSongs.map((song) => song.songId),
-];
-
 const resolveTracks = async (ids: string[]): Promise<Track[]> => {
   const known = new Map<string, Track>();
   for (const item of queue.queue.value) {
@@ -35,36 +30,28 @@ const resolveTracks = async (ids: string[]): Promise<Track[]> => {
   return ids.map((id) => known.get(id)).filter((track): track is Track => track !== undefined);
 };
 
-const sameQueue = (ids: string[]): boolean => {
-  const current = queue.queue.value.map((item) => item.id);
-  return current.length === ids.length && current.every((id, index) => id === ids[index]);
-};
-
 /**
- * 跟随房间当前曲目。多人房的权威队列是「当前曲 + 接下来这些」，
- * 队列内容变了只换队列不重新加载，避免正在放的那首被重建
+ * 跟随房间当前曲目。多人群房的队列只是「当前曲 + 接下来几首」的短窗口，
+ * 拿它替换本地歌单会把用户的列表顶掉，所以只处理房间那一首：
+ * 本地已有就地播放（不动列表顺序），没有才插进去
  */
 const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
-  const ids = roomSongs(room);
-  if (ids.length === 0) return;
-  const tracks = await resolveTracks(ids);
   const roomSongId = room.playSong?.songId ?? "";
-  const target = tracks.findIndex((track) => track.id === roomSongId);
-  if (target < 0) return;
+  if (!roomSongId) return;
+  if (String(useMediaStore().track?.id ?? "") === roomSongId) return;
+  const [track] = await resolveTracks([roomSongId]);
+  if (!track) return;
 
   remoteSongId = roomSongId;
-  if (!sameQueue(tracks.map((track) => track.id))) queue.setQueue(tracks, MULTI_CONTEXT);
-  // 判断「已经在放」必须看播放器真实加载的曲目：
-  // status.currentTrack 是队列推导的，setQueue 后它立刻等于房间当前曲，
-  // 但播放器还没加载那首，用它判断会跳过换曲
-  if (String(useMediaStore().track?.id ?? "") === roomSongId) return;
-
-  // playAtIndex 在同下标时只做恢复播放、不会重新加载，这种情况必须强制换曲
-  if (useStatusStore().playIndex === target) {
-    await player.playFrom(tracks, target, MULTI_CONTEXT, true);
+  let at = queue.findTrackIndex(roomSongId);
+  if (at < 0) at = player.insertToQueue(track, undefined, MULTI_CONTEXT);
+  if (at < 0) return;
+  // playAtIndex 在同下标时只做恢复播放、不会重新加载，这种情况下强制走一次加载
+  if (useStatusStore().playIndex === at) {
+    await player.playFrom(queue.queue.value, at, MULTI_CONTEXT, true);
     return;
   }
-  await player.playAtIndex(target);
+  await player.playAtIndex(at);
 };
 
 const handleEvent = (): void => {
