@@ -50,10 +50,11 @@ const unwrap = (value: unknown): unknown => {
 
 const toMember = (raw: unknown): TogetherMember => {
   const item = obj(raw) ?? {};
+  // 多人房用 uid / avatar，双人房用 userId / avatarUrl
   return {
-    userId: str(item.userId),
+    userId: str(item.userId ?? item.uid),
     nickname: str(item.nickname),
-    avatarUrl: str(item.avatarUrl),
+    avatarUrl: str(item.avatarUrl || item.avatar),
   };
 };
 
@@ -206,6 +207,7 @@ export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
     : agg
       ? list(agg.onlineUserInfos ?? agg.userList ?? agg.list)
       : list(root.roomUsers);
+  // 实测 multiLtRoomUserAgg 在 snapshot 顶层，不在 multiRoomInfoDTO 里
 
   const songInfo = obj(root.roomPlaySongInfo);
   const playSong = obj(songInfo?.playSong);

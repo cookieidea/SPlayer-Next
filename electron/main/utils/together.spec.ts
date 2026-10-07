@@ -665,4 +665,44 @@ describe("多人房邀请链接", () => {
     });
     expect(r).toEqual({ joinable: true, copywriting: "", status: "AVAILABLE", type: "NORMAL" });
   });
+
+  it("解析真实多人房响应（成员用 uid/avatar，聚合在 snapshot 顶层）", () => {
+    const real = {
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          status: "RECONNECT_SUCCESS",
+          multiLtRoomSnapshot: {
+            roomId: "e1d615328bf6d687cdb754cab7672b36_1791398554437",
+            multiRoomInfoDTO: {
+              creatorId: 6294223883,
+              roomId: "e1d615328bf6d687cdb754cab7672b36_1791398554437",
+              chatRoomId: "16416247939",
+              roomType: "MULTI_MATCH_SONG",
+            },
+            multiLtRoomUserAgg: {
+              onlineNums: 1,
+              onlineUserInfos: [
+                { uid: 6294223883, avatar: "http://a.jpg", nickname: "猫盒小可爱" },
+              ],
+            },
+            roomPlaySongInfo: {
+              playSong: { songId: 435592097, songBizId: 1251991280 },
+              nextSongs: [{ songId: 27515069, songBizId: 1251991281 }],
+              waitSongCount: 6,
+            },
+          },
+        },
+      },
+    };
+    expect(multiRoomFromBody(real)).toEqual({
+      roomId: "e1d615328bf6d687cdb754cab7672b36_1791398554437",
+      creatorId: "6294223883",
+      chatRoomId: "16416247939",
+      members: [{ userId: "6294223883", nickname: "猫盒小可爱", avatarUrl: "http://a.jpg" }],
+      playSong: { songId: "435592097", songBizId: 1251991280 },
+      nextSongs: [{ songId: "27515069", songBizId: 1251991281 }],
+    });
+  });
 });
