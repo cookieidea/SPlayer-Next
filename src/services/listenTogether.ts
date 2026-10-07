@@ -153,15 +153,30 @@ const applyRemote = async (
           await player.playFrom(tracks, index, TOGETHER_CONTEXT, false);
         }
         await player.seek(command.progressMs);
+        // 入场时进度命令也要起播：PROGRESS 被解析为 neutral，playing 恒为 false，
+        // 只看它会让接收方一直停在暂停态
+        if (playOnEntry) await player.play();
       } finally {
         pendingLoad = false;
       }
       return;
     }
-    const autoPlay = !initial || command.playing;
+    // 入场采纳：加载 → 定位到房间进度 → 按房间播放态起播。
+    // 直接 playFrom(autoPlay) 会把 GOTO 携带的 progressMs 丢掉，导致从头播
+    if (initial) {
+      pendingLoad = true;
+      try {
+        await player.playFrom(tracks, index, TOGETHER_CONTEXT, false);
+        if (command.progressMs > 0) await player.seek(command.progressMs);
+        if (command.playing) await player.play();
+      } finally {
+        pendingLoad = false;
+      }
+      return;
+    }
     pendingLoad = true;
     try {
-      await player.playFrom(tracks, index, TOGETHER_CONTEXT, autoPlay);
+      await player.playFrom(tracks, index, TOGETHER_CONTEXT, true);
     } finally {
       pendingLoad = false;
     }

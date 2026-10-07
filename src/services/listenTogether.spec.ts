@@ -459,4 +459,106 @@ describe("一起听渲染端服务", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(mocks.playFrom).not.toHaveBeenCalled();
   });
+  it("入场时 GOTO 命令会对齐房间进度", async () => {
+    queue.setQueue([track("100")]);
+    mocks.songsByIds.mockResolvedValue([track("100"), track("200")]);
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+    mocks.seek.mockClear();
+    mocks.play.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "GOTO",
+        formerSongId: "0",
+        targetSongId: "200",
+        progressMs: 45000,
+        playing: true,
+        serverSeq: 9,
+      },
+      songIds: ["100", "200"],
+      playMode: "",
+      anchorSongId: "200",
+      anchorPosition: 1,
+      initial: true,
+      autoPlay: true,
+    });
+
+    await vi.waitFor(() => expect(mocks.seek).toHaveBeenCalled());
+    // 先加载不播，再定位，最后起播：避免从头播一下再跳
+    expect((mocks.playFrom.mock.calls[0] as unknown[])[3]).toBe(false);
+    expect((mocks.seek.mock.calls[0] as unknown[])[0]).toBe(45000);
+    expect(mocks.play).toHaveBeenCalled();
+  });
+
+  it("入场时 PROGRESS 命令也会起播", async () => {
+    queue.setQueue([track("100")]);
+    mocks.songsByIds.mockResolvedValue([track("100"), track("200")]);
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+    mocks.seek.mockClear();
+    mocks.play.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "PROGRESS",
+        formerSongId: "0",
+        targetSongId: "200",
+        progressMs: 30000,
+        playing: false,
+        serverSeq: 9,
+      },
+      songIds: ["100", "200"],
+      playMode: "",
+      anchorSongId: "200",
+      anchorPosition: 1,
+      initial: true,
+      autoPlay: true,
+    });
+
+    await vi.waitFor(() => expect(mocks.play).toHaveBeenCalled());
+    expect((mocks.seek.mock.calls[0] as unknown[])[0]).toBe(30000);
+  });
+
+  it("常规 GOTO 仍从头播放且不额外定位", async () => {
+    queue.setQueue([track("100")]);
+    mocks.songsByIds.mockResolvedValue([track("100"), track("200")]);
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+    mocks.seek.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "GOTO",
+        formerSongId: "100",
+        targetSongId: "200",
+        progressMs: 0,
+        playing: true,
+        serverSeq: 9,
+      },
+      songIds: ["100", "200"],
+      playMode: "",
+      anchorSongId: "",
+      anchorPosition: -1,
+      initial: false,
+      autoPlay: false,
+    });
+
+    await vi.waitFor(() => expect(mocks.playFrom).toHaveBeenCalled());
+    // 常规路径仍直接起播，且不额外定位
+    expect((mocks.playFrom.mock.calls[0] as unknown[])[3]).toBe(true);
+    expect(mocks.seek).not.toHaveBeenCalled();
+  });
 });
