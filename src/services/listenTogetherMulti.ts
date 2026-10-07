@@ -29,12 +29,21 @@ const resolveTracks = async (ids: string[]): Promise<Track[]> => {
   return ids.map((id) => known.get(id)).filter((track): track is Track => track !== undefined);
 };
 
-/** 房间队列是「当前曲 + 接下来几首」的短窗口，按签名去重，避免 8 秒心跳重复拉曲目详情 */
+/**
+ * 房间队列。优先用 room/songs/list 的完整歌单（实测返回全部歌曲 + 各自是谁加的），
+ * 失败时退回心跳里的 playSong+nextSongs 短窗口。按签名去重，避免心跳反复拉曲目详情
+ */
 const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
-  const ids = [
+  let ids = [
     ...(room.playSong ? [room.playSong.songId] : []),
     ...room.nextSongs.map((song) => song.songId),
   ].filter(Boolean);
+  try {
+    const full = await window.api.togetherMulti.roomSongs();
+    if (full.songIds.length > 0) ids = full.songIds;
+  } catch {
+    void 0;
+  }
   const signature = ids.join(",");
   if (signature === roomQueueKey) return;
   roomQueueKey = signature;

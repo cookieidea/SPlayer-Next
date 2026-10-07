@@ -10,6 +10,11 @@ export interface TogetherRoom {
   members: TogetherMember[];
 }
 
+export interface TogetherRoomSongList {
+  songIds: string[];
+  followers: TogetherMember[];
+}
+
 export interface TogetherRoomSong {
   songId: string;
   songBizId: number;
@@ -43,6 +48,7 @@ export interface TogetherMultiApi {
   join: (roomId: string, inviterUid: string, userId: string) => Promise<TogetherMultiRoom>;
   restore: (userId: string) => Promise<TogetherMultiRoom | null>;
   leave: () => Promise<void>;
+  roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;
   ackMatch: (roomId: string, userId: string) => Promise<TogetherMultiRoom>;
@@ -154,6 +160,7 @@ export interface TogetherApi {
   invite: (acceptorId: string) => Promise<void>;
   rejectInvitation: (roomId: string) => Promise<void>;
   leave: () => Promise<void>;
+  roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;
   ackMatch: (roomId: string, userId: string) => Promise<TogetherMultiRoom>;

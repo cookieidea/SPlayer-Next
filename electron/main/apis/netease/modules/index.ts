@@ -110,6 +110,7 @@ import listen_together_room_create from "./listen_together_room_create";
 import listen_together_status from "./listen_together_status";
 import listen_together_room_check from "./listen_together_room_check";
 import listen_together_invitation_reject from "./listen_together_invitation_reject";
+import listen_together_room_songs_list from "./listen_together_room_songs_list";
 import listen_together_song_match_start from "./listen_together_song_match_start";
 import listen_together_song_match_cancel from "./listen_together_song_match_cancel";
 import listen_together_song_match_ack from "./listen_together_song_match_ack";
@@ -222,6 +223,7 @@ export const modules: Record<string, NeteaseModule> = {
   listen_together_status,
   listen_together_room_check,
   listen_together_invitation_reject,
+  listen_together_room_songs_list,
   listen_together_song_match_start,
   listen_together_song_match_cancel,
   listen_together_song_match_ack,

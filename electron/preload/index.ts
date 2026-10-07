@@ -454,6 +454,7 @@ const api = {
       ipcRenderer.invoke("togetherMulti:join", roomId, inviterUid, userId),
     restore: (userId: string) => ipcRenderer.invoke("togetherMulti:restore", userId),
     leave: () => ipcRenderer.invoke("togetherMulti:leave"),
+    roomSongs: () => ipcRenderer.invoke("togetherMulti:roomSongs"),
     startMatch: () => ipcRenderer.invoke("togetherMulti:startMatch"),
     cancelMatch: () => ipcRenderer.invoke("togetherMulti:cancelMatch"),
     ackMatch: (roomId: string, userId: string) =>
