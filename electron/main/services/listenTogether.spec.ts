@@ -220,7 +220,7 @@ describe("一起听房间状态机", () => {
     expect(rooms.length).toBe(baselineCount);
   });
 
-  it("上报队列时带上锚点", async () => {
+  it("上报队列时带上播放模式且不再带锚点", async () => {
     const service = await load();
     const reports: Record<string, unknown>[] = [];
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
@@ -238,7 +238,9 @@ describe("一起听房间状态机", () => {
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(reports.length).toBeGreaterThan(0);
-    expect(reports[0]).toMatchObject({ anchorSongId: "200", anchorPosition: 1 });
+    // 实测服务端只在列表上报里接受 playMode；锚点字段服务端根本不存在，已停止上报
+    expect(reports[0]).toMatchObject({ playMode: "ORDER_LOOP" });
+    expect(reports[0]).not.toHaveProperty("anchorSongId");
   });
 
   it("对端命令按指纹去重", async () => {
@@ -598,7 +600,7 @@ describe("一起听房间状态机", () => {
     const cards = await service.pendingInvites();
     expect(cards.map((c) => c.roomId)).toEqual(["FLAKY"]);
   });
-  it("队列版本号跨房间单调递增", async () => {
+  it("队列版本号每个房间都从 1 开始", async () => {
     const service = await load();
     const versions: number[] = [];
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
@@ -622,9 +624,9 @@ describe("一起听房间状态机", () => {
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(versions.length).toBeGreaterThanOrEqual(2);
-    for (let i = 1; i < versions.length; i++) {
-      expect(versions[i]).toBeGreaterThan(versions[i - 1]);
-    }
+    expect(versions[0]).toBe(1);
+    // 换房后重新从 1 开始：实测新房首条上报若 version>1，服务端会整条丢弃
+    expect(versions[versions.length - 1]).toBe(1);
   });
 
   it("心跳失败计入退避但不跳过状态探测", async () => {

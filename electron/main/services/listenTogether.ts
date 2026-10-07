@@ -304,10 +304,8 @@ const reportQueue = async (
     userId,
     version,
     songIds: [...songIds],
-    anchorSongId: anchorSongId || "",
-    anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
-    // 参考实现把播放模式放在列表上报里；我们另走 PLAYMODE_CHANGE 命令，
-    // 两边都带上才能覆盖"官方客户端从列表读模式"这种可能
+    // 播放模式必须随列表一起上报：实测服务端只在 displayList 为对象形态时
+    // 才接受 playMode，数组形态会静默丢弃它（对端就同步不了当前歌曲）
     playMode: lastState.playMode,
   });
 };
@@ -865,7 +863,9 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   previousSongId = "";
   rateLimitUntil = 0;
   rateLimitFailures = 0;
-  // 队列版本号不随房间重置：文档要求它按发送方单调递增，回退可能被服务端当成旧更新丢弃
+  // 队列版本号必须每房从 1 开始：实测新房首条上报若是 version>1，
+  // 服务端会整条丢弃（playlist 根本不会建立）
+  playlistVersion = 0;
   leaderId = nextMode === "create" ? userId : pickLeader(nextRoom, userId);
   pendingInitial = nextMode === "create" ? "report" : "adopt";
   timer = setInterval(() => void tick(), SYNC_INTERVAL_MS);

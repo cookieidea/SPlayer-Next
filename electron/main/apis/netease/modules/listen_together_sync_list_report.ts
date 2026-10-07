@@ -5,23 +5,23 @@ const listenTogetherSyncListReport: NeteaseModule = (query, request) => {
   const songIds: string[] = Array.isArray(query.songIds)
     ? query.songIds.map((id) => String(id))
     : [];
-  const anchorPosition = Number(query.anchorPosition);
+  const randomIds: string[] = Array.isArray(query.randomSongIds)
+    ? query.randomSongIds.map((id) => String(id))
+    : [];
+  const asList = (ids: string[]) => ({ changed: true, result: ids, rcmdSongIds: [] });
   const playlist = {
     commandType: "REPLACE",
     version: [{ userId: Number(query.userId) || 0, version: Number(query.version) || 0 }],
-    anchorSongId: typeof query.anchorSongId === "string" ? query.anchorSongId : "",
-    anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
-    randomList: songIds,
-    displayList: songIds,
+    displayList: asList(songIds),
+    randomList: randomIds.length ? asList(randomIds) : null,
     playMode: typeof query.playMode === "string" ? query.playMode : "",
-  };
-  const data = {
-    roomId: query.roomId,
-    playlistParam: JSON.stringify(playlist),
+    listMode: "",
+    listModeParam: null,
+    replace: true,
   };
   return request(
     "/api/listen/together/sync/list/command/report",
-    data,
+    { roomId: query.roomId, playlistParam: JSON.stringify(playlist) },
     createOption(query, "eapi"),
   );
 };
