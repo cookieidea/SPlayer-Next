@@ -777,4 +777,66 @@ describe("一起听房间状态机", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(modeReports).toHaveLength(1);
   });
+  it("在途旧快照不会向新会话派发同步事件", async () => {
+    const service = await load();
+    const applied: unknown[] = [];
+    service.onRemoteCommand((payload: unknown) => applied.push(payload));
+
+    let releaseSnapshot!: (value: unknown) => void;
+    const pendingSnapshot = new Promise((resolve) => {
+      releaseSnapshot = resolve;
+    });
+
+    let statusCalls = 0;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_status") {
+        statusCalls += 1;
+        // 第一次（join R1 前的探测）不在房间；之后是新房间 R2
+        if (statusCalls === 1) return statusBody(false);
+        return statusBody(true, "R2", [7]);
+      }
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true } } };
+      }
+      if (name === "listen_together_invitation_accept") {
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: { roomInfo: { roomId: "R1", creatorId: 8, roomUsers: [{ userId: 8 }] } },
+          },
+        };
+      }
+      if (name === "listen_together_room_create") return createBody("R2", [7]);
+      if (name === "listen_together_sync_playlist_get") return pendingSnapshot;
+      return { status: 200, body: { code: 200 } };
+    });
+
+    // 进入 R1
+    await service.join("R1", "8", "7");
+    service.updateLocal(localState());
+
+    // 让 R1 的 adopt 帧开始执行并卡在快照请求上
+    vi.advanceTimersByTime(1000);
+    await Promise.resolve();
+    expect(mocks.call).toHaveBeenCalledWith(
+      "listen_together_sync_playlist_get",
+      expect.objectContaining({ roomId: "R1" }),
+    );
+
+    // 旧请求未归时切到 R2
+    const room = await service.create("7");
+    expect(room.roomId).toBe("R2");
+    expect(service.getSession()?.roomId).toBe("R2");
+
+    // 放行旧 R1 快照：它带队列替换 + 模式变化
+    releaseSnapshot(snapshotBody(["999"], "", -1, "RANDOM"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 旧快照不得向当前会话派发任何事件
+    expect(applied).toHaveLength(0);
+    expect(service.getSession()?.roomId).toBe("R2");
+  });
 });

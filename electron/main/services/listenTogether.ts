@@ -575,6 +575,8 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   clientSeq = 0;
   lastRemoteSignature = "";
   lastRemoteSeq = -1;
+  // 跨房间不能残留：新房间若恰好是同名模式，残留值会让首次快照判为"未变化"而不下发
+  lastRemotePlayMode = "";
   awaitAdoption = 0;
   pendingAdvanceAt = 0;
   tickCount = 0;
