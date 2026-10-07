@@ -596,41 +596,54 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
             </div>
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-2">
-          <SButton type="primary" :loading="store.busy" :disabled="!userId" @click="onCreate">
-            {{ t("player.together.create") }}
-          </SButton>
-          <SButton
-            variant="secondary"
-            :loading="multiStore.busy"
-            :disabled="!userId"
-            @click="onCreateMulti"
-          >
-            {{ t("player.together.createMulti") }}
-          </SButton>
-          <template v-if="!matching">
+        <div class="flex flex-col gap-2">
+          <div class="flex gap-2">
             <SButton
-              type="info"
+              class="flex-1"
+              type="primary"
+              :loading="store.busy"
+              :disabled="!userId"
+              @click="onCreate"
+            >
+              {{ t("player.together.create") }}
+            </SButton>
+            <SButton
+              class="flex-1"
               variant="secondary"
               :loading="multiStore.busy"
               :disabled="!userId"
-              @click="onStartMatch"
+              @click="onCreateMulti"
             >
-              {{ t("player.together.matchDuo") }}
+              {{ t("player.together.createMulti") }}
             </SButton>
-            <SButton
-              type="info"
-              variant="secondary"
-              :loading="multiStore.busy"
-              :disabled="!userId"
-              @click="onStartMultiMatch"
-            >
-              {{ t("player.together.matchMulti") }}
+          </div>
+          <div class="flex gap-2">
+            <template v-if="!matching">
+              <SButton
+                class="flex-1"
+                type="info"
+                variant="secondary"
+                :loading="multiStore.busy"
+                :disabled="!userId"
+                @click="onStartMatch"
+              >
+                {{ t("player.together.matchDuo") }}
+              </SButton>
+              <SButton
+                class="flex-1"
+                type="info"
+                variant="secondary"
+                :loading="multiStore.busy"
+                :disabled="!userId"
+                @click="onStartMultiMatch"
+              >
+                {{ t("player.together.matchMulti") }}
+              </SButton>
+            </template>
+            <SButton v-else class="flex-1" type="error" variant="secondary" @click="onCancelMatch">
+              {{ t("player.together.cancelMatch") }}
             </SButton>
-          </template>
-          <SButton v-else type="error" variant="secondary" @click="onCancelMatch">
-            {{ t("player.together.cancelMatch") }}
-          </SButton>
+          </div>
         </div>
         <SDivider />
         <div class="flex flex-col gap-2">

@@ -611,6 +611,8 @@ describe("多人房响应解析", () => {
       ],
       playSong: { songId: "123", songBizId: 5, songRcmdUid: "" },
       nextSongs: [{ songId: "456", songBizId: 6, songRcmdUid: "" }],
+      playStartTime: 0,
+      playDuration: 0,
     });
   });
 
@@ -703,6 +705,8 @@ describe("多人房邀请链接", () => {
       members: [{ userId: "6294223883", nickname: "猫盒小可爱", avatarUrl: "http://a.jpg" }],
       playSong: { songId: "435592097", songBizId: 1251991280, songRcmdUid: "" },
       nextSongs: [{ songId: "27515069", songBizId: 1251991281, songRcmdUid: "" }],
+      playStartTime: 0,
+      playDuration: 0,
     });
   });
 });

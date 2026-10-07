@@ -547,6 +547,7 @@
       "pickFriendsHint": "Pick friends to invite (optional; multi room needs a song playing)",
       "picked": "Picked",
       "allowStranger": "Allow strangers to join",
+      "pauseDisabled": "Pause is disabled; playback is synced by the room",
       "matchMulti": "Multi match",
       "me": "Me",
       "recommended": "Recommended",

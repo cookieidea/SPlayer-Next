@@ -535,6 +535,7 @@
       "pickFriendsHint": "选择要邀请的好友（可跳过；创建多人房间需要先播放一首歌）",
       "picked": "已选",
       "allowStranger": "允许陌生人加入",
+      "pauseDisabled": "多人一起听中不能暂停，播放由房间同步",
       "matchMulti": "多人匹配",
       "me": "我",
       "recommended": "推荐",

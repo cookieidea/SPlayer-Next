@@ -1,6 +1,7 @@
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { restoreRoom } from "@/services/listenTogether";
 import { useStatusStore } from "@/stores/status";
+import { getCurrentTime } from "@/services/playback";
 import { useMediaStore } from "@/stores/media";
 import * as queue from "@/stores/queue";
 import * as player from "@/core/player";
@@ -53,22 +54,38 @@ const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
  * 拿它替换本地歌单会把用户的列表顶掉，所以只处理房间那一首：
  * 本地已有就地播放（不动列表顺序），没有才插进去
  */
+/** 与房间进度相差超过这个毫秒数才纠正：太小会不停 seek，反而听感抖动 */
+const PROGRESS_TOLERANCE_MS = 3000;
+
+/** 房间当前曲应处的进度：起播时刻 + 已播时长 */
+const roomPositionMs = (room: TogetherMultiRoom): number => {
+  if (!room.playStartTime) return -1;
+  return Math.max(0, Date.now() - room.playStartTime);
+};
+
 const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   const roomSongId = room.playSong?.songId ?? "";
   if (!roomSongId) return;
-  if (String(useMediaStore().track?.id ?? "") === roomSongId) return;
-  const [track] = await resolveTracks([roomSongId]);
-  if (!track) return;
-
-  let at = queue.findTrackIndex(roomSongId);
-  if (at < 0) at = player.insertToQueue(track, undefined, MULTI_CONTEXT);
-  if (at < 0) return;
-  // playAtIndex 在同下标时只做恢复播放、不会重新加载，这种情况下强制走一次加载
-  if (useStatusStore().playIndex === at) {
-    await player.playFrom(queue.queue.value, at, MULTI_CONTEXT, true);
-    return;
+  if (String(useMediaStore().track?.id ?? "") !== roomSongId) {
+    const [track] = await resolveTracks([roomSongId]);
+    if (!track) return;
+    let at = queue.findTrackIndex(roomSongId);
+    if (at < 0) at = player.insertToQueue(track, undefined, MULTI_CONTEXT);
+    if (at < 0) return;
+    // playAtIndex 在同下标时只做恢复播放、不会重新加载，这种情况下强制走一次加载
+    if (useStatusStore().playIndex === at) {
+      await player.playFrom(queue.queue.value, at, MULTI_CONTEXT, true);
+    } else {
+      await player.playAtIndex(at);
+    }
   }
-  await player.playAtIndex(at);
+  // 同一首歌也要对齐进度：房间的进度是权威的（多人一起听里暂停/播放是同步的）
+  const target = roomPositionMs(room);
+  if (target < 0) return;
+  const current = getCurrentTime();
+  if (Math.abs(current - target) > PROGRESS_TOLERANCE_MS) {
+    await player.seek(target);
+  }
 };
 
 const handleEvent = (): void => {
@@ -242,6 +259,8 @@ export const createMultiRoom = (userId: string): Promise<unknown> =>
     const room = await window.api.togetherMulti.createRoom(songId, userId);
     roomQueueKey = "";
     await followRoom(room);
+    // 建房后必须起播：多人一起听里播放态由房间决定，停在暂停态等同于"房间没声音"
+    if (!useStatusStore().isPlaying) await player.play();
     await seedRoomQueue(songId);
     await syncRoomQueue(room);
     return room;

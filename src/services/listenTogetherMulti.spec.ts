@@ -6,11 +6,16 @@ const mocks = vi.hoisted(() => ({
   playAtIndex: vi.fn(() => Promise.resolve()),
   songsByIds: vi.fn<(ids: Array<string | number>) => Promise<unknown[]>>(() => Promise.resolve([])),
   toast: { info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() },
+  seek: vi.fn<(ms: number) => Promise<void>>(() => Promise.resolve()),
+  play: vi.fn(() => Promise.resolve()),
+  getCurrentTime: vi.fn<() => number>(() => 0),
 }));
 
 vi.mock("@/core/player", () => ({
   playFrom: mocks.playFrom,
   playAtIndex: mocks.playAtIndex,
+  seek: mocks.seek,
+  play: mocks.play,
   // 与真实语义一致：插进队列并返回实际下标（afterIndex 之后）
   insertToQueue: (item: Track, afterIndex?: number) => {
     const at = afterIndex === undefined ? queue.queue.value.length : afterIndex + 1;
@@ -37,6 +42,7 @@ const mediaMock = vi.hoisted(() => {
 vi.mock("@/stores/media", () => ({ useMediaStore: mediaMock.useMediaStore }));
 vi.mock("@/apis/song/netease", () => ({ songsByIds: mocks.songsByIds }));
 vi.mock("@/composables/useToast", () => ({ toast: mocks.toast }));
+vi.mock("@/services/playback", () => ({ getCurrentTime: mocks.getCurrentTime }));
 
 import type { TogetherMultiEvent, TogetherMultiRoom } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
@@ -60,6 +66,8 @@ const room = (playSong: string | null, nextSongs: string[]): TogetherMultiRoom =
   members: [{ userId: "77", nickname: "A", avatarUrl: "" }],
   playSong: playSong ? { songId: playSong, songBizId: 0, songRcmdUid: "" } : null,
   nextSongs: nextSongs.map((id) => ({ songId: id, songBizId: 0, songRcmdUid: "" })),
+  playStartTime: 0,
+  playDuration: 0,
 });
 
 const roomEvent = (value: TogetherMultiRoom): TogetherMultiEvent => ({
@@ -191,5 +199,38 @@ describe("多人一起听渲染端服务", () => {
     for (const [name, fn] of Object.entries(api)) {
       expect(fn.mock.calls.length, `${name} 不该被调用`).toBe(0);
     }
+  });
+
+  it("同一首歌但进度差得多时对齐房间进度", async () => {
+    queue.setQueue([track("room1")]);
+    mediaMock.state.track = track("room1");
+    // 房间在 3 秒前起播，本地才播了 0.5 秒
+    const roomWithProgress: TogetherMultiRoom = {
+      ...room("room1", []),
+      playStartTime: Date.now() - 30000,
+      playDuration: 200000,
+    };
+    mocks.getCurrentTime.mockReturnValue(500);
+    mods.initTogetherMulti();
+
+    emit?.(roomEvent(roomWithProgress));
+
+    await vi.waitFor(() => expect(mocks.seek).toHaveBeenCalled());
+    // 目标是毫秒（约 30 秒），不是秒
+    const target = mocks.seek.mock.calls[0]?.[0] as number;
+    expect(target).toBeGreaterThan(29000);
+    expect(target).toBeLessThan(31000);
+  });
+
+  it("进度接近时不做 seek，避免反复抖动", async () => {
+    queue.setQueue([track("room1")]);
+    mediaMock.state.track = track("room1");
+    mocks.getCurrentTime.mockReturnValue(29800);
+    mods.initTogetherMulti();
+
+    emit?.(roomEvent({ ...room("room1", []), playStartTime: Date.now() - 30000 }));
+    await Promise.resolve();
+
+    expect(mocks.seek).not.toHaveBeenCalled();
   });
 });

@@ -227,5 +227,7 @@ export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
     nextSongs: list(songInfo?.nextSongs)
       .map(toRoomSong)
       .filter((song) => song.songId),
+    playStartTime: num(songInfo?.startTime),
+    playDuration: num(songInfo?.songDuration),
   };
 };

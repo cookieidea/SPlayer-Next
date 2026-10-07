@@ -26,6 +26,11 @@ export interface TogetherMultiRoom {
   members: TogetherMember[];
   playSong: TogetherRoomSong | null;
   nextSongs: TogetherRoomSong[];
+  /** 当前曲的起播时刻（毫秒时间戳）。进度 = Date.now() - startTime，
+   *  用它可以推算准确位置，不受心跳间隔影响 */
+  playStartTime: number;
+  /** 当前曲总时长（毫秒） */
+  playDuration: number;
 }
 
 export interface TogetherRoomOperateResult {

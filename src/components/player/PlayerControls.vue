@@ -3,6 +3,7 @@ import { useStatusStore } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { voteSkipMultiSong } from "@/services/listenTogetherMulti";
+import { toast } from "@/composables/useToast";
 import * as player from "@/core/player";
 
 withDefaults(
@@ -32,6 +33,15 @@ const onPrev = async (): Promise<void> => {
     return;
   }
   await player.prevTrack();
+};
+
+const onTogglePlay = async (): Promise<void> => {
+  // 多人一起听的播放/暂停由房间决定，本地暂停会立刻被心跳拉回，等于无效操作
+  if (multiStore.inRoom) {
+    toast.warning(t("player.together.pauseDisabled"));
+    return;
+  }
+  await player.togglePlay();
 };
 
 const onNext = async (): Promise<void> => {
@@ -88,8 +98,9 @@ const onNext = async (): Promise<void> => {
       :class="[compact ? 'mx-0.5' : 'mx-1', 'will-change-transform']"
       :size="compact ? 40 : 44"
       :loading="isLoading"
-      :disabled="!hasTrack && !isLoading"
-      @click="player.togglePlay()"
+      :disabled="(!hasTrack && !isLoading) || multiStore.inRoom"
+      :title="multiStore.inRoom ? t('player.together.pauseDisabled') : undefined"
+      @click="onTogglePlay"
     >
       <template #icon>
         <SIconSwap :active="isPlaying">
