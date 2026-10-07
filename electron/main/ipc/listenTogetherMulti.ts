@@ -42,6 +42,10 @@ export const registerTogetherMultiIpc = (): void => {
     multi.removeMultiSong(songId, songBizId),
   );
 
+  ipcMain.handle("togetherMulti:voteSkip", (_event, songId: string, songBizId: number) =>
+    multi.voteSkipMultiSong(songId, songBizId),
+  );
+
   multi.onMultiRoom((room, generation) => {
     send({ type: "room", room, generation });
   });

@@ -62,6 +62,10 @@ const queueArtist = (songId: string): string => {
   return track ? artistText(track) : "";
 };
 
+const onVoteSkip = async (): Promise<void> => {
+  await togetherMulti.voteSkipMultiSong();
+};
+
 /** 移除只对「待播」的歌曲生效，正在播的那首由服务端拒绝（队列首项即当前曲） */
 const onRemoveMultiSong = async (songId: string): Promise<void> => {
   await togetherMulti.removeMultiSong(songId);
@@ -268,6 +272,10 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           </div>
         </div>
         <div class="flex items-center gap-2">
+          <SButton variant="secondary" :disabled="!multiRoom.playSong" @click="onVoteSkip">
+            <template #icon><IconLucideSkipForward /></template>
+            {{ t("player.together.voteSkip") }}
+          </SButton>
           <SButton variant="secondary" @click="onCopyMultiLink">
             {{ t("player.together.copy") }}
           </SButton>

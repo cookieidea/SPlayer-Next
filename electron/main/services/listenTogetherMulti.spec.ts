@@ -10,6 +10,7 @@ import {
   onMultiError,
   onMultiRoom,
   removeMultiSong,
+  voteSkipMultiSong,
   topMultiSong,
 } from "./listenTogetherMulti";
 
@@ -221,6 +222,21 @@ describe("多人一起听", () => {
       songId: "789",
       bizId: 42,
       operate: 7,
+    });
+  });
+
+  it("投票切歌走 song/operate 的 operate=4", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    mocks.call.mockResolvedValue(multiBody("R_1", "123", ["789"]));
+
+    await voteSkipMultiSong("123", 55);
+
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_song_operate", {
+      roomId: "R_1",
+      songId: "123",
+      bizId: 55,
+      operate: 4,
     });
   });
 });

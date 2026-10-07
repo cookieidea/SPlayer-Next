@@ -459,6 +459,8 @@ const api = {
       ipcRenderer.invoke("togetherMulti:topSong", songId, songBizId),
     removeSong: (songId: string, songBizId: number) =>
       ipcRenderer.invoke("togetherMulti:removeSong", songId, songBizId),
+    voteSkip: (songId: string, songBizId: number) =>
+      ipcRenderer.invoke("togetherMulti:voteSkip", songId, songBizId),
     onEvent: (callback: (event: TogetherMultiEvent) => void) =>
       subscribe<TogetherMultiEvent>("togetherMulti:event", callback),
   },

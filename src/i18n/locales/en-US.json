@@ -544,7 +544,8 @@
       "topInRoom": "Pin in room",
       "roomQueue": "Room queue",
       "emptyQueue": "No songs in the room yet",
-      "removeFromRoom": "Remove from room queue"
+      "removeFromRoom": "Remove from room queue",
+      "voteSkip": "Vote to skip"
     }
   },
   "songList": {

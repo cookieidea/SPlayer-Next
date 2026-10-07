@@ -134,6 +134,15 @@ export const addMultiSong = (track: Track): Promise<void> =>
     toast.success("已加入一起听队列");
   }).then(() => undefined);
 
+/** 投票切歌：人数够时服务端直接切走，不够时记一票 */
+export const voteSkipMultiSong = (): Promise<void> =>
+  withBusy(async () => {
+    const room = useTogetherMultiStore().room;
+    const song = room?.playSong;
+    if (!song) return;
+    await window.api.togetherMulti.voteSkip(song.songId, song.songBizId);
+  }).then(() => undefined);
+
 export const removeMultiSong = (songId: string): Promise<void> =>
   withBusy(async () => {
     await window.api.togetherMulti.removeSong(songId, 0);

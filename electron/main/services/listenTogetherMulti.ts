@@ -28,6 +28,12 @@ const OPERATE_TOP = 2;
 
 const OPERATE_DELETE = 7;
 
+// 实测：对当前曲投「不想听」，人够就切走。返回 "有足够多的人不想听，切歌成功！"
+const OPERATE_VOTE_SKIP = 4;
+
+/** 与双人共建房，靠 roomType 区分：不传是 FRIEND(双人)，MULTI_MATCH_SONG 是多人 */
+export const MULTI_ROOM_TYPE = "MULTI_MATCH_SONG";
+
 type RoomListener = (room: TogetherMultiRoom, generation: number) => void;
 
 type EndListener = (reason: TogetherMultiEndReason, generation: number) => void;
@@ -231,6 +237,12 @@ const operate = async (
 
 export const addMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
   operate(songId, songBizId, OPERATE_ADD);
+
+/** 投票切歌。人数够时服务端直接切走，不够时记一票 */
+export const voteSkipMultiSong = (
+  songId: string,
+  songBizId = 0,
+): Promise<TogetherMultiRoom | null> => operate(songId, songBizId, OPERATE_VOTE_SKIP);
 
 /** 删除只对「待播」状态的歌曲生效，正在播的那首会被服务端拒绝 */
 export const removeMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>

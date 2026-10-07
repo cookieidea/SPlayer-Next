@@ -532,7 +532,8 @@
       "topInRoom": "在房间里置顶",
       "roomQueue": "房间队列",
       "emptyQueue": "房间里还没有歌曲",
-      "removeFromRoom": "从房间队列移除"
+      "removeFromRoom": "从房间队列移除",
+      "voteSkip": "投票切歌"
     }
   },
   "songList": {
