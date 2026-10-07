@@ -32,7 +32,7 @@ import { CommentsApi } from "@shared/types/comment";
 import { AiModelApi } from "@shared/types/ai";
 import { PlaylistApi } from "@shared/types/playlist";
 import { OpenccApi } from "@shared/types/opencc";
-import { TogetherApi } from "@shared/types/listenTogether";
+import { TogetherApi, TogetherMultiApi } from "@shared/types/listenTogether";
 
 declare global {
   interface Window {
@@ -81,6 +81,7 @@ declare global {
       plugins: PluginsApi;
       apis: ApisApi;
       together: TogetherApi;
+      togetherMulti: TogetherMultiApi;
       cloud: CloudUploadApi;
       lyrics: LyricsApi;
       opencc: OpenccApi;

@@ -1,6 +1,10 @@
 import { callNetease } from "@main/apis/netease";
 import { multiRoomFromBody, obj, str } from "@main/utils/togetherParse";
-import type { TogetherMultiRoom } from "@shared/types/listenTogether";
+import type {
+  TogetherMultiEndReason,
+  TogetherMultiRoom,
+  TogetherMultiSession,
+} from "@shared/types/listenTogether";
 
 // 多人群房的心跳是「拉取」：房间当前歌曲与队列来自响应，不像双人那样靠心跳上报。
 // 跟随完全依赖它，所以间隔比双人短
@@ -14,15 +18,9 @@ const OPERATE_TOP = 2;
 
 const OPERATE_SWITCH = 4;
 
-export interface TogetherMultiSession {
-  roomId: string;
-  userId: string;
-  generation: number;
-}
-
 type RoomListener = (room: TogetherMultiRoom, generation: number) => void;
 
-type EndListener = (reason: "left" | "server" | "logout", generation: number) => void;
+type EndListener = (reason: TogetherMultiEndReason, generation: number) => void;
 
 type ErrorListener = (message: string) => void;
 
@@ -78,7 +76,7 @@ const publishIfChanged = (next: TogetherMultiRoom, issuing: number): void => {
   publish(next, issuing);
 };
 
-const stop = (reason: "left" | "server" | "logout"): void => {
+const stop = (reason: TogetherMultiEndReason): void => {
   if (!session) return;
   const ended = session;
   generation += 1;

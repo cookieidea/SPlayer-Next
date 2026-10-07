@@ -26,7 +26,11 @@ import type {
   PlaylistUpdateInput,
 } from "@shared/types/playlist";
 import type { CjkTransformMode } from "@shared/types/opencc";
-import type { TogetherLocalState, TogetherSyncEvent } from "@shared/types/listenTogether";
+import type {
+  TogetherLocalState,
+  TogetherMultiEvent,
+  TogetherSyncEvent,
+} from "@shared/types/listenTogether";
 
 /** 订阅主进程推送的事件 */
 const subscribe = <T>(channel: string, callback: (data: T) => void): (() => void) => {
@@ -442,6 +446,21 @@ const api = {
     sync: (state: TogetherLocalState) => ipcRenderer.send("together:sync", state),
     onEvent: (callback: (event: TogetherSyncEvent) => void) =>
       subscribe<TogetherSyncEvent>("together:event", callback),
+  },
+  togetherMulti: {
+    getSession: () => ipcRenderer.invoke("togetherMulti:getSession"),
+    join: (roomId: string, inviterUid: string, userId: string) =>
+      ipcRenderer.invoke("togetherMulti:join", roomId, inviterUid, userId),
+    restore: (userId: string) => ipcRenderer.invoke("togetherMulti:restore", userId),
+    leave: () => ipcRenderer.invoke("togetherMulti:leave"),
+    addSong: (songId: string, songBizId: number) =>
+      ipcRenderer.invoke("togetherMulti:addSong", songId, songBizId),
+    topSong: (songId: string, songBizId: number) =>
+      ipcRenderer.invoke("togetherMulti:topSong", songId, songBizId),
+    switchSong: (songId: string, songBizId: number) =>
+      ipcRenderer.invoke("togetherMulti:switchSong", songId, songBizId),
+    onEvent: (callback: (event: TogetherMultiEvent) => void) =>
+      subscribe<TogetherMultiEvent>("togetherMulti:event", callback),
   },
   apis: {
     // 调用任意平台的任意接口

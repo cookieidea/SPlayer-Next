@@ -24,6 +24,31 @@ export interface TogetherMultiRoom {
   nextSongs: TogetherRoomSong[];
 }
 
+export interface TogetherMultiSession {
+  roomId: string;
+  userId: string;
+  generation: number;
+}
+
+export type TogetherMultiEndReason = "left" | "server" | "logout";
+
+export type TogetherMultiEvent =
+  | { type: "session"; session: TogetherMultiSession; room: TogetherMultiRoom }
+  | { type: "room"; room: TogetherMultiRoom; generation: number }
+  | { type: "session-end"; reason: TogetherMultiEndReason; generation: number }
+  | { type: "error"; message: string };
+
+export interface TogetherMultiApi {
+  getSession: () => Promise<TogetherMultiSession | null>;
+  join: (roomId: string, inviterUid: string, userId: string) => Promise<TogetherMultiRoom>;
+  restore: (userId: string) => Promise<TogetherMultiRoom | null>;
+  leave: () => Promise<void>;
+  addSong: (songId: string, songBizId: number) => Promise<void>;
+  topSong: (songId: string, songBizId: number) => Promise<void>;
+  switchSong: (songId: string, songBizId: number) => Promise<void>;
+  onEvent: (callback: (event: TogetherMultiEvent) => void) => () => void;
+}
+
 export type TogetherCommandType =
   "GOTO" | "NEXT" | "PREV" | "PLAY" | "PAUSE" | "PROGRESS" | "ADD" | "REPLACE" | "PLAYMODE_CHANGE";
 
