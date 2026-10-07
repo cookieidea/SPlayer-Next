@@ -290,6 +290,8 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     // 必须复位：否则第二次遇到"双人房被升级为多人"就不切协议，
     // 双人轮询会继续跑在多人房上，把房间队列反复覆盖
     switchedToMulti = false;
+    // 同理复位跳过提示：同一份队列再进一次房间时应当重新提醒
+    unshareableSignature = "";
     if (next.reason !== "left") toast.warning("一起听已结束");
     return;
   }
