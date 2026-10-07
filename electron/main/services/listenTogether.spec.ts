@@ -1647,4 +1647,46 @@ describe("一起听房间状态机", () => {
     // 收到了 leader 的选曲就不该再抢推进权
     expect(advances).toHaveLength(0);
   });
+  it("有人进房时重报当前歌曲与进度", async () => {
+    const service = await load();
+    const progress: string[] = [];
+    let users = [7];
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody("R1", [7]);
+      if (name === "listen_together_status") {
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: {
+              inRoom: true,
+              roomInfo: {
+                roomId: "R1",
+                creatorId: 7,
+                roomUsers: users.map((id) => ({ userId: id })),
+              },
+            },
+          },
+        };
+      }
+      if (name === "listen_together_play_command_report") {
+        if (params.type === "PROGRESS") progress.push(String(params.targetSongId));
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", positionMs: 42000, playing: true }));
+
+    // 首次观察（可能正是自己刚进来）：不能报，否则会覆盖房间已有状态
+    for (let i = 0; i < 6; i++) await vi.advanceTimersByTimeAsync(1000);
+    expect(progress).toHaveLength(0);
+
+    // 有人进来：把当前歌曲与进度重报一次
+    users = [7, 8];
+    for (let i = 0; i < 6; i++) await vi.advanceTimersByTimeAsync(1000);
+    expect(progress).toEqual(["100"]);
+  });
 });

@@ -80,6 +80,9 @@ let adoptionTicks = 0;
 let pendingInitial: "report" | "adopt" | null = null;
 let leaderId = "";
 let pendingAdvanceAt = 0;
+// 上一次见到的房间成员 id：有人进来时要把当前进度重报一次，
+// 否则新进来的人会按服务端存的旧进度对齐
+let knownMemberIds: string[] = [];
 let previousSongId = "";
 let rateLimitUntil = 0;
 let rateLimitFailures = 0;
@@ -454,7 +457,20 @@ const beat = async (): Promise<boolean> => {
       endSession("server", issuingBeat);
       return true;
     }
-    if (status.room) publishRoom(status.room);
+    if (status.room) {
+      const ids = status.room.members.map((member) => member.userId).filter(Boolean);
+      const arrived = ids.some((id) => !knownMemberIds.includes(id));
+      // 首次观察不报：那可能正是自己刚进来，此时还没采纳房间状态，
+      // 报上去会把房间已有的歌曲/进度覆盖掉
+      if (knownMemberIds.length > 0 && arrived && pendingInitial === null && lastState.songId) {
+        await guarded(
+          () => reportCommand("PROGRESS", lastState.songId, lastState.playing, lastState),
+          issuingBeat,
+        );
+      }
+      knownMemberIds = ids;
+      publishRoom(status.room);
+    }
   } catch (error) {
     if (isRoomGone(error)) {
       endSession("server", issuingBeat);
@@ -803,6 +819,7 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   adoptionTicks = 0;
   pendingInitial = null;
   pendingAdvanceAt = 0;
+  knownMemberIds = [];
   tickCount = 0;
   previousSongId = "";
   rateLimitUntil = 0;
@@ -829,6 +846,7 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   adoptionEcho = [];
   adoptionTicks = 0;
   pendingAdvanceAt = 0;
+  knownMemberIds = [];
   tickCount = 0;
   baseline = null;
   hasLocalState = false;
