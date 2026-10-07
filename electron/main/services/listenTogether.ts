@@ -15,7 +15,7 @@ import {
 } from "@main/utils/togetherProtocol";
 import {
   invitesFromInbox,
-  joinableFromBody,
+  roomCheckFromBody,
   obj,
   roomFromBody,
   snapshotFromBody,
@@ -191,6 +191,13 @@ const registerFailure = (error: unknown, expected?: number): void => {
   const delay = Math.min(120_000, 30_000 * 2 ** (rateLimitFailures - 1));
   rateLimitUntil = Date.now() + delay;
   emitError(`一起听请求受限，将在 ${Math.round(delay / 1000)} 秒后重试`);
+};
+
+/** 拒绝加入时的文案：服务端 copywriting 优先，人数上限等策略由服务端决定 */
+const joinRejectedMessage = (check: { copywriting: string; status: string }): string => {
+  if (check.copywriting) return check.copywriting;
+  if (check.status === "EXPIRED") return "一起听已失效，可邀请好友进入新的一起听";
+  return "房间已失效或无法加入";
 };
 
 const emitAdvance = (): void => {
@@ -855,9 +862,9 @@ export const join = async (
   if (current.inRoom && current.room?.roomId === roomId) {
     return enterRoom(current.room, userId, "restore");
   }
-  const joinable = joinableFromBody(await callNetease("listen_together_room_check", { roomId }));
+  const check = roomCheckFromBody(await callNetease("listen_together_room_check", { roomId }));
   ensureCurrent();
-  if (!joinable) throw new Error("房间已失效或无法加入");
+  if (!check.joinable) throw new Error(joinRejectedMessage(check));
   const accepted = roomFromBody(
     await callNetease("listen_together_invitation_accept", {
       roomId,
@@ -887,8 +894,12 @@ export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {
     cards.map(async (card) => {
       if (session?.roomId === card.roomId) return card;
       try {
-        const body = await callNetease("listen_together_room_check", { roomId: card.roomId });
-        return joinableFromBody(body) ? card : null;
+        const check = roomCheckFromBody(
+          await callNetease("listen_together_room_check", { roomId: card.roomId }),
+        );
+        // 只滤掉真正失效（EXPIRED）的房间。人数已满等其它原因要保留卡片，
+        // 否则用户看不到任何反馈，也拿不到服务端给的具体原因
+        return check.joinable || check.status !== "EXPIRED" ? card : null;
       } catch {
         return card;
       }

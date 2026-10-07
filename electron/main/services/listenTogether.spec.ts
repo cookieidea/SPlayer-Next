@@ -136,7 +136,9 @@ describe("一起听房间状态机", () => {
       return snapshotBody([]);
     });
 
-    await expect(service.join("R9", "8", "7")).rejects.toThrow("房间已失效或无法加入");
+    await expect(service.join("R9", "8", "7")).rejects.toThrow(
+      "一起听已失效，可邀请好友进入新的一起听",
+    );
   });
 
   it("离开后清空会话且发出 left 事件", async () => {
@@ -406,7 +408,13 @@ describe("一起听房间状态机", () => {
       if (name === "listen_together_inbox") return inboxBody;
       if (name === "listen_together_room_check") {
         const joinable = params.roomId === "LIVE";
-        return { status: 200, body: { code: 200, data: { joinable } } };
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: { joinable, status: joinable ? "AVAILABLE" : "EXPIRED" },
+          },
+        };
       }
       return snapshotBody([]);
     });
@@ -1407,5 +1415,63 @@ describe("一起听房间状态机", () => {
     for (let i = 0; i < 8; i++) await vi.advanceTimersByTimeAsync(1000);
 
     expect(applied).toContain("SINGLE_LOOP");
+  });
+  it("房间人数已满时透出服务端文案而不是房间失效", async () => {
+    const service = await load();
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_status") return statusBody(false);
+      if (name === "listen_together_room_check") {
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: {
+              joinable: false,
+              status: "FULL",
+              copywriting: "当前一起听人数已满",
+            },
+          },
+        };
+      }
+      return snapshotBody([]);
+    });
+
+    await expect(service.join("R1", "8", "7")).rejects.toThrow("当前一起听人数已满");
+  });
+
+  it("人数已满的邀请卡片仍然保留", async () => {
+    const service = await load();
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_inbox") {
+        return {
+          status: 200,
+          body: {
+            msgs: [
+              {
+                user: { fromUserId: 8, lastMsgTime: 1 },
+                lastMsg: JSON.stringify({
+                  resType: 23,
+                  generalMsg: {
+                    title: "加入一起听",
+                    nativeUrl:
+                      "orpheus://open?url1=orpheus%3A%2F%2Fnm%2Fplay%2FlistenTogether%3FroomId%3DFULLROOM%26inviterId%3D8&url2=x",
+                  },
+                }),
+              },
+            ],
+          },
+        };
+      }
+      if (name === "listen_together_room_check") {
+        return {
+          status: 200,
+          body: { code: 200, data: { joinable: false, status: "FULL" } },
+        };
+      }
+      return snapshotBody([]);
+    });
+
+    const cards = await service.pendingInvites();
+    expect(cards).toHaveLength(1);
   });
 });

@@ -156,5 +156,26 @@ export const statusFromBody = (value: unknown): { inRoom: boolean; room: Togethe
   return { inRoom: Boolean(data.inRoom), room: toRoom(data.roomInfo) };
 };
 
-export const joinableFromBody = (value: unknown): boolean =>
-  Boolean(obj(obj(unwrap(value))?.data)?.joinable);
+/**
+ * room/check 的结果：joinable 之外还带服务端自己的原因。
+ * copywriting 是服务端文案（人数已满等策略由它决定），
+ * status 是枚举（已观测 AVAILABLE / EXPIRED）。
+ * 人数上限不在客户端协议里，不能由我们编造措辞
+ */
+export const roomCheckFromBody = (
+  value: unknown,
+): {
+  joinable: boolean;
+  copywriting: string;
+  status: string;
+} => {
+  const data = obj(obj(unwrap(value))?.data);
+  if (!data) return { joinable: false, copywriting: "", status: "" };
+  return {
+    joinable: Boolean(data.joinable),
+    copywriting: str(data.copywriting),
+    status: str(data.status).toUpperCase(),
+  };
+};
+
+export const joinableFromBody = (value: unknown): boolean => roomCheckFromBody(value).joinable;
