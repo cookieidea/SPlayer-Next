@@ -2,7 +2,7 @@ import { useTogetherStore } from "@/stores/together";
 import { useStatusStore } from "@/stores/status";
 import * as queue from "@/stores/queue";
 import { restoreTogetherMulti } from "@/services/listenTogetherMulti";
-import { isMultiRoomType } from "@shared/utils/togetherRoom";
+import { isMultiRoomType, isTogetherShareable } from "@shared/utils/togetherRoom";
 import * as player from "@/core/player";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
@@ -50,20 +50,22 @@ let pendingLoad = false;
 const collectState = (): TogetherLocalState => {
   const status = useStatusStore();
   const track = status.currentTrack;
-  const isNetease = track?.source === "netease" && !track.serverId;
+  // 当前曲也必须可共享：正在放云盘歌时上报它的 id，对方会卡在放不出来的歌上
+  const shareableTrack = track && isTogetherShareable(track) ? track : null;
   const counters = readTogetherCounters();
   // 本地洗牌是播放行为（网易云那边叫"随机"，列表本身不变），
   // 共享歌单必须始终用原始顺序，否则本地一开随机就把打乱结果写进了房间
   const trackList = queue.originalQueue.value
     ? queue.originalQueue.value.map((entry) => entry.track)
     : queue.queue.value;
-  const songIds = isNetease
-    ? trackList.filter((item) => item.source === "netease" && !item.serverId).map((item) => item.id)
+  const songIds = shareableTrack
+    ? trackList.filter(isTogetherShareable).map((item) => item.id)
     : [];
+  notifyUnshareable(trackList);
   return {
-    songId: isNetease ? track.id : "",
+    songId: shareableTrack ? shareableTrack.id : "",
     queueSongIds: songIds,
-    currentIndex: isNetease ? songIds.indexOf(track.id) : -1,
+    currentIndex: shareableTrack ? songIds.indexOf(shareableTrack.id) : -1,
     positionMs: Math.max(0, Math.round(status.position)),
     playing: status.isPlaying,
     transitioning: status.trackLoading || pendingLoad,
@@ -77,6 +79,19 @@ const localPlayMode = (status: ReturnType<typeof useStatusStore>): string => {
   if (status.repeatMode === "one") return "SINGLE_LOOP";
   if (status.shuffleMode === "on") return "RANDOM";
   return "ORDER_LOOP";
+};
+
+/** 上次已提示过的不可共享曲目签名，避免每轮上报都弹提示 */
+let unshareableSignature = "";
+
+/** 队列里混着本地/云盘音乐时提示一次：这些歌不会同步给对方 */
+const notifyUnshareable = (trackList: readonly Track[]): void => {
+  const skipped = trackList.filter((item) => !isTogetherShareable(item));
+  const signature = skipped.map((item) => item.id).join(",");
+  if (signature === unshareableSignature) return;
+  unshareableSignature = signature;
+  if (skipped.length === 0) return;
+  toast.info(`一起听已跳过 ${skipped.length} 首本地/云盘音乐（对方无法播放）`);
 };
 
 const pushState = (): void => {

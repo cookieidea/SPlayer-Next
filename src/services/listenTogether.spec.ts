@@ -607,4 +607,40 @@ describe("一起听渲染端服务", () => {
     const list = call[0] as Track[];
     expect(list[call[1] as number as number]?.id).toBe(target);
   });
+
+  it("云盘与本地音乐不进共享队列，并提示已跳过", async () => {
+    const tracks: Track[] = [
+      track("1"),
+      { ...track("2"), cloud: true },
+      { ...track("3"), source: "local" },
+      track("4"),
+    ];
+    queue.setQueue(tracks);
+    useStatusStore().playIndex = 0;
+    const sync = (window as unknown as { api: { together: { sync: ReturnType<typeof vi.fn> } } })
+      .api.together.sync;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    await vi.waitFor(() => expect(sync).toHaveBeenCalled());
+
+    const payload = sync.mock.calls.at(-1)?.[0] as { songId: string; queueSongIds: string[] };
+    // 对方拿不到云盘与本地文件，带上只会卡在放不出来的歌上
+    expect(payload.queueSongIds).toEqual(["1", "4"]);
+    expect(payload.songId).toBe("1");
+    expect(mocks.toast.info).toHaveBeenCalled();
+  });
+
+  it("当前曲是云盘时不上报歌曲，避免对方放不出来", async () => {
+    queue.setQueue([{ ...track("9"), cloud: true }]);
+    useStatusStore().playIndex = 0;
+    const sync = (window as unknown as { api: { together: { sync: ReturnType<typeof vi.fn> } } })
+      .api.together.sync;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    await vi.waitFor(() => expect(sync).toHaveBeenCalled());
+
+    const payload = sync.mock.calls.at(-1)?.[0] as { songId: string; queueSongIds: string[] };
+    expect(payload.songId).toBe("");
+    expect(payload.queueSongIds).toEqual([]);
+  });
 });

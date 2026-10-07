@@ -8,6 +8,7 @@ import * as player from "@/core/player";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { buildMultiInvitation, parseInvitation } from "@shared/utils/togetherInvitation";
+import { isTogetherShareable } from "@shared/utils/togetherRoom";
 import type { TogetherMultiRoom } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
 
@@ -254,8 +255,13 @@ const ROOM_SEED_LIMIT = 30;
  */
 export const createMultiRoom = (userId: string): Promise<unknown> =>
   withBusy(async () => {
-    const songId = String(useStatusStore().currentTrack?.id ?? "");
-    if (!songId) throw new Error("请先播放一首歌再创建多人房");
+    const current = useStatusStore().currentTrack;
+    if (!current) throw new Error("请先播放一首歌再创建多人房");
+    // 云盘与本地音乐做不了房间的起播曲，对方放不出来
+    if (!isTogetherShareable(current)) {
+      throw new Error("当前是本地或云盘音乐，请先播放一首在线歌曲再创建多人房");
+    }
+    const songId = String(current.id);
     const room = await window.api.togetherMulti.createRoom(songId, userId);
     roomQueueKey = "";
     await followRoom(room);
@@ -270,8 +276,10 @@ export const createMultiRoom = (userId: string): Promise<unknown> =>
 const seedRoomQueue = async (startSongId: string): Promise<void> => {
   const entries = queue.originalQueue.value ?? queue.queue.value;
   const ids = entries
-    .map((entry) => entry.track?.id)
-    .filter((id): id is string => Boolean(id) && id !== startSongId)
+    .map((entry) => entry.track)
+    .filter((item): item is Track => Boolean(item?.id) && isTogetherShareable(item))
+    .map((item) => item.id)
+    .filter((id) => id !== startSongId)
     .slice(0, ROOM_SEED_LIMIT);
   for (const id of ids) {
     try {
@@ -315,6 +323,11 @@ export const restoreTogetherMulti = (userId: string): Promise<unknown> =>
 
 export const addMultiSong = (track: Track): Promise<void> =>
   withBusy(async () => {
+    // 单一入口处拦掉对方放不了的曲子：本地文件与云盘歌曲都不该进房间
+    if (!isTogetherShareable(track)) {
+      toast.warning("本地音乐和云盘歌曲对方拿不到，无法加入房间");
+      return;
+    }
     const { message, rejected } = await window.api.togetherMulti.addSong(track.id, 0);
     if (rejected) toast.warning(message || "这首歌暂时加不进房间");
     else toast.success(message || "已加入一起听队列");

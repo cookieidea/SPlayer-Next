@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isMultiRoomType } from "@shared/utils/togetherRoom";
+import { isMultiRoomType, isTogetherShareable } from "@shared/utils/togetherRoom";
 import { togetherSongAction } from "./togetherRoom";
 
 describe("房型判定", () => {
@@ -52,5 +52,27 @@ describe("曲目菜单的房间操作", () => {
     expect(togetherSongAction(true, "2", ME, "1", [{ songId: "2", songRcmdUid: "0" }])).toBe(
       "none",
     );
+  });
+
+  describe("可共享判定", () => {
+    it("网易云在线歌曲可共享", () => {
+      expect(isTogetherShareable({ source: "netease" })).toBe(true);
+    });
+
+    it("本地音乐不可共享：对方拿不到文件", () => {
+      expect(isTogetherShareable({ source: "local" })).toBe(false);
+    });
+
+    it("云盘歌曲不可共享：只有上传者账号能放", () => {
+      expect(isTogetherShareable({ source: "netease", cloud: true })).toBe(false);
+    });
+
+    it("流媒体服务器的曲子不可共享", () => {
+      expect(isTogetherShareable({ source: "streaming", serverId: "srv1" })).toBe(false);
+    });
+
+    it("其它平台也不共享（一起听只认网易云）", () => {
+      expect(isTogetherShareable({ source: "qqmusic" })).toBe(false);
+    });
   });
 });
