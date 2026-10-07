@@ -31,6 +31,12 @@ export interface TogetherMultiRoom {
   nextSongs: TogetherRoomSong[];
 }
 
+export interface TogetherRoomOperateResult {
+  room: TogetherMultiRoom | null;
+  /** 服务端对本次操作的说明（成功也有文案，如投票是否够数） */
+  message: string;
+}
+
 export interface TogetherMultiSession {
   roomId: string;
   userId: string;
@@ -59,10 +65,10 @@ export interface TogetherMultiApi {
     roomId: string;
   }>;
   cancelMultiMatch: () => Promise<void>;
-  addSong: (songId: string, songBizId: number) => Promise<void>;
-  topSong: (songId: string, songBizId: number) => Promise<void>;
-  removeSong: (songId: string, songBizId: number) => Promise<void>;
-  voteSkip: (songId: string, songBizId: number) => Promise<void>;
+  addSong: (songId: string, songBizId: number) => Promise<string>;
+  topSong: (songId: string, songBizId: number) => Promise<string>;
+  removeSong: (songId: string, songBizId: number) => Promise<string>;
+  voteSkip: (songId: string, songBizId: number) => Promise<string>;
   onEvent: (callback: (event: TogetherMultiEvent) => void) => () => void;
 }
 

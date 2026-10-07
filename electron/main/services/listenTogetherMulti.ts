@@ -4,6 +4,7 @@ import type {
   TogetherMultiEndReason,
   TogetherMultiRoom,
   TogetherMultiSession,
+  TogetherRoomOperateResult,
   TogetherRoomSongList,
 } from "@shared/types/listenTogether";
 
@@ -300,8 +301,8 @@ const operate = async (
   songId: string,
   songBizId: number,
   action: number,
-): Promise<TogetherMultiRoom | null> => {
-  if (!session) return null;
+): Promise<TogetherRoomOperateResult> => {
+  if (!session) return { room: null, message: "" };
   const issuing = generation;
   const response = await callNetease("listen_together_multi_song_operate", {
     roomId: session.roomId,
@@ -309,28 +310,33 @@ const operate = async (
     bizId: songBizId,
     operate: action,
   });
-  if (generation !== issuing) return null;
+  if (generation !== issuing) return { room: null, message: "" };
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
+  const message = str(data.failedMsg);
   // 服务端有权否决（歌不可播、房间策略等），原因必须透出去而不是静默失败
-  if (data.result === false) throw new Error(str(data.failedMsg) || "操作失败");
+  if (data.result === false) throw new Error(message || "操作失败");
   const next = roomFromResponse(response);
   if (next) publish(next, issuing);
-  return next;
+  // 成功的文案也要带出去：投票可能是"记了一票"而非"已切歌"，
+  // 用户需要知道自己这一票的效果（如"有足够多的人不想听，切歌成功！"）
+  return { room: next, message };
 };
 
-export const addMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
+export const addMultiSong = (songId: string, songBizId = 0): Promise<TogetherRoomOperateResult> =>
   operate(songId, songBizId, OPERATE_ADD);
 
 /** 投票切歌。人数够时服务端直接切走，不够时记一票 */
 export const voteSkipMultiSong = (
   songId: string,
   songBizId = 0,
-): Promise<TogetherMultiRoom | null> => operate(songId, songBizId, OPERATE_VOTE_SKIP);
+): Promise<TogetherRoomOperateResult> => operate(songId, songBizId, OPERATE_VOTE_SKIP);
 
 /** 删除只对「待播」状态的歌曲生效，正在播的那首会被服务端拒绝 */
-export const removeMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
-  operate(songId, songBizId, OPERATE_DELETE);
+export const removeMultiSong = (
+  songId: string,
+  songBizId = 0,
+): Promise<TogetherRoomOperateResult> => operate(songId, songBizId, OPERATE_DELETE);
 
-export const topMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
+export const topMultiSong = (songId: string, songBizId = 0): Promise<TogetherRoomOperateResult> =>
   operate(songId, songBizId, OPERATE_TOP);

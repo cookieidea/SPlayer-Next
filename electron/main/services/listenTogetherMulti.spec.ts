@@ -230,12 +230,20 @@ describe("多人一起听", () => {
     });
   });
 
-  it("投票切歌走 song/operate 的 operate=4", async () => {
+  it("投票切歌走 song/operate 的 operate=4 并带回服务端文案", async () => {
     mocks.call.mockResolvedValue(multiBody());
     await joinMultiRoom("R_1", "77", "88", "d");
-    mocks.call.mockResolvedValue(multiBody("R_1", "123", ["789"]));
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: { result: true, failedMsg: "有足够多的人不想听，切歌成功！" },
+      },
+    });
 
-    await voteSkipMultiSong("123", 55);
+    const result = await voteSkipMultiSong("123", 55);
+    // 投票可能是"直接切走"也可能是"记了一票"，文案必须带出来
+    expect(result.message).toBe("有足够多的人不想听，切歌成功！");
 
     expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_song_operate", {
       roomId: "R_1",

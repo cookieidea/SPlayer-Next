@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useStatusStore } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { voteSkipMultiSong } from "@/services/listenTogetherMulti";
 import * as player from "@/core/player";
 
 withDefaults(
@@ -15,7 +17,30 @@ const status = useStatusStore();
 const media = useMediaStore();
 const { isPlaying, isLoading, repeatMode, shuffleMode, heartMode, fmMode } = storeToRefs(status);
 
+const { t } = useI18n();
 const hasTrack = computed(() => !!media.track);
+const multiStore = useTogetherMultiStore();
+
+/**
+ * 多人房里本地切歌会被心跳拉回房间当前曲，等于白切。
+ * 改成向房间投一票（实测 operate=4，人数够时服务端直接切走），
+ * 这才是该房间里唯一有效的切歌方式
+ */
+const onPrev = async (): Promise<void> => {
+  if (multiStore.inRoom) {
+    await voteSkipMultiSong();
+    return;
+  }
+  await player.prevTrack();
+};
+
+const onNext = async (): Promise<void> => {
+  if (multiStore.inRoom) {
+    await voteSkipMultiSong();
+    return;
+  }
+  await player.nextTrack();
+};
 </script>
 
 <template>
@@ -50,7 +75,8 @@ const hasTrack = computed(() => !!media.track);
       ripple
       :size="compact ? 34 : 38"
       :disabled="!hasTrack || fmMode"
-      @click="player.prevTrack()"
+      :title="multiStore.inRoom ? t('player.together.voteSkip') : undefined"
+      @click="onPrev"
     >
       <template #icon><IconLucideSkipBack /></template>
     </SButton>
@@ -80,9 +106,13 @@ const hasTrack = computed(() => !!media.track);
       ripple
       :size="compact ? 34 : 38"
       :disabled="!hasTrack"
-      @click="player.nextTrack()"
+      :title="multiStore.inRoom ? t('player.together.voteSkip') : undefined"
+      @click="onNext"
     >
-      <template #icon><IconLucideSkipForward /></template>
+      <template #icon>
+        <IconLucideVote v-if="multiStore.inRoom" />
+        <IconLucideSkipForward v-else />
+      </template>
     </SButton>
     <SButton
       class="will-change-transform"
