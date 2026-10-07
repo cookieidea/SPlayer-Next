@@ -568,4 +568,54 @@ describe("一起听房间状态机", () => {
     const cards = await service.pendingInvites();
     expect(cards.map((c) => c.roomId)).toEqual(["FLAKY"]);
   });
+  it("队列版本号跨房间单调递增", async () => {
+    const service = await load();
+    const versions: number[] = [];
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_sync_list_report") {
+        versions.push(Number(params.version));
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody([]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ queueSongIds: ["1"] }));
+    await vi.advanceTimersByTimeAsync(1000);
+    service.updateLocal(localState({ queueSongIds: ["1", "2"] }));
+    await vi.advanceTimersByTimeAsync(1000);
+    await service.leave();
+    await service.create("7");
+    service.updateLocal(localState({ queueSongIds: ["3"] }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < versions.length; i++) {
+      expect(versions[i]).toBeGreaterThan(versions[i - 1]);
+    }
+  });
+
+  it("心跳失败计入退避但不跳过状态探测", async () => {
+    const service = await load();
+    let statusCalls = 0;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") {
+        statusCalls += 1;
+        return statusBody(true, "R1", [7]);
+      }
+      if (name === "listen_together_heartbeat") throw new Error("429 Too Many Requests");
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    const before = statusCalls;
+    for (let i = 0; i < 8; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(statusCalls).toBeGreaterThan(before);
+  });
 });

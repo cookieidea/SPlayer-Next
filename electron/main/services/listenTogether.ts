@@ -422,6 +422,11 @@ const tick = async (): Promise<void> => {
                 ),
               issuing,
             )) && healthy;
+          // 自己上报的模式就是服务端之后会返回的模式，先记下来，
+          // 否则下一帧会被当成"对端改了模式"再弹回本地
+          if (action.type === "PLAYMODE_CHANGE") {
+            lastRemotePlayMode = lastState.playMode;
+          }
         }
       }
     }
@@ -483,7 +488,6 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   roomSignature = "";
   publishRoom(nextRoom);
   clientSeq = 0;
-  playlistVersion = 0;
   lastRemoteSignature = "";
   lastRemoteSeq = -1;
   awaitAdoption = 0;
@@ -494,6 +498,7 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   previousSongId = "";
   rateLimitUntil = 0;
   rateLimitFailures = 0;
+  // 队列版本号不随房间重置：文档要求它按发送方单调递增，回退可能被服务端当成旧更新丢弃
   leaderId = nextMode === "create" ? userId : pickLeader(nextRoom, userId);
   pendingInitial = nextMode === "create" ? "report" : "adopt";
   timer = setInterval(() => void tick(), SYNC_INTERVAL_MS);
