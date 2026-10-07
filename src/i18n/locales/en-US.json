@@ -543,7 +543,8 @@
       "addToRoom": "Add to listen-together room",
       "topInRoom": "Pin in room",
       "roomQueue": "Room queue",
-      "emptyQueue": "No songs in the room yet"
+      "emptyQueue": "No songs in the room yet",
+      "removeFromRoom": "Remove from room queue"
     }
   },
   "songList": {

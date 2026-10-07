@@ -45,6 +45,28 @@ const memberText = computed(() => memberNames.value || t("player.together.waitin
 
 const multiRoom = computed(() => (leavingMulti.value ? frozenMulti.value : multiStore.room));
 
+/** 展示以房间歌曲为准；曲目详情单独查表，解析失败不会让下标与歌曲错位 */
+const multiQueueSongs = computed(() => {
+  const room = multiRoom.value;
+  if (!room) return [] as { songId: string; songBizId: number }[];
+  return [...(room.playSong ? [room.playSong] : []), ...room.nextSongs];
+});
+
+const trackOf = (songId: string): Track | undefined =>
+  multiStore.queueTracks.find((track) => track.id === songId);
+
+const queueTitle = (songId: string): string => trackOf(songId)?.title ?? `#${songId}`;
+
+const queueArtist = (songId: string): string => {
+  const track = trackOf(songId);
+  return track ? artistText(track) : "";
+};
+
+/** 移除只对「待播」的歌曲生效，正在播的那首由服务端拒绝（队列首项即当前曲） */
+const onRemoveMultiSong = async (songId: string): Promise<void> => {
+  await togetherMulti.removeMultiSong(songId);
+};
+
 const artistText = (track: Track): string =>
   (track.artists ?? [])
     .map((artist) => artist.name)
@@ -218,18 +240,30 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <span class="text-xs text-on-surface-variant">
             {{ t("player.together.roomQueue") }}
           </span>
-          <p v-if="multiStore.queueTracks.length === 0" class="text-xs text-on-surface-variant/70">
+          <p v-if="multiQueueSongs.length === 0" class="text-xs text-on-surface-variant/70">
             {{ t("player.together.emptyQueue") }}
           </p>
           <div v-else class="flex flex-col gap-1 max-h-[160px] overflow-y-auto pr-1">
             <div
-              v-for="(item, index) in multiStore.queueTracks"
-              :key="`${item.id}-${index}`"
+              v-for="(song, index) in multiQueueSongs"
+              :key="song.songId"
               class="flex items-center gap-2 text-xs"
             >
               <span class="w-4 text-right text-on-surface-variant/60">{{ index + 1 }}</span>
-              <span class="flex-1 min-w-0 truncate">{{ item.title }}</span>
-              <span class="shrink-0 text-on-surface-variant/70">{{ artistText(item) }}</span>
+              <span class="flex-1 min-w-0 truncate">{{ queueTitle(song.songId) }}</span>
+              <span class="shrink-0 text-on-surface-variant/70">
+                {{ queueArtist(song.songId) }}
+              </span>
+              <SButton
+                v-if="index > 0"
+                variant="ghost"
+                circle
+                size="small"
+                :title="t('player.together.removeFromRoom')"
+                @click="onRemoveMultiSong(song.songId)"
+              >
+                <template #icon><IconLucideX /></template>
+              </SButton>
             </div>
           </div>
         </div>

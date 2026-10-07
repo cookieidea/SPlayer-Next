@@ -9,6 +9,7 @@ import {
   onMultiEnd,
   onMultiError,
   onMultiRoom,
+  removeMultiSong,
   topMultiSong,
 } from "./listenTogetherMulti";
 
@@ -52,11 +53,13 @@ const tick = async (): Promise<void> => {
   await vi.advanceTimersByTimeAsync(MULTI_HEARTBEAT_MS);
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.useFakeTimers();
-  vi.clearAllMocks();
-  exitMultiRoom();
-  vi.clearAllMocks();
+  // 先重置实现再退出：上一轮用例残留的 mockRejectedValue 会让退出请求抛未处理拒绝
+  vi.resetAllMocks();
+  mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+  await exitMultiRoom();
+  vi.resetAllMocks();
 });
 
 describe("多人一起听", () => {
@@ -148,7 +151,7 @@ describe("多人一起听", () => {
       roomId: "R_1",
       songId: "789",
       bizId: 3,
-      operate: 1,
+      operate: 0,
     });
   });
 
@@ -204,5 +207,20 @@ describe("多人一起听", () => {
 
     expect(errors).toEqual(["网络错误"]);
     expect(getMultiSession()).not.toBeNull();
+  });
+
+  it("删除走 song/operate 的 operate=7", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    mocks.call.mockResolvedValue(multiBody("R_1", "123", ["789"]));
+
+    await removeMultiSong("789", 42);
+
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_song_operate", {
+      roomId: "R_1",
+      songId: "789",
+      bizId: 42,
+      operate: 7,
+    });
   });
 });

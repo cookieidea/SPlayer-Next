@@ -134,6 +134,12 @@ export const addMultiSong = (track: Track): Promise<void> =>
     toast.success("已加入一起听队列");
   }).then(() => undefined);
 
+export const removeMultiSong = (songId: string): Promise<void> =>
+  withBusy(async () => {
+    await window.api.togetherMulti.removeSong(songId, 0);
+    toast.success("已从房间队列移除");
+  }).then(() => undefined);
+
 export const topMultiSong = (track: Track): Promise<void> =>
   withBusy(async () => {
     await window.api.togetherMulti.topSong(track.id, 0);

@@ -12,9 +12,21 @@ export const MULTI_HEARTBEAT_MS = 8000;
 
 const ROOM_GONE_CODE = 488;
 
-const OPERATE_ADD = 1;
+// operate 枚举实测自真实多人房（服务端 failedMsg 逐条印证）：
+//   0 加歌  "已将你带来的歌曲推荐给大家"
+//   1 加歌被拒（该歌刚播过）
+//   2 顶歌  "你顶了一下歌曲 X"
+//   3 点赞  "你觉得这首歌很好听！"
+//   4 切歌  "切换的是已播完的歌曲"
+//   5 红心  "你红心了歌曲 X"
+//   6 收藏  "你收藏了歌曲 X"
+//   7 删歌  "只能删除待播状态的歌曲哦～"
+//   8 未知（result=true 且无副作用）
+const OPERATE_ADD = 0;
 
 const OPERATE_TOP = 2;
+
+const OPERATE_DELETE = 7;
 
 type RoomListener = (room: TogetherMultiRoom, generation: number) => void;
 
@@ -219,6 +231,10 @@ const operate = async (
 
 export const addMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
   operate(songId, songBizId, OPERATE_ADD);
+
+/** 删除只对「待播」状态的歌曲生效，正在播的那首会被服务端拒绝 */
+export const removeMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
+  operate(songId, songBizId, OPERATE_DELETE);
 
 export const topMultiSong = (songId: string, songBizId = 0): Promise<TogetherMultiRoom | null> =>
   operate(songId, songBizId, OPERATE_TOP);

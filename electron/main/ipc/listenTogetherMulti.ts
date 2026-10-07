@@ -38,6 +38,10 @@ export const registerTogetherMultiIpc = (): void => {
     multi.topMultiSong(songId, songBizId),
   );
 
+  ipcMain.handle("togetherMulti:removeSong", (_event, songId: string, songBizId: number) =>
+    multi.removeMultiSong(songId, songBizId),
+  );
+
   multi.onMultiRoom((room, generation) => {
     send({ type: "room", room, generation });
   });

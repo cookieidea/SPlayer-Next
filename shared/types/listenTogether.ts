@@ -45,6 +45,7 @@ export interface TogetherMultiApi {
   leave: () => Promise<void>;
   addSong: (songId: string, songBizId: number) => Promise<void>;
   topSong: (songId: string, songBizId: number) => Promise<void>;
+  removeSong: (songId: string, songBizId: number) => Promise<void>;
   onEvent: (callback: (event: TogetherMultiEvent) => void) => () => void;
 }
 
