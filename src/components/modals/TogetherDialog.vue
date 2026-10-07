@@ -54,7 +54,10 @@ const multiQueueSongs = computed(() => {
   return [...(room.playSong ? [room.playSong] : []), ...room.nextSongs];
 });
 
-/** 陌生人可见性（账号级设置，实测由 listening/privacy 的 listening_entrance 控制） */
+/**
+ * 陌生人可见性。账号级设置（实测由 listening/privacy 的 listening_entrance 控制）。
+ * 界面如实反映服务端状态：服务端默认为关，不主动写就不会被放开
+ */
 const strangerVisible = ref(false);
 
 const onToggleStranger = async (value: boolean): Promise<void> => {
@@ -277,12 +280,6 @@ const needLogin = (): boolean => {
   if (userId.value) return false;
   toast.warning(t("player.together.needLogin"));
   return true;
-};
-
-const onCreateMulti = async (): Promise<void> => {
-  if (needLogin()) return;
-  await togetherMulti.createMultiRoom(userId.value);
-  emit("update:open", false);
 };
 
 const onStartMatch = async (): Promise<void> => {
@@ -601,14 +598,6 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
               ? t("player.together.createMulti")
               : t("player.together.create")
           }}
-        </SButton>
-        <SButton
-          variant="secondary"
-          :loading="multiStore.busy"
-          :disabled="!userId"
-          @click="onCreateMulti"
-        >
-          {{ t("player.together.createMulti") }}
         </SButton>
         <template v-if="!matching">
           <SButton
