@@ -47,8 +47,6 @@ interface TogetherCommandPayload {
   command: TogetherCommand | null;
   songIds: string[];
   playMode: string;
-  anchorSongId: string;
-  anchorPosition: number;
   initial: boolean;
   autoPlay: boolean;
 }
@@ -284,11 +282,7 @@ const reportCommand = async (
   });
 };
 
-const reportQueue = async (
-  songIds: readonly string[],
-  anchorSongId = lastState.songId,
-  anchorPosition = lastState.currentIndex,
-): Promise<void> => {
+const reportQueue = async (songIds: readonly string[]): Promise<void> => {
   if (!session) return;
   const issuing = generation;
   playlistVersion += 1;
@@ -296,9 +290,7 @@ const reportQueue = async (
   const userId = Number(session.userId) || 0;
   const version = playlistVersion;
   if (issuing !== generation) return;
-  neteaseLog.info(
-    `[一起听] 上报队列 ${songIds.length}首 anchor=${anchorSongId || "-"}@${anchorPosition}`,
-  );
+  neteaseLog.info(`[一起听] 上报队列 ${songIds.length}首`);
   await callNetease("listen_together_sync_list_report", {
     roomId,
     userId,
@@ -419,8 +411,6 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
       command: fresh && command ? (restored ? { ...command, playing: false } : command) : null,
       songIds: replaceQueue ? [...snapshot.songIds] : [],
       playMode: modeChanged ? snapshot.playMode : "",
-      anchorSongId: replaceQueue ? snapshot.anchorSongId : "",
-      anchorPosition: replaceQueue ? snapshot.anchorPosition : -1,
       initial,
       // 入场采纳才自动播放；恢复会话保持原语义（不抢播放）
       autoPlay: initial && !restored,

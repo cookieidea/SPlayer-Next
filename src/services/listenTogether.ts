@@ -141,12 +141,10 @@ const applyRemote = async (
   songIds: readonly string[],
   command: TogetherCommand | null,
   initial: boolean,
-  anchorSongId = "",
-  anchorPosition = -1,
   playOnEntry = false,
 ): Promise<void> => {
   if (songIds.length > 0) {
-    const targetId = command?.targetSongId || anchorSongId;
+    const targetId = command?.targetSongId ?? "";
     let tracks = await tracksForIds(songIds);
     // 房间歌单可能上千首：整表解析失败或目标缺失时，退化为目标附近的窗口。
     // 否则这里会静默返回——用户看到的就是"进房什么都没发生"
@@ -158,10 +156,6 @@ const applyRemote = async (
       const currentId = useStatusStore().currentTrack?.id ?? "";
       let keep = tracks.findIndex((track) => track.id === currentId);
       // 本地曲目已不在共享队列里时，按服务端锚点定位
-      if (keep < 0 && anchorSongId) keep = tracks.findIndex((t) => t.id === anchorSongId);
-      if (keep < 0 && anchorPosition >= 0 && anchorPosition < tracks.length) {
-        keep = anchorPosition;
-      }
       if (keep < 0) keep = 0;
       // 入场采纳必须走 playFrom：只改 playIndex 不会触碰播放器，
       // 用户听到的仍是本地那首，直到对端下发新的播放命令才同步
@@ -292,14 +286,7 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     return;
   }
   if (next.playMode) applyPlayMode(next.playMode);
-  await applyRemote(
-    next.songIds,
-    next.command,
-    next.initial,
-    next.anchorSongId,
-    next.anchorPosition,
-    next.autoPlay,
-  );
+  await applyRemote(next.songIds, next.command, next.initial, next.autoPlay);
   if (next.command && !next.initial) toast.info(commandToast(next.command));
 };
 

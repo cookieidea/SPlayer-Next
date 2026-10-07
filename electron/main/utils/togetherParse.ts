@@ -138,20 +138,16 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
 export const snapshotFromBody = (value: unknown): TogetherSnapshot => {
   const data = obj(obj(unwrap(value))?.data);
   if (!data) {
-    return { songIds: [], anchorSongId: "", anchorPosition: -1, playMode: "", command: null };
+    return { songIds: [], playMode: "", command: null };
   }
   const playlist = obj(data.playlist) ?? {};
   const mode = str(playlist.playMode).toUpperCase();
   const shuffled = mode === "RANDOM" || mode === "SHUFFLE" || mode.endsWith("_RANDOM");
   const source = (shuffled ? obj(playlist.randomList) : null) ?? obj(playlist.displayList) ?? {};
-  const anchorSongId = str(playlist.anchorSongId);
-  const anchorPosition = Number(playlist.anchorPosition);
   return {
     songIds: list(source.result)
       .map((id) => str(id))
       .filter((id) => id !== "" && id !== "0"),
-    anchorSongId: anchorSongId === "0" ? "" : anchorSongId,
-    anchorPosition: Number.isFinite(anchorPosition) ? anchorPosition : -1,
     playMode: mode,
     command: toCommand(data.playCommand ?? data.commandInfo),
   };
@@ -175,13 +171,16 @@ export const roomCheckFromBody = (
   joinable: boolean;
   copywriting: string;
   status: string;
+  type: string;
 } => {
   const data = obj(obj(unwrap(value))?.data);
-  if (!data) return { joinable: false, copywriting: "", status: "" };
+  if (!data) return { joinable: false, copywriting: "", status: "", type: "" };
   return {
     joinable: Boolean(data.joinable),
     copywriting: str(data.copywriting),
     status: str(data.status).toUpperCase(),
+    // 实测双人房为 NORMAL；多人房类型待实测，加入前要靠它决定走哪套协议
+    type: str(data.type).toUpperCase(),
   };
 };
 

@@ -150,8 +150,6 @@ describe("一起听渲染端服务", () => {
       command: null,
       songIds: ["100", "200", "300"],
       playMode: "",
-      anchorSongId: "",
-      anchorPosition: -1,
       autoPlay: false,
       initial: false,
     });
@@ -183,8 +181,6 @@ describe("一起听渲染端服务", () => {
       },
       songIds: [],
       playMode: "",
-      anchorSongId: "",
-      anchorPosition: -1,
       autoPlay: false,
       initial: false,
     });
@@ -217,8 +213,6 @@ describe("一起听渲染端服务", () => {
       },
       songIds: [],
       playMode: "",
-      anchorSongId: "",
-      anchorPosition: -1,
       autoPlay: false,
       initial: false,
     });
@@ -237,8 +231,6 @@ describe("一起听渲染端服务", () => {
       command: null,
       songIds: [],
       playMode: "RANDOM",
-      anchorSongId: "",
-      anchorPosition: -1,
       autoPlay: false,
       initial: false,
     });
@@ -256,8 +248,6 @@ describe("一起听渲染端服务", () => {
       command: null,
       songIds: [],
       playMode: "SINGLE_LOOP",
-      anchorSongId: "",
-      anchorPosition: -1,
       autoPlay: false,
       initial: false,
     });
@@ -424,16 +414,14 @@ describe("一起听渲染端服务", () => {
       command: null,
       songIds: ["200", "300"],
       playMode: "",
-      anchorSongId: "300",
-      anchorPosition: 1,
       initial: true,
       autoPlay: true,
     });
 
     await vi.waitFor(() => expect(mocks.playFrom).toHaveBeenCalled());
     const call = mocks.playFrom.mock.calls[0] as unknown[];
-    // 按锚点定位到房间当前曲目，而不是本地那首
-    expect(call[1]).toBe(1);
+    // 本地那首不在共享队列里，只能落到队首（锚点字段服务端从未返回过）
+    expect(call[1]).toBe(0);
     expect(call[3]).toBe(true);
   });
 
@@ -451,8 +439,6 @@ describe("一起听渲染端服务", () => {
       command: null,
       songIds: ["200", "300"],
       playMode: "",
-      anchorSongId: "300",
-      anchorPosition: 1,
       initial: false,
       autoPlay: false,
     });
@@ -483,8 +469,6 @@ describe("一起听渲染端服务", () => {
       },
       songIds: ["100", "200"],
       playMode: "",
-      anchorSongId: "200",
-      anchorPosition: 1,
       initial: true,
       autoPlay: true,
     });
@@ -519,8 +503,6 @@ describe("一起听渲染端服务", () => {
       },
       songIds: ["100", "200"],
       playMode: "",
-      anchorSongId: "200",
-      anchorPosition: 1,
       initial: true,
       autoPlay: true,
     });
@@ -551,8 +533,6 @@ describe("一起听渲染端服务", () => {
       },
       songIds: ["100", "200"],
       playMode: "",
-      anchorSongId: "",
-      anchorPosition: -1,
       initial: false,
       autoPlay: false,
     });
@@ -613,8 +593,6 @@ describe("一起听渲染端服务", () => {
       },
       songIds: big,
       playMode: "",
-      anchorSongId: target,
-      anchorPosition: 499,
       initial: true,
       autoPlay: true,
     });

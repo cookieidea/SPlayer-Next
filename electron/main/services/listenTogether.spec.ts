@@ -48,8 +48,6 @@ const statusBody = (inRoom: boolean, roomId = "R1", users: number[] = [7]) => ({
 
 const snapshotBody = (
   songIds: string[],
-  anchorSongId = "",
-  anchorPosition = -1,
   playMode = "ORDER_LOOP",
   command: Record<string, unknown> | null = null,
 ) => ({
@@ -59,8 +57,6 @@ const snapshotBody = (
     data: {
       playlist: {
         playMode,
-        anchorSongId,
-        anchorPosition,
         displayList: { result: songIds },
         randomList: { result: songIds },
       },
@@ -220,7 +216,7 @@ describe("一起听房间状态机", () => {
     expect(rooms.length).toBe(baselineCount);
   });
 
-  it("上报队列时带上播放模式且不再带锚点", async () => {
+  it("上报队列时带上播放模式", async () => {
     const service = await load();
     const reports: Record<string, unknown>[] = [];
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
@@ -238,9 +234,8 @@ describe("一起听房间状态机", () => {
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(reports.length).toBeGreaterThan(0);
-    // 实测服务端只在列表上报里接受 playMode；锚点字段服务端根本不存在，已停止上报
+    // 实测：服务端只在列表上报里接受 playMode
     expect(reports[0]).toMatchObject({ playMode: "ORDER_LOOP" });
-    expect(reports[0]).not.toHaveProperty("anchorSongId");
   });
 
   it("对端命令按指纹去重", async () => {
@@ -788,7 +783,7 @@ describe("一起听房间状态机", () => {
         return { status: 200, body: { code: 200 } };
       }
       if (name === "listen_together_sync_playlist_get") {
-        return snapshotBody(["100", "200"], "", -1, snapshotMode);
+        return snapshotBody(["100", "200"], snapshotMode);
       }
       return { status: 200, body: { code: 200 } };
     });
@@ -864,7 +859,7 @@ describe("一起听房间状态机", () => {
     expect(service.getSession()?.roomId).toBe("R2");
 
     // 放行旧 R1 快照：它带队列替换 + 模式变化
-    releaseSnapshot(snapshotBody(["999"], "", -1, "RANDOM"));
+    releaseSnapshot(snapshotBody(["999"], "RANDOM"));
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -1004,7 +999,7 @@ describe("一起听房间状态机", () => {
         return { status: 200, body: { code: 200 } };
       }
       // 服务端始终停在 ORDER_LOOP
-      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+      return snapshotBody(["100"], "ORDER_LOOP");
     });
 
     await service.create("7");
@@ -1034,7 +1029,7 @@ describe("一起听房间状态机", () => {
         types.push(String(params.type));
         return { status: 200, body: { code: 200 } };
       }
-      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+      return snapshotBody(["100"], "ORDER_LOOP");
     });
 
     await service.create("7");
@@ -1056,7 +1051,7 @@ describe("一起听房间状态机", () => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
       // 服务端创建后仍返回默认模式
-      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+      return snapshotBody(["100"], "ORDER_LOOP");
     });
 
     await service.create("7");
@@ -1132,7 +1127,7 @@ describe("一起听房间状态机", () => {
         if (failMode) throw new Error("网络错误");
       }
       // 服务端始终返回默认模式
-      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+      return snapshotBody(["100"], "ORDER_LOOP");
     });
 
     await service.create("7");
@@ -1203,7 +1198,7 @@ describe("一起听房间状态机", () => {
         if (params.type === "PLAYMODE_CHANGE") return { status: 200, body: { code: 200 } };
       }
       if (name === "listen_together_sync_playlist_get") {
-        return snapshotBody(["100"], "", -1, snapshotMode, snapshotCommand);
+        return snapshotBody(["100"], snapshotMode, snapshotCommand);
       }
       return { status: 200, body: { code: 200 } };
     });
@@ -1342,7 +1337,7 @@ describe("一起听房间状态机", () => {
         if (failMode) throw new Error("网络错误");
         modes.push(String(params.playMode));
       }
-      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+      return snapshotBody(["100"], "ORDER_LOOP");
     });
 
     await service.create("7");
@@ -1368,7 +1363,7 @@ describe("一起听房间状态机", () => {
         sent.push(String(params.type));
         return { status: 200, body: { code: 200 } };
       }
-      return snapshotBody(["100", "200"], "", -1, "ORDER_LOOP", remoteCommand);
+      return snapshotBody(["100", "200"], "ORDER_LOOP", remoteCommand);
     });
 
     await service.create("7");
@@ -1412,7 +1407,7 @@ describe("一起听房间状态机", () => {
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
       if (name === "listen_together_play_command_report")
         return { status: 200, body: { code: 200 } };
-      return snapshotBody(["100"], "", -1, snapshotMode);
+      return snapshotBody(["100"], snapshotMode);
     });
     service.onRemoteCommand((payload: { playMode?: string }) => {
       if (payload.playMode) applied.push(payload.playMode);
@@ -1571,7 +1566,7 @@ describe("一起听房间状态机", () => {
         return { status: 200, body: { code: 200 } };
       }
       if (name === "listen_together_sync_playlist_get") {
-        return snapshotBody(["200"], "", -1, "ORDER_LOOP", {
+        return snapshotBody(["200"], "ORDER_LOOP", {
           userId: "8",
           commandType: "GOTO",
           playStatus: "PLAY",
@@ -1629,7 +1624,7 @@ describe("一起听房间状态机", () => {
         };
       }
       if (name === "listen_together_sync_playlist_get") {
-        return snapshotBody(["100", "200"], "", -1, "ORDER_LOOP", snapshotCommand);
+        return snapshotBody(["100", "200"], "ORDER_LOOP", snapshotCommand);
       }
       return { status: 200, body: { code: 200 } };
     });
@@ -1687,7 +1682,7 @@ describe("一起听房间状态机", () => {
         if (params.type === "GOTO") gotos.push(String(params.targetSongId));
         return { status: 200, body: { code: 200 } };
       }
-      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+      return snapshotBody(["100"], "ORDER_LOOP");
     });
 
     await service.create("7");

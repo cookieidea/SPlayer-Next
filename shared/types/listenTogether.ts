@@ -64,8 +64,6 @@ export interface TogetherCommand {
 
 export interface TogetherSnapshot {
   songIds: string[];
-  anchorSongId: string;
-  anchorPosition: number;
   playMode: string;
   command: TogetherCommand | null;
 }
@@ -112,8 +110,6 @@ export type TogetherSyncEvent =
       command: TogetherCommand | null;
       songIds: string[];
       playMode: string;
-      anchorSongId: string;
-      anchorPosition: number;
       initial: boolean;
       /** 入场采纳（加入房间）时是否直接开始播放：仅改索引不会触碰播放器 */
       autoPlay: boolean;

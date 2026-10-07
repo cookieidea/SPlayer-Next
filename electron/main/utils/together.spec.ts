@@ -10,6 +10,7 @@ import {
 import {
   invitesFromInbox,
   joinableFromBody,
+  roomCheckFromBody,
   multiRoomFromBody,
   obj,
   roomFromBody,
@@ -31,8 +32,6 @@ import type {
 
 const snapshot = (patch: Partial<TogetherSnapshot> = {}): TogetherSnapshot => ({
   songIds: [],
-  anchorSongId: "",
-  anchorPosition: -1,
   playMode: "",
   command: null,
   ...patch,
@@ -654,5 +653,16 @@ describe("多人房邀请链接", () => {
     expect(isMultiInvitation(buildMultiInvitation("ABC_1791391074", "77"))).toBe(true);
     expect(isMultiInvitation(buildInvitation("R1", "77"))).toBe(false);
     expect(isMultiInvitation("")).toBe(false);
+  });
+
+  it("room/check 透出房型字段", () => {
+    const r = roomCheckFromBody({
+      status: 200,
+      body: {
+        code: 200,
+        data: { joinable: true, type: "NORMAL", copywriting: null, status: "AVAILABLE" },
+      },
+    });
+    expect(r).toEqual({ joinable: true, copywriting: "", status: "AVAILABLE", type: "NORMAL" });
   });
 });

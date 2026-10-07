@@ -68,8 +68,6 @@ export const registerTogetherIpc = (): void => {
       command: payload.command,
       songIds: payload.songIds,
       playMode: payload.playMode,
-      anchorSongId: payload.anchorSongId,
-      anchorPosition: payload.anchorPosition,
       initial: payload.initial,
       autoPlay: payload.autoPlay,
     });
