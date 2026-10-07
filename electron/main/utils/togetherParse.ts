@@ -60,7 +60,13 @@ const toMember = (raw: unknown): TogetherMember => {
 
 const toRoomSong = (raw: unknown): TogetherRoomSong => {
   const item = obj(raw) ?? {};
-  return { songId: str(item.songId), songBizId: num(item.songBizId) };
+  return {
+    songId: str(item.songId),
+    songBizId: num(item.songBizId),
+    // "谁加的"只能取这个字段：room/songs/list 的 followers 是房间成员列表，
+    // 不与歌曲一一对应，无法用来标注每首歌
+    songRcmdUid: str(item.songRcmdUid),
+  };
 };
 
 const toRoom = (raw: unknown): TogetherRoom | null => {

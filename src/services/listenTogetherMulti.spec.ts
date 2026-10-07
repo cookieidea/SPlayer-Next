@@ -58,8 +58,8 @@ const room = (playSong: string | null, nextSongs: string[]): TogetherMultiRoom =
   creatorId: "77",
   chatRoomId: "chat1",
   members: [{ userId: "77", nickname: "A", avatarUrl: "" }],
-  playSong: playSong ? { songId: playSong, songBizId: 0 } : null,
-  nextSongs: nextSongs.map((id) => ({ songId: id, songBizId: 0 })),
+  playSong: playSong ? { songId: playSong, songBizId: 0, songRcmdUid: "" } : null,
+  nextSongs: nextSongs.map((id) => ({ songId: id, songBizId: 0, songRcmdUid: "" })),
 });
 
 const roomEvent = (value: TogetherMultiRoom): TogetherMultiEvent => ({

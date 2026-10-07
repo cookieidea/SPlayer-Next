@@ -12,6 +12,7 @@ import type {
   TogetherFriend,
   TogetherInviteCard,
   TogetherMultiRoom,
+  TogetherRoomSong,
 } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
 
@@ -49,9 +50,19 @@ const multiRoom = computed(() => (leavingMulti.value ? frozenMulti.value : multi
 /** 展示以房间歌曲为准；曲目详情单独查表，解析失败不会让下标与歌曲错位 */
 const multiQueueSongs = computed(() => {
   const room = multiRoom.value;
-  if (!room) return [] as { songId: string; songBizId: number }[];
+  if (!room) return [] as TogetherRoomSong[];
   return [...(room.playSong ? [room.playSong] : []), ...room.nextSongs];
 });
+
+/** 把 songRcmdUid 映成昵称。"0" 是系统推荐，不显示 */
+const recommenderOf = (uid: string): string => {
+  if (!uid || uid === "0") return "";
+  const member = multiRoom.value?.members.find((item) => item.userId === uid);
+  if (!member) return t("player.together.recommended");
+  return member.userId === userId.value
+    ? t("player.together.me")
+    : member.nickname || member.userId;
+};
 
 const trackOf = (songId: string): Track | undefined =>
   multiStore.queueTracks.find((track) => track.id === songId);
@@ -77,12 +88,6 @@ const artistText = (track: Track): string =>
     .map((artist) => artist.name)
     .filter(Boolean)
     .join("、");
-const multiMemberText = computed(
-  () =>
-    (leavingMulti.value ? frozenMembers.value : multiStore.memberNames) ||
-    t("player.together.waitingPeer"),
-);
-
 const onCopyMultiLink = (): void => {
   const room = multiRoom.value;
   if (!room) return;
@@ -270,7 +275,21 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
       <template v-if="multiRoom">
         <div class="flex flex-col gap-1">
           <span class="text-xs text-on-surface-variant">{{ t("player.together.members") }}</span>
-          <span class="text-sm break-all">{{ multiMemberText }}</span>
+          <div v-if="multiRoom.members.length" class="flex flex-wrap gap-2">
+            <div
+              v-for="member in multiRoom.members"
+              :key="member.userId"
+              class="flex items-center gap-1.5"
+            >
+              <SImg :src="member.avatarUrl" class="size-6 rounded-full shrink-0" />
+              <span class="text-xs truncate max-w-[88px]">
+                {{ member.nickname || member.userId }}
+              </span>
+            </div>
+          </div>
+          <span v-else class="text-sm text-on-surface-variant/70">
+            {{ t("player.together.waitingPeer") }}
+          </span>
           <span class="text-xs text-on-surface-variant mt-2">{{ t("player.together.room") }}</span>
           <span class="text-xs break-all text-on-surface-variant/80">{{ multiRoom.roomId }}</span>
         </div>
@@ -291,6 +310,12 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
               <span class="flex-1 min-w-0 truncate">{{ queueTitle(song.songId) }}</span>
               <span class="shrink-0 text-on-surface-variant/70">
                 {{ queueArtist(song.songId) }}
+              </span>
+              <span
+                v-if="recommenderOf(song.songRcmdUid)"
+                class="shrink-0 text-on-surface-variant/60 max-w-[64px] truncate"
+              >
+                {{ recommenderOf(song.songRcmdUid) }}
               </span>
               <SButton
                 v-if="index > 0"

@@ -20,6 +20,8 @@ export interface TogetherRoomSongList {
 export interface TogetherRoomSong {
   songId: string;
   songBizId: number;
+  /** 推荐这首歌的人。实测 nextSongs 里 rcmdType=3 的是自己加的，0 表示系统 */
+  songRcmdUid: string;
 }
 
 export interface TogetherMultiRoom {

@@ -86,8 +86,8 @@ describe("多人一起听", () => {
       roomId: "R_1",
       creatorId: "77",
       chatRoomId: "chat1",
-      playSong: { songId: "123", songBizId: 5 },
-      nextSongs: [{ songId: "456", songBizId: 0 }],
+      playSong: { songId: "123", songBizId: 5, songRcmdUid: "" },
+      nextSongs: [{ songId: "456", songBizId: 0, songRcmdUid: "" }],
     });
     expect(getMultiSession()?.roomId).toBe("R_1");
   });

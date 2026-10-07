@@ -544,6 +544,8 @@
       "strangerMatch": "Match (2 people)",
       "matchDuo": "Match with a stranger",
       "matchMulti": "Multi match",
+      "me": "Me",
+      "recommended": "Recommended",
       "cancelMatch": "Cancel matching",
       "addToRoom": "Add to listen-together room",
       "topInRoom": "Pin in room",
