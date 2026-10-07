@@ -541,7 +541,9 @@
       "invitedBy": "{name} invited you",
       "accept": "Accept",
       "addToRoom": "Add to listen-together room",
-      "topInRoom": "Pin in room"
+      "topInRoom": "Pin in room",
+      "roomQueue": "Room queue",
+      "emptyQueue": "No songs in the room yet"
     }
   },
   "songList": {

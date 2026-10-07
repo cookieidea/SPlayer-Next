@@ -18,6 +18,8 @@ let unsubscribe: (() => void) | null = null;
 // 按「房间设的那首」逐值抑制，而不是开时间窗：时间窗会把用户随后的真实切歌一起吞掉
 let remoteSongId = "";
 
+let roomQueueKey = "";
+
 const resolveTracks = async (ids: string[]): Promise<Track[]> => {
   const known = new Map<string, Track>();
   for (const item of queue.queue.value) {
@@ -28,6 +30,19 @@ const resolveTracks = async (ids: string[]): Promise<Track[]> => {
     for (const track of await songsByIds(missing)) known.set(track.id, track);
   }
   return ids.map((id) => known.get(id)).filter((track): track is Track => track !== undefined);
+};
+
+/** 房间队列是「当前曲 + 接下来几首」的短窗口，按签名去重，避免 8 秒心跳重复拉曲目详情 */
+const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
+  const ids = [
+    ...(room.playSong ? [room.playSong.songId] : []),
+    ...room.nextSongs.map((song) => song.songId),
+  ].filter(Boolean);
+  const signature = ids.join(",");
+  if (signature === roomQueueKey) return;
+  roomQueueKey = signature;
+  const store = useTogetherMultiStore();
+  store.queueTracks = await resolveTracks(ids);
 };
 
 /**
@@ -59,7 +74,10 @@ const handleEvent = (): void => {
   if (!unsubscribe) {
     unsubscribe = window.api.togetherMulti.onEvent((event) => {
       store.apply(event);
-      if (event.type === "room") void followRoom(event.room);
+      if (event.type === "room") {
+        void followRoom(event.room);
+        void syncRoomQueue(event.room);
+      }
       if (event.type === "error") toast.error(event.message);
     });
   }
@@ -115,19 +133,26 @@ export const joinTogetherMulti = (input: string, userId: string): Promise<unknow
       parsed.invitation.inviterId,
       userId,
     );
+    roomQueueKey = "";
     await followRoom(room);
+    await syncRoomQueue(room);
     return room;
   });
 
 export const leaveTogetherMulti = (): Promise<void> =>
   withBusy(async () => {
+    roomQueueKey = "";
     await window.api.togetherMulti.leave();
   }).then(() => undefined);
 
 export const restoreTogetherMulti = (userId: string): Promise<unknown> =>
   withBusy(async () => {
     const room = await window.api.togetherMulti.restore(userId);
-    if (room) await followRoom(room);
+    if (room) {
+      roomQueueKey = "";
+      await followRoom(room);
+      await syncRoomQueue(room);
+    }
     return room;
   });
 

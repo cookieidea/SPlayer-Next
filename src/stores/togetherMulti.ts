@@ -3,12 +3,15 @@ import type {
   TogetherMultiRoom,
   TogetherMultiSession,
 } from "@shared/types/listenTogether";
+import type { Track } from "@shared/types/player";
 
 export const useTogetherMultiStore = defineStore("togetherMulti", () => {
   const session = ref<TogetherMultiSession | null>(null);
   const room = shallowRef<TogetherMultiRoom | null>(null);
   const inRoom = computed(() => session.value !== null);
   const busy = ref(false);
+  // 房间队列（当前曲 + 接下来几首）。它是只读展示用的，永远不进本地播放队列
+  const queueTracks = shallowRef<Track[]>([]);
 
   const apply = (next: TogetherMultiEvent): void => {
     // 旧会话的迟到事件必须丢弃：退房后它会把新会话的状态覆盖掉
@@ -26,6 +29,7 @@ export const useTogetherMultiStore = defineStore("togetherMulti", () => {
     } else {
       session.value = null;
       room.value = null;
+      queueTracks.value = [];
     }
   };
 
@@ -35,5 +39,5 @@ export const useTogetherMultiStore = defineStore("togetherMulti", () => {
     return members.map((member) => member.nickname || member.userId).join("、");
   });
 
-  return { session, room, inRoom, busy, apply, memberNames };
+  return { session, room, inRoom, busy, queueTracks, apply, memberNames };
 });

@@ -168,4 +168,20 @@ describe("多人一起听渲染端服务", () => {
     expect(mods.shouldReportLocalSong(false, "9", "1")).toBe(false);
     expect(mods.shouldReportLocalSong(true, "", "1")).toBe(false);
   });
+
+  it("房间队列只用于展示，且内容没变时不重复拉取曲目详情", async () => {
+    mocks.songsByIds.mockResolvedValue([track("room1"), track("room2")]);
+    mods.initTogetherMulti();
+
+    emit?.(roomEvent(room("room1", ["room2"])));
+    const store = (await import("@/stores/togetherMulti")).useTogetherMultiStore();
+    await vi.waitFor(() => expect(store.queueTracks.map((t) => t.id)).toEqual(["room1", "room2"]));
+    // 房间队列是展示用的，绝不能进本地播放队列
+    expect(queue.queue.value.length).toBeLessThan(2);
+
+    const calls = mocks.songsByIds.mock.calls.length;
+    emit?.(roomEvent(room("room1", ["room2"])));
+    await Promise.resolve();
+    expect(mocks.songsByIds.mock.calls.length).toBe(calls);
+  });
 });

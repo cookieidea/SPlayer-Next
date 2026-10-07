@@ -12,6 +12,7 @@ import type {
   TogetherInviteCard,
   TogetherMultiRoom,
 } from "@shared/types/listenTogether";
+import type { Track } from "@shared/types/player";
 
 const props = defineProps<{ open: boolean }>();
 
@@ -43,6 +44,12 @@ const roomId = ref("");
 const memberText = computed(() => memberNames.value || t("player.together.waitingPeer"));
 
 const multiRoom = computed(() => (leavingMulti.value ? frozenMulti.value : multiStore.room));
+
+const artistText = (track: Track): string =>
+  (track.artists ?? [])
+    .map((artist) => artist.name)
+    .filter(Boolean)
+    .join("、");
 const multiMemberText = computed(
   () =>
     (leavingMulti.value ? frozenMembers.value : multiStore.memberNames) ||
@@ -206,6 +213,25 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <span class="text-sm break-all">{{ multiMemberText }}</span>
           <span class="text-xs text-on-surface-variant mt-2">{{ t("player.together.room") }}</span>
           <span class="text-xs break-all text-on-surface-variant/80">{{ multiRoom.roomId }}</span>
+        </div>
+        <div class="flex flex-col gap-1">
+          <span class="text-xs text-on-surface-variant">
+            {{ t("player.together.roomQueue") }}
+          </span>
+          <p v-if="multiStore.queueTracks.length === 0" class="text-xs text-on-surface-variant/70">
+            {{ t("player.together.emptyQueue") }}
+          </p>
+          <div v-else class="flex flex-col gap-1 max-h-[160px] overflow-y-auto pr-1">
+            <div
+              v-for="(item, index) in multiStore.queueTracks"
+              :key="`${item.id}-${index}`"
+              class="flex items-center gap-2 text-xs"
+            >
+              <span class="w-4 text-right text-on-surface-variant/60">{{ index + 1 }}</span>
+              <span class="flex-1 min-w-0 truncate">{{ item.title }}</span>
+              <span class="shrink-0 text-on-surface-variant/70">{{ artistText(item) }}</span>
+            </div>
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <SButton variant="secondary" @click="onCopyMultiLink">
