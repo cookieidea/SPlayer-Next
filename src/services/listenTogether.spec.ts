@@ -657,7 +657,8 @@ describe("一起听渲染端服务", () => {
     expect(after.queueSongIds).toEqual(ids);
   });
   it("房间歌单过大时仍能起播当前曲目", async () => {
-    // 模拟上千首：一次要太多就整批失败（真实服务端的表现）
+    // 模拟某批曲目解析失败：真实服务端在 500 首以内是正常的（实测 1000 首仍可，
+    // 1200 首才报 400），这里构造的是网络/服务端偶发失败时的兜底路径
     const big = Array.from({ length: 1000 }, (_, i) => String(i + 1));
     const target = "500";
     mocks.songsByIds.mockImplementation(async (ids) => {
