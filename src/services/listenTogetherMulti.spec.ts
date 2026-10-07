@@ -162,4 +162,13 @@ describe("多人一起听渲染端服务", () => {
     expect(queue.queue.value[0]?.id).toBe("2");
     expect(loadedIndex()).toBe(0);
   });
+
+  it("只有用户自己切歌才回报，跟随房间换曲不回传", () => {
+    // 跟随产生的那首不能回报，否则两端互相切歌
+    expect(mods.shouldReportLocalSong(true, "1", "1")).toBe(false);
+    expect(mods.shouldReportLocalSong(true, "9", "1")).toBe(true);
+    // 不在房间 / 没有曲目都不该上报
+    expect(mods.shouldReportLocalSong(false, "9", "1")).toBe(false);
+    expect(mods.shouldReportLocalSong(true, "", "1")).toBe(false);
+  });
 });
