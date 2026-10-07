@@ -22,7 +22,9 @@ export const togetherSongAction = (
   nextSongs: readonly TogetherRoomSongRef[],
 ): TogetherSongAction => {
   if (!inRoom || !songId) return "none";
-  if (songId === currentSongId) return "pending";
+  // 正在播的那首不给房间操作：实测删它是 10018「只能删除待播状态的歌曲」，
+  // 置顶它是「歌曲已经不在待播列表中啦」，给了入口也只会失败
+  if (songId === currentSongId) return "none";
   const pending = nextSongs.find((song) => song.songId === songId);
   if (!pending) return "add";
   // 只能删自己加的：别人的歌由服务端拒绝，不给入口

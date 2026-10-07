@@ -8,6 +8,8 @@ import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
 import * as togetherMulti from "@/services/listenTogetherMulti";
 import { isMultiInvitation } from "@shared/utils/togetherInvitation";
+import { togetherSongAction } from "@/utils/togetherRoom";
+import type { TogetherSongAction } from "@/utils/togetherRoom";
 import type {
   TogetherFriend,
   TogetherInviteCard,
@@ -103,9 +105,15 @@ const onInviteMulti = async (friend: TogetherFriend): Promise<void> => {
   await togetherMulti.inviteMultiFriends([friend.userId]);
 };
 
-/** 只有自己加的才给移除按钮：服务端对别人的歌会回"只能删除自己添加的歌曲哦～" */
-const isMine = (songRcmdUid: string): boolean =>
-  Boolean(songRcmdUid) && songRcmdUid === userId.value;
+/** 复用曲目菜单那套判定：只有"自己在待播窗口里的歌"才给移除按钮 */
+const roomActionOf = (song: TogetherRoomSong): TogetherSongAction =>
+  togetherSongAction(
+    true,
+    song.songId,
+    userId.value,
+    multiRoom.value?.playSong?.songId ?? "",
+    multiRoom.value?.nextSongs ?? [],
+  );
 
 /** 把 songRcmdUid 映成昵称。"0" 是系统推荐，不显示 */
 const recommenderOf = (uid: string): string => {
@@ -393,7 +401,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
                     {{ recommenderOf(song.songRcmdUid) }}
                   </span>
                   <SButton
-                    v-if="index > 0 && isMine(song.songRcmdUid)"
+                    v-if="roomActionOf(song) === 'pending'"
                     variant="ghost"
                     circle
                     size="small"

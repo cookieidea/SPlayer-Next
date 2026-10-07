@@ -27,8 +27,10 @@ describe("曲目菜单的房间操作", () => {
     expect(togetherSongAction(true, "", ME, "1", [])).toBe("none");
   });
 
-  it("当前播放的那首歌算已加入，且可移除", () => {
-    expect(togetherSongAction(true, "1", ME, "1", [])).toBe("pending");
+  it("当前播放的那首歌不给房间操作：删它是 10018、置顶它也不在待播列表", () => {
+    expect(togetherSongAction(true, "1", ME, "1", [])).toBe("none");
+    // 即使它在待播窗口里出现同名条目，也仍以"正在播"为准
+    expect(togetherSongAction(true, "1", ME, "1", [{ songId: "1", songRcmdUid: ME }])).toBe("none");
   });
 
   it("自己加的待播歌可移除", () => {
