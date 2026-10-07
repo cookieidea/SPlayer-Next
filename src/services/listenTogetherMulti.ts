@@ -121,7 +121,7 @@ export const joinTogetherMulti = (input: string, userId: string): Promise<unknow
     return room;
   });
 
-/** 开始陌生人匹配。匹配成功后服务端会推信息，由 ackMatch 进房 */
+/** 开始陌生人匹配。匹配成功后轮询 status/get 进房 */
 const MATCH_POLL_MS = 3000;
 
 let matchTimer: ReturnType<typeof setInterval> | null = null;
@@ -162,15 +162,6 @@ export const cancelStrangerMatch = (): Promise<void> =>
     stopMatchPoll();
     await window.api.togetherMulti.cancelMatch();
   }).then(() => undefined);
-
-export const ackStrangerMatch = (roomId: string, userId: string): Promise<unknown> =>
-  withBusy(async () => {
-    const room = await window.api.togetherMulti.ackMatch(roomId, userId);
-    roomQueueKey = "";
-    await followRoom(room);
-    await syncRoomQueue(room);
-    return room;
-  });
 
 export const leaveTogetherMulti = (): Promise<void> =>
   withBusy(async () => {

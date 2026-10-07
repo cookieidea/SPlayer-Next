@@ -179,22 +179,6 @@ export const cancelStrangerMatch = async (): Promise<void> => {
   await callNetease("listen_together_song_match_cancel", {});
 };
 
-/** 匹配成功后接受，房间由此产生（当前歌曲交给心跳拉取） */
-export const ackStrangerMatch = async (
-  roomId: string,
-  userId: string,
-): Promise<TogetherMultiRoom> => {
-  const response = await callNetease("listen_together_song_match_ack", { roomId, agree: true });
-  const next = roomFromResponse(response);
-  if (!next) throw new Error("接受匹配失败：未返回房间信息");
-  const issuing = generation + 1;
-  generation = issuing;
-  session = { roomId: next.roomId || roomId, userId, generation: issuing };
-  publish(next, issuing);
-  startMultiTick();
-  return next;
-};
-
 /**
  * 加入多人房。multi/room/create 端点确实存在，但参数未知（试遍常见组合都是 400），
  * 所以目前只能走接受邀请这条已验证的路
