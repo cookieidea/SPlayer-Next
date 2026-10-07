@@ -638,12 +638,16 @@ const tick = async (): Promise<void> => {
       tickCount += 1;
       return;
     } else if (state.transitioning) {
-      // 加载期间只冻结进度与播放态：歌曲切换是用户的既成操作，必须保留下来，
-      // 否则加载结束时基线已等于新歌，切歌永远检测不到。
+      // 加载期间引擎会报出非播放态，直接比较会朝对端发一次假的 PAUSE，
+      // 所以这几个维度一律沿用旧基线而不是吸收当前值：
+      // 瞬时状态不会被误报，而"加载期间用户真的按了暂停/换了模式"仍能在加载结束后检出
+      const fresh = baselineOf(state);
       baseline = {
-        ...baselineOf(state),
+        ...fresh,
         songId: baseline?.songId ?? state.songId,
-        queueSignature: baseline?.queueSignature ?? baselineOf(state).queueSignature,
+        queueSignature: baseline?.queueSignature ?? fresh.queueSignature,
+        playing: baseline?.playing ?? fresh.playing,
+        playMode: baseline?.playMode ?? fresh.playMode,
       };
     } else {
       const delta = detectLocalChanges(state, baseline ?? baselineOf(state));

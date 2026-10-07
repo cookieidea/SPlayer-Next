@@ -123,7 +123,9 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
     const message = obj(payload?.msg);
     const general = obj(payload?.generalMsg) ?? obj(message?.generalMsg);
     const nativeUrl = str(general?.nativeUrl);
-    if (!nativeUrl.includes("listenTogether")) continue;
+    // 网易云自己的路径拼写不完全统一：本仓只用过 listen-together，
+    // 旧实现按 listenTogether 大小写敏感匹配，拼写一变整个收件箱就会静默为空
+    if (!/listen[-_]?together/i.test(nativeUrl)) continue;
     const outer = new URLSearchParams(nativeUrl.slice(nativeUrl.indexOf("?") + 1));
     const inner = safeDecode(outer.get("url1") ?? "");
     const query = inner.slice(inner.indexOf("?") + 1);
@@ -133,7 +135,8 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
     if (!roomId) continue;
     cards.push({
       roomId,
-      inviterId: str(params.get("inviterId") || user?.fromUserId),
+      // 多人大厅链接的键是 inviterUid，只认 inviterId 会让邀请人退化成私信发送者
+      inviterId: str(params.get("inviterId") || params.get("inviterUid") || user?.fromUserId),
       inviterName: str(params.get("inviterName") || user?.nickname),
       inviterAvatarUrl: safeDecode(str(params.get("inviterAvatarUrl"))),
       title: str(general?.title) || "加入一起听",
@@ -208,9 +211,11 @@ export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
   const roomId = str(root.roomId) || str(dto.roomId);
   if (!roomId) return null;
 
-  const agg = obj(root.multiLtRoomUserAgg) ?? obj(root.roomUserList);
-  const users = Array.isArray(agg)
-    ? agg
+  // 不能先过 obj()：它对数组返回 null，会把"聚合本身是数组"的响应静默判成没有成员
+  const rawAgg = root.multiLtRoomUserAgg ?? root.roomUserList;
+  const agg = obj(rawAgg);
+  const users = Array.isArray(rawAgg)
+    ? rawAgg
     : agg
       ? list(agg.onlineUserInfos ?? agg.userList ?? agg.list)
       : list(root.roomUsers);

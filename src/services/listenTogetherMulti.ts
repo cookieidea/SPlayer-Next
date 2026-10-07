@@ -151,6 +151,17 @@ const stopMatchPoll = (): void => {
 };
 
 /**
+ * 匹配结束（成功/超时/出错/取消）。
+ *
+ * 必须连界面状态一起复位：只停轮询的话界面会一直停在"取消匹配"，
+ * 失败或超时后用户找不到重新匹配的入口
+ */
+const finishMatch = (): void => {
+  stopMatchPoll();
+  useTogetherMultiStore().matching = "";
+};
+
+/**
  * 匹配成功后服务端会把账号直接放进房间，本地要自己发现并跟上。
  * 匹配房（roomType=MATCH_SONG）走的是双人协议——实测它的 heartbeat/sync 都按双人那套，
  * 所以这里用双人的 restore，而不是多人那套
@@ -163,14 +174,14 @@ const pollMatch = async (userId: string): Promise<void> => {
   try {
     // 匹配窗口最长 60 秒，超时后停止轮询，避免一直占用
     if (++matchPollCount > MATCH_POLL_MAX) {
-      stopMatchPoll();
+      finishMatch();
       toast.warning("没有找到合适的听友，请稍后重试");
       return;
     }
     const session = await window.api.together.getSession();
     if (!session) return;
     // 匹配到就必须通知服务端结束匹配，否则账号会一直挂在匹配队列里
-    stopMatchPoll();
+    finishMatch();
     toast.success("已找到听友");
     try {
       await window.api.togetherMulti.cancelMatch();
@@ -179,18 +190,23 @@ const pollMatch = async (userId: string): Promise<void> => {
     }
     await restoreRoom(userId);
   } catch {
-    stopMatchPoll();
+    finishMatch();
   }
 };
 
 export const startStrangerMatch = (userId: string): Promise<unknown> =>
   withBusy(async () => {
+    useTogetherMultiStore().matching = "duo";
     const result = await window.api.togetherMulti.startMatch();
     toast.info("正在为你寻找听友…");
     stopMatchPoll();
     matchPollCount = 0;
     matchTimer = setInterval(() => void pollMatch(userId), MATCH_POLL_MS);
     return result;
+  }).then((value) => {
+    // 请求失败时 withBusy 返回 null：不能把界面留在"匹配中"
+    if (value === null) finishMatch();
+    return value;
   });
 
 /**
@@ -199,30 +215,34 @@ export const startStrangerMatch = (userId: string): Promise<unknown> =>
  */
 export const startMultiMatch = (songId: string): Promise<unknown> =>
   withBusy(async () => {
+    useTogetherMultiStore().matching = "multi";
     const result = await window.api.togetherMulti.startMultiMatch(songId);
     toast.info("正在为你寻找听友…");
     stopMatchPoll();
     matchPollCount = 0;
     matchTimer = setInterval(() => void pollMultiMatch(), MATCH_POLL_MS);
     return result;
+  }).then((value) => {
+    if (value === null) finishMatch();
+    return value;
   });
 
 export const cancelMultiMatch = (): Promise<void> =>
   withBusy(async () => {
-    stopMatchPoll();
+    finishMatch();
     await window.api.togetherMulti.cancelMultiMatch();
   }).then(() => undefined);
 
 const pollMultiMatch = async (): Promise<void> => {
   try {
     if (++matchPollCount > MATCH_POLL_MAX) {
-      stopMatchPoll();
+      finishMatch();
       toast.warning("没有找到合适的听友，请稍后重试");
       return;
     }
     const session = await window.api.together.getSession();
     if (!session) return;
-    stopMatchPoll();
+    finishMatch();
     toast.success("已找到听友");
     try {
       await window.api.togetherMulti.cancelMultiMatch();
@@ -231,13 +251,13 @@ const pollMultiMatch = async (): Promise<void> => {
     }
     await restoreTogetherMulti(String(session.userId));
   } catch {
-    stopMatchPoll();
+    finishMatch();
   }
 };
 
 export const cancelStrangerMatch = (): Promise<void> =>
   withBusy(async () => {
-    stopMatchPoll();
+    finishMatch();
     await window.api.togetherMulti.cancelMatch();
   }).then(() => undefined);
 
@@ -258,11 +278,13 @@ export const refreshTogetherMulti = async (): Promise<void> => {
 export const getStrangerVisible = (): Promise<boolean> =>
   window.api.togetherMulti.getStrangerVisible().catch(() => false);
 
-export const setStrangerVisible = (visible: boolean): Promise<void> =>
+/** 写失败返回 false，让调用方把开关拨回去——这是账号级设置，显示与服务端不符最误导 */
+export const setStrangerVisible = (visible: boolean): Promise<boolean> =>
   withBusy(async () => {
     await window.api.togetherMulti.setStrangerVisible(visible);
     toast.success(visible ? "已允许陌生人加入" : "已关闭陌生人加入");
-  }).then(() => undefined);
+    return true;
+  }).then((value) => value === true);
 
 /** 建房后最多把当前队列的这么多首带进房间：服务端待播窗口有限，加多也留不住 */
 const ROOM_SEED_LIMIT = 30;

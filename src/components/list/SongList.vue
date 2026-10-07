@@ -295,13 +295,14 @@ const onRowPlay = async (item: Track): Promise<void> => {
 
 const onTrackDblClick = (item: Track, index: number): void => {
   if (batch.active.value) return;
-  // 多人房里本地换歌会被心跳拉回房间当前曲，等于白切，还会把本地队列打乱。
-  // 要换歌只能靠房间的投票切歌
-  if (guard.blockLocalPlay(sortedItems.value[index] ?? null)) return;
+  // 搜索页按设置只播这一首，其余场景是"从这首开始播整个列表"。
+  // 多人房里前者改成把这首加进房间，后者整表播放必须拦掉
   if (route.name === "search" && settings.player.searchPlayBehavior !== "all") {
+    if (guard.blockLocalPlay(item)) return;
     void player.playNow(item, props.playbackContext);
     return;
   }
+  if (guard.blockBatchPlay()) return;
   void player.playFrom(sortedItems.value, index, props.playbackContext);
 };
 

@@ -10,6 +10,8 @@ export const useTogetherMultiStore = defineStore("togetherMulti", () => {
   const room = shallowRef<TogetherMultiRoom | null>(null);
   const inRoom = computed(() => session.value !== null);
   const busy = ref(false);
+  /** 正在匹配的房型（空串=未在匹配）。由服务层维护：只有它知道匹配何时结束 */
+  const matching = ref<"" | "duo" | "multi">("");
   // 房间队列（当前曲 + 接下来几首）。它是只读展示用的，永远不进本地播放队列
   const queueTracks = shallowRef<Track[]>([]);
 
@@ -39,5 +41,5 @@ export const useTogetherMultiStore = defineStore("togetherMulti", () => {
     return members.map((member) => member.nickname || member.userId).join("、");
   });
 
-  return { session, room, inRoom, busy, queueTracks, apply, memberNames };
+  return { session, room, inRoom, busy, matching, queueTracks, apply, memberNames };
 });

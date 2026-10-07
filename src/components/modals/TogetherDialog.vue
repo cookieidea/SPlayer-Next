@@ -37,13 +37,17 @@ const roomView = ref(false);
 let leaving = false;
 const leavingMulti = ref(false);
 const frozenMulti = ref<TogetherMultiRoom | null>(null);
-const frozenMembers = ref("");
+// 队列行的标题/歌手来自 queueTracks，不一起冻住的话淡出期间会退化成 #歌曲id
+const frozenQueueTracks = shallowRef<Track[]>([]);
 let inboxToken = 0;
 let friendsToken = 0;
 const friendListRef = ref<HTMLElement | null>(null);
 let friendListScroll = 0;
 const userId = computed(() => String(user.profile?.userId ?? ""));
-const invitation = computed(() => together.invitationOf());
+const frozenInvitation = ref("");
+const invitation = computed(() =>
+  leavingDual.value ? frozenInvitation.value : together.invitationOf(),
+);
 /** 退出期间冻结房间信息：清空 store 后视图会翻到加入界面，淡出还没结束就"变脸" */
 const leavingDual = ref(false);
 const frozenDual = ref<TogetherRoom | null>(null);
@@ -68,7 +72,8 @@ const strangerVisible = ref(false);
 
 const onToggleStranger = async (value: boolean): Promise<void> => {
   strangerVisible.value = value;
-  await togetherMulti.setStrangerVisible(value);
+  // 写失败要拨回去：账号级设置若显示与服务端不符，用户会以为已经放开了
+  if (!(await togetherMulti.setStrangerVisible(value))) strangerVisible.value = !value;
 };
 
 /** 建房前选择要邀请的好友：0~1 人建双人房，2 人以上建多人房 */
@@ -125,8 +130,10 @@ const recommenderOf = (uid: string): string => {
     : member.nickname || member.userId;
 };
 
-const trackOf = (songId: string): Track | undefined =>
-  multiStore.queueTracks.find((track) => track.id === songId);
+const trackOf = (songId: string): Track | undefined => {
+  const tracks = leavingMulti.value ? frozenQueueTracks.value : multiStore.queueTracks;
+  return tracks.find((track) => track.id === songId);
+};
 
 const queueTitle = (songId: string): string => trackOf(songId)?.title ?? `#${songId}`;
 
@@ -158,7 +165,7 @@ const onCopyMultiLink = (): void => {
 const onLeaveMulti = async (): Promise<void> => {
   // 退出期间冻结房间信息：store 被清空后视图会翻到加入界面，淡出还没结束就"变脸"
   frozenMulti.value = multiStore.room;
-  frozenMembers.value = multiStore.memberNames;
+  frozenQueueTracks.value = multiStore.queueTracks;
   leavingMulti.value = true;
   emit("update:open", false);
   try {
@@ -257,6 +264,7 @@ const onJoin = async (): Promise<void> => {
 const onLeave = async (): Promise<void> => {
   leaving = true;
   frozenDual.value = store.room;
+  frozenInvitation.value = invitation.value;
   leavingDual.value = true;
   emit("update:open", false);
   try {
@@ -284,9 +292,6 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   roomView.value = true;
 };
 
-/** 空串表示未在匹配；否则标明在匹配哪一类 */
-const matching = ref<"" | "duo" | "multi">("");
-
 const needLogin = (): boolean => {
   if (userId.value) return false;
   toast.warning(t("player.together.needLogin"));
@@ -295,21 +300,19 @@ const needLogin = (): boolean => {
 
 const onStartMatch = async (): Promise<void> => {
   if (needLogin()) return;
-  matching.value = "duo";
+  // 匹配状态由服务层维护：失败/超时都要由它复位，界面自己记会卡在"匹配中"
   await togetherMulti.startStrangerMatch(userId.value);
 };
 
 const onStartMultiMatch = async (): Promise<void> => {
   if (needLogin()) return;
-  matching.value = "multi";
   // 多人匹配要带当前播放的歌曲，没有就传 0
   await togetherMulti.startMultiMatch(String(useStatusStore().currentTrack?.id ?? "0"));
 };
 
 const onCancelMatch = async (): Promise<void> => {
-  if (matching.value === "multi") await togetherMulti.cancelMultiMatch();
+  if (multiStore.matching === "multi") await togetherMulti.cancelMultiMatch();
   else await togetherMulti.cancelStrangerMatch();
-  matching.value = "";
 };
 
 const onRejectInvite = async (card: TogetherInviteCard): Promise<void> => {
@@ -639,7 +642,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
             </SButton>
           </div>
           <div class="flex gap-2">
-            <template v-if="!matching">
+            <template v-if="!multiStore.matching">
               <SButton
                 class="flex-1"
                 type="info"

@@ -1763,4 +1763,34 @@ describe("一起听房间状态机", () => {
     // 服务端靠它判断本地队列是否过期，缺了会一直当成旧队列
     expect(Number(beats[0].playlistVersion)).toBeGreaterThan(0);
   });
+
+  it("加载期间按下的暂停会在加载结束后上报", async () => {
+    const service = await load();
+    const commands: Record<string, unknown>[] = [];
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        commands.push(params);
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100", "200"]);
+    });
+
+    await service.create("7");
+    // 先让基线记下"正在播放"
+    service.updateLocal(localState({ playing: true }));
+    await cycle();
+    commands.length = 0;
+
+    // 加载下一首期间用户按了暂停：这一瞬间引擎报的是非播放态，
+    // 不能被当成噪声吸收掉
+    service.updateLocal(localState({ songId: "200", playing: false, transitioning: true }));
+    await cycle();
+    // 加载结束后仍是暂停态
+    service.updateLocal(localState({ songId: "200", playing: false }));
+    await cycle();
+
+    expect(commands.some((p) => p.type === "PAUSE")).toBe(true);
+  });
 });

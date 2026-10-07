@@ -233,4 +233,26 @@ describe("多人一起听渲染端服务", () => {
 
     expect(mocks.seek).not.toHaveBeenCalled();
   });
+
+  it("匹配超时后界面状态复位，不会卡在取消匹配", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    (api.togetherMulti as Record<string, unknown>).startMatch = vi.fn(() =>
+      Promise.resolve({ success: true }),
+    );
+    (api.togetherMulti as Record<string, unknown>).cancelMatch = vi.fn(() => Promise.resolve());
+    api.together = { getSession: vi.fn(() => Promise.resolve(null)) };
+
+    const { useTogetherMultiStore } = await import("@/stores/togetherMulti");
+    mods.initTogetherMulti();
+
+    await mods.startStrangerMatch("88");
+    expect(useTogetherMultiStore().matching).toBe("duo");
+
+    // 轮询上限 60 次 × 3 秒；超时后必须复位，否则界面只剩"取消匹配"、无法重试
+    await vi.advanceTimersByTimeAsync(3000 * 62);
+
+    expect(useTogetherMultiStore().matching).toBe("");
+    vi.useRealTimers();
+  });
 });

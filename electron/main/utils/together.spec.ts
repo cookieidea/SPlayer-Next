@@ -421,6 +421,30 @@ describe("卡片消息甄别（实测样本）", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({ roomId: "R1_1", inviterId: "5" });
   });
+
+  it("多人大厅链接的邀请人来自 inviterUid", () => {
+    const inner = "orpheus://nm/play/listenTogether?roomId=R2_1&inviterUid=88&isFLT=false";
+    const inbox = {
+      status: 200,
+      body: {
+        msgs: [card(`orpheus://open?url1=${encodeURIComponent(inner)}&url2=x`, 999)],
+      },
+    };
+    const [first] = invitesFromInbox(inbox);
+
+    // 只认 inviterId 的话会退化成私信发送者 999
+    expect(first.inviterId).toBe("88");
+  });
+
+  it("连字符拼写的路径也能收下", () => {
+    const inner = "orpheus://nm/play/listen-together?roomId=R3_1&inviterId=7";
+    const inbox = {
+      status: 200,
+      body: { msgs: [card(`orpheus://open?url1=${encodeURIComponent(inner)}&url2=x`, 7)] },
+    };
+
+    expect(invitesFromInbox(inbox)).toHaveLength(1);
+  });
 });
 
 it("整曲播完时保留播放模式变化", () => {
@@ -582,6 +606,29 @@ describe("一起听邀请链接", () => {
   it("生成可解析的邀请链接", () => {
     const link = buildInvitation("R1", "77");
     expect(parseInvitation(link).invitation).toEqual({ roomId: "R1", inviterId: "77" });
+  });
+});
+
+describe("成员聚合为数组时", () => {
+  it("数组形态也能解析出成员", () => {
+    const room = multiRoomFromBody({
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          multiLtRoomSnapshot: {
+            roomId: "ARR_1",
+            // obj() 对数组返回 null，早期实现会把它当成"没有成员"
+            multiLtRoomUserAgg: [
+              { uid: 11, nickname: "甲", avatar: "http://a" },
+              { uid: 22, nickname: "乙", avatar: "http://b" },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(room?.members.map((m) => m.userId)).toEqual(["11", "22"]);
   });
 });
 
