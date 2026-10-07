@@ -286,6 +286,20 @@ export const roomSongsList = async (): Promise<TogetherRoomSongList> => {
   return { songIds, followers };
 };
 
+/** 多人房站内邀请。实测 {roomId, inviteUids, groupIds} 是正确参数组合 */
+export const inviteToMultiRoom = async (uids: readonly string[]): Promise<void> => {
+  if (!session || uids.length === 0) return;
+  const response = await callNetease("listen_together_multi_invite", {
+    roomId: session.roomId,
+    inviteUids: [...uids],
+    groupIds: "",
+  });
+  const body = obj(obj(response)?.body) ?? {};
+  if (body.code !== 200) {
+    throw new Error(str(body.message) || "邀请失败");
+  }
+};
+
 export const exitMultiRoom = async (): Promise<void> => {
   const current = session;
   if (!current) return;

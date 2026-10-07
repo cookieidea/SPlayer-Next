@@ -222,6 +222,20 @@ export const cancelStrangerMatch = (): Promise<void> =>
     await window.api.togetherMulti.cancelMatch();
   }).then(() => undefined);
 
+/** 多人房站内邀请好友 */
+export const inviteMultiFriends = (uids: readonly string[]): Promise<boolean> =>
+  withBusy(async () => {
+    if (uids.length === 0) return false;
+    try {
+      await window.api.togetherMulti.inviteFriends([...uids]);
+      toast.success(`已邀请 ${uids.length} 位好友`);
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+  }).then((value) => value === true);
+
 export const leaveTogetherMulti = (): Promise<void> =>
   withBusy(async () => {
     roomQueueKey = "";

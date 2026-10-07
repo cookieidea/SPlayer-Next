@@ -10,6 +10,7 @@ import {
   onMultiError,
   cancelMultiMatch,
   cancelStrangerMatch,
+  inviteToMultiRoom,
   onMultiRoom,
   roomSongsList,
   startMultiMatch,
@@ -369,5 +370,40 @@ describe("多人一起听", () => {
     mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
     await cancelMultiMatch();
     expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_match_cancel", {});
+  });
+
+  it("多人房站内邀请带上 inviteUids 与房间号", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+
+    await inviteToMultiRoom(["88", "99"]);
+
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_invite", {
+      roomId: "R_1",
+      inviteUids: ["88", "99"],
+      groupIds: "",
+    });
+  });
+
+  it("没有邀请对象时不发请求", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    mocks.call.mockClear();
+
+    await inviteToMultiRoom([]);
+
+    expect(mocks.call).not.toHaveBeenCalled();
+  });
+
+  it("服务端拒绝时透出文案", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 400, message: "抱歉，房间信息不存在" },
+    });
+
+    await expect(inviteToMultiRoom(["88"])).rejects.toThrow("房间信息不存在");
   });
 });

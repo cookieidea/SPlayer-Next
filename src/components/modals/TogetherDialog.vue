@@ -54,6 +54,28 @@ const multiQueueSongs = computed(() => {
   return [...(room.playSong ? [room.playSong] : []), ...room.nextSongs];
 });
 
+/** 房间队列 / 邀请好友 两个面板 */
+const multiPane = ref("queue");
+const multiPanes = computed(() => [
+  { key: "queue", label: t("player.together.roomQueue") },
+  { key: "invite", label: t("player.together.inviteFriends") },
+]);
+
+const multiFriends = shallowRef<TogetherFriend[]>([]);
+
+const loadMultiFriends = async (): Promise<void> => {
+  if (!userId.value) return;
+  multiFriends.value = await together.loadFriends(userId.value);
+};
+
+const onInviteMulti = async (friend: TogetherFriend): Promise<void> => {
+  await togetherMulti.inviteMultiFriends([friend.userId]);
+};
+
+/** 只有自己加的才给移除按钮：服务端对别人的歌会回"只能删除自己添加的歌曲哦～" */
+const isMine = (songRcmdUid: string): boolean =>
+  Boolean(songRcmdUid) && songRcmdUid === userId.value;
+
 /** 把 songRcmdUid 映成昵称。"0" 是系统推荐，不显示 */
 const recommenderOf = (uid: string): string => {
   if (!uid || uid === "0") return "";
@@ -111,6 +133,10 @@ const snapRoom = (): void => {
   memberNames.value = store.memberNames;
   roomId.value = store.room?.roomId ?? "";
 };
+
+watch(multiPane, (pane) => {
+  if (pane === "invite") void loadMultiFriends();
+});
 
 watch(
   () => props.open,
@@ -293,50 +319,77 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <span class="text-xs text-on-surface-variant mt-2">{{ t("player.together.room") }}</span>
           <span class="text-xs break-all text-on-surface-variant/80">{{ multiRoom.roomId }}</span>
         </div>
-        <div class="flex flex-col gap-1">
-          <span class="text-xs text-on-surface-variant">
-            {{ t("player.together.roomQueue") }}
-          </span>
-          <p v-if="multiQueueSongs.length === 0" class="text-xs text-on-surface-variant/70">
-            {{ t("player.together.emptyQueue") }}
-          </p>
-          <div v-else class="flex flex-col gap-1 max-h-[160px] overflow-y-auto pr-1">
-            <div
-              v-for="(song, index) in multiQueueSongs"
-              :key="song.songId"
-              class="flex items-center gap-2 text-xs"
-            >
-              <span class="w-4 text-right text-on-surface-variant/60">{{ index + 1 }}</span>
-              <span class="flex-1 min-w-0 truncate">{{ queueTitle(song.songId) }}</span>
-              <span class="shrink-0 text-on-surface-variant/70">
-                {{ queueArtist(song.songId) }}
-              </span>
-              <span
-                v-if="recommenderOf(song.songRcmdUid)"
-                class="shrink-0 text-on-surface-variant/60 max-w-[64px] truncate"
-              >
-                {{ recommenderOf(song.songRcmdUid) }}
-              </span>
-              <SButton
-                v-if="index > 0"
-                variant="ghost"
-                circle
-                size="small"
-                :title="t('player.together.removeFromRoom')"
-                @click="onRemoveMultiSong(song.songId)"
-              >
-                <template #icon><IconLucideX /></template>
+        <STabs v-model="multiPane" type="segment" size="small" :tabs="multiPanes">
+          <template #queue>
+            <div class="flex flex-col gap-1 mt-3">
+              <p v-if="multiQueueSongs.length === 0" class="text-xs text-on-surface-variant/70">
+                {{ t("player.together.emptyQueue") }}
+              </p>
+              <div v-else class="flex flex-col gap-1 max-h-[160px] overflow-y-auto pr-1">
+                <div
+                  v-for="(song, index) in multiQueueSongs"
+                  :key="song.songId"
+                  class="flex items-center gap-2 text-xs"
+                >
+                  <span class="w-4 text-right text-on-surface-variant/60">{{ index + 1 }}</span>
+                  <span class="flex-1 min-w-0 truncate">{{ queueTitle(song.songId) }}</span>
+                  <span class="shrink-0 text-on-surface-variant/70">
+                    {{ queueArtist(song.songId) }}
+                  </span>
+                  <span
+                    v-if="recommenderOf(song.songRcmdUid)"
+                    class="shrink-0 text-on-surface-variant/60 max-w-[64px] truncate"
+                  >
+                    {{ recommenderOf(song.songRcmdUid) }}
+                  </span>
+                  <SButton
+                    v-if="index > 0 && isMine(song.songRcmdUid)"
+                    variant="ghost"
+                    circle
+                    size="small"
+                    :title="t('player.together.removeFromRoom')"
+                    @click="onRemoveMultiSong(song.songId)"
+                  >
+                    <template #icon><IconLucideX /></template>
+                  </SButton>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template #invite>
+            <div class="flex flex-col gap-2 mt-3">
+              <p v-if="multiFriends.length === 0" class="text-xs text-on-surface-variant/70">
+                {{ t("player.together.noFriends") }}
+              </p>
+              <div v-else class="flex flex-col gap-1 max-h-[160px] overflow-y-auto pr-1">
+                <div
+                  v-for="friend in multiFriends"
+                  :key="friend.userId"
+                  class="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-primary/8"
+                >
+                  <SImg :src="friend.avatarUrl" class="size-7 rounded-full shrink-0" />
+                  <span class="flex-1 min-w-0 truncate text-sm">{{ friend.nickname }}</span>
+                  <SButton
+                    size="small"
+                    variant="secondary"
+                    :disabled="multiStore.busy"
+                    @click="onInviteMulti(friend)"
+                  >
+                    {{ t("player.together.invite") }}
+                  </SButton>
+                </div>
+              </div>
+              <SDivider />
+              <SButton variant="secondary" @click="onCopyMultiLink">
+                {{ t("player.together.copy") }}
               </SButton>
             </div>
-          </div>
-        </div>
+          </template>
+        </STabs>
         <div class="flex items-center gap-2">
           <SButton variant="secondary" :disabled="!multiRoom.playSong" @click="onVoteSkip">
             <template #icon><IconLucideSkipForward /></template>
             {{ t("player.together.voteSkip") }}
-          </SButton>
-          <SButton variant="secondary" @click="onCopyMultiLink">
-            {{ t("player.together.copy") }}
           </SButton>
           <SButton
             type="error"

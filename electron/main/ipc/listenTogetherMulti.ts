@@ -30,6 +30,10 @@ export const registerTogetherMultiIpc = (): void => {
 
   ipcMain.handle("togetherMulti:leave", () => multi.exitMultiRoom());
 
+  ipcMain.handle("togetherMulti:invite", (_event, uids: string[]) =>
+    multi.inviteToMultiRoom(uids ?? []),
+  );
+
   ipcMain.handle("togetherMulti:roomSongs", () => multi.roomSongsList());
 
   ipcMain.handle("togetherMulti:startMatch", () => multi.startStrangerMatch());
