@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTogetherStore } from "@/stores/together";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { useUserStore } from "@/stores/user";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
@@ -14,6 +15,7 @@ const emit = defineEmits<{ "update:open": [value: boolean] }>();
 
 const { t } = useI18n();
 const store = useTogetherStore();
+const multiStore = useTogetherMultiStore();
 const user = useUserStore();
 const { copy } = useCopyText();
 
@@ -32,6 +34,20 @@ const invitation = computed(() => together.invitationOf());
 const memberNames = ref("");
 const roomId = ref("");
 const memberText = computed(() => memberNames.value || t("player.together.waitingPeer"));
+
+const multiRoom = computed(() => multiStore.room);
+const multiMemberText = computed(() => multiStore.memberNames || t("player.together.waitingPeer"));
+
+const onCopyMultiLink = (): void => {
+  const room = multiStore.room;
+  if (!room) return;
+  copy(togetherMulti.shareMultiInvitation(room.roomId, userId.value));
+};
+
+const onLeaveMulti = async (): Promise<void> => {
+  emit("update:open", false);
+  await togetherMulti.leaveTogetherMulti();
+};
 
 const snapRoom = (): void => {
   memberNames.value = store.memberNames;
@@ -165,7 +181,28 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
     @update:open="emit('update:open', $event)"
   >
     <div class="flex flex-col gap-4">
-      <template v-if="roomView">
+      <template v-if="multiRoom">
+        <div class="flex flex-col gap-1">
+          <span class="text-xs text-on-surface-variant">{{ t("player.together.members") }}</span>
+          <span class="text-sm break-all">{{ multiMemberText }}</span>
+          <span class="text-xs text-on-surface-variant mt-2">{{ t("player.together.room") }}</span>
+          <span class="text-xs break-all text-on-surface-variant/80">{{ multiRoom.roomId }}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <SButton variant="secondary" @click="onCopyMultiLink">
+            {{ t("player.together.copy") }}
+          </SButton>
+          <SButton
+            type="error"
+            variant="secondary"
+            :loading="multiStore.busy"
+            @click="onLeaveMulti"
+          >
+            {{ t("player.together.leave") }}
+          </SButton>
+        </div>
+      </template>
+      <template v-else-if="roomView">
         <div class="flex flex-col gap-1">
           <span class="text-xs text-on-surface-variant">{{ t("player.together.members") }}</span>
           <span class="text-sm break-all">{{ memberText }}</span>
