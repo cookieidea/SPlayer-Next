@@ -839,4 +839,72 @@ describe("一起听房间状态机", () => {
     expect(applied).toHaveLength(0);
     expect(service.getSession()?.roomId).toBe("R2");
   });
+  it("登出会使在途的创建房间操作失效", async () => {
+    const service = await load();
+
+    let releaseCreate!: (value: unknown) => void;
+    const pendingCreate = new Promise((resolve) => {
+      releaseCreate = resolve;
+    });
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return pendingCreate;
+      return statusBody(false);
+    });
+
+    const createPromise = service.create("7");
+    await Promise.resolve();
+
+    // 房间创建请求还在飞的时候登出
+    service.abandon();
+    expect(service.getSession()).toBeNull();
+
+    // 放行旧请求
+    releaseCreate(createBody("R1", [7]));
+    await expect(createPromise).rejects.toThrow("已被后续操作取代");
+
+    // 关键不变式：登出后不得重新进入房间
+    expect(service.getSession()).toBeNull();
+  });
+
+  it("房间被服务端结束会使在途的加入操作失效", async () => {
+    const service = await load();
+
+    let releaseAccept!: (value: unknown) => void;
+    const pendingAccept = new Promise((resolve) => {
+      releaseAccept = resolve;
+    });
+    let statusCalls = 0;
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_status") {
+        statusCalls += 1;
+        if (statusCalls === 1) return statusBody(false);
+        return statusBody(false);
+      }
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true } } };
+      }
+      if (name === "listen_together_invitation_accept") return pendingAccept;
+      return { status: 200, body: { code: 200 } };
+    });
+
+    const joinPromise = service.join("R1", "8", "7");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 加入请求在飞时，房间被服务端结束
+    service.abandon();
+    expect(service.getSession()).toBeNull();
+
+    releaseAccept({
+      status: 200,
+      body: {
+        code: 200,
+        data: { roomInfo: { roomId: "R1", creatorId: 8, roomUsers: [{ userId: 8 }] } },
+      },
+    });
+    await expect(joinPromise).rejects.toThrow("已被后续操作取代");
+    expect(service.getSession()).toBeNull();
+  });
 });

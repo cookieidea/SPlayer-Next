@@ -542,6 +542,9 @@ const tick = async (): Promise<void> => {
 const endSession = (reason: "left" | "server" | "logout", expected?: number): void => {
   // 旧请求的失败回调可能晚于切房到达，只有代次匹配才允许结束当前会话
   if (expected !== undefined && expected !== generation) return;
+  // 会话终止必须同时废弃在途的房间事务：否则登出/房间失效后，
+  // 一个还在飞的 create/join/restore 仍会把会话重新建起来
+  roomOperation += 1;
   const ended = generation;
   if (timer) clearInterval(timer);
   timer = null;
@@ -692,7 +695,6 @@ export const invite = async (acceptorId: string): Promise<void> => {
 };
 
 export const leave = async (): Promise<void> => {
-  roomOperation += 1;
   const current = session;
   endSession("left");
   if (!current) return;
