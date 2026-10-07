@@ -50,7 +50,6 @@ const sessionEvent = (roomId = "R1"): TogetherSyncEvent => ({
 
 describe("一起听渲染端服务", () => {
   beforeEach(async () => {
-    vi.resetModules();
     setActivePinia(createPinia());
     emit = null;
     ({ useTogetherStore } = await import("@/stores/together"));
@@ -309,6 +308,54 @@ describe("一起听渲染端服务", () => {
     expect(ok).toBe(true);
     expect(api.together.invite).toHaveBeenCalledWith("9");
     expect(mocks.toast.success).toHaveBeenCalled();
+  });
+
+  it("邀请成功后标记为已邀请", async () => {
+    const api = (
+      window as unknown as { api: { together: Record<string, ReturnType<typeof vi.fn>> } }
+    ).api;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    const ok = await mods.inviteFriend({
+      userId: "9",
+      nickname: "丙",
+      avatarUrl: "",
+      joined: false,
+    });
+    expect(ok).toBe(true);
+    expect(useTogetherStore().isInvited("9")).toBe(true);
+    expect(api.together.invite).toHaveBeenCalledWith("9");
+  });
+
+  it("邀请失败不标记", async () => {
+    const api = (
+      window as unknown as { api: { together: Record<string, ReturnType<typeof vi.fn>> } }
+    ).api;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    api.together.invite.mockRejectedValueOnce(new Error("不在关注列表"));
+    const ok = await mods.inviteFriend({
+      userId: "11",
+      nickname: "",
+      avatarUrl: "",
+      joined: false,
+    });
+    expect(ok).toBe(false);
+    expect(useTogetherStore().isInvited("11")).toBe(false);
+  });
+
+  it("已邀请记录按房间隔离", async () => {
+    mods.initTogether();
+    emit?.(sessionEvent("R1"));
+    useTogetherStore().markInvited("9");
+    expect(useTogetherStore().isInvited("9")).toBe(true);
+
+    emit?.({
+      type: "session",
+      session: { roomId: "R2", userId: "7" },
+      room: { roomId: "R2", creatorId: "7", members: [] },
+    });
+    expect(useTogetherStore().isInvited("9")).toBe(false);
   });
 
   it("邀请好友失败时提示原因", async () => {

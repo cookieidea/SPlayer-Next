@@ -301,6 +301,7 @@ export const loadFriends = async (userId: string): Promise<TogetherFriend[]> => 
 export const inviteFriend = async (friend: TogetherFriend): Promise<boolean> => {
   try {
     await window.api.together.invite(friend.userId);
+    useTogetherStore().markInvited(friend.userId, useTogetherStore().session?.roomId);
     toast.success(`已邀请 ${friend.nickname || friend.userId}`);
     return true;
   } catch (error) {

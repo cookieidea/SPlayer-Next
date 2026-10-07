@@ -183,6 +183,14 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
               <STag v-if="friend.joined" size="small" type="primary" variant="soft">
                 {{ t("player.together.joined") }}
               </STag>
+              <STag
+                v-else-if="store.isInvited(friend.userId)"
+                size="small"
+                type="default"
+                variant="soft"
+              >
+                {{ t("player.together.invited") }}
+              </STag>
               <SButton
                 v-else
                 size="small"
