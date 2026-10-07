@@ -136,7 +136,8 @@ const tick = async (): Promise<void> => {
 };
 
 /**
- * 多人房没有建房接口，只能靠接受邀请进入。
+ * 加入多人房。multi/room/create 端点确实存在，但参数未知（试遍常见组合都是 400），
+ * 所以目前只能走接受邀请这条已验证的路
  * 分享链接里的 inviterUid 是服务端校验项，缺了会被拒
  */
 export const joinMultiRoom = async (

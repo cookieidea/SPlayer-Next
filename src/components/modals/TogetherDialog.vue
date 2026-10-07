@@ -119,7 +119,7 @@ const onJoin = async (): Promise<void> => {
   }
   const value = invitationInput.value.trim();
   if (!value) return;
-  // 多人房分享链接与双人共用这一个输入框：多人没有建房接口，只能靠链接被邀请进入
+  // 多人房分享链接与双人共用这一个输入框，靠链接路径分流
   if (isMultiInvitation(value)) {
     if (!(await togetherMulti.joinTogetherMulti(value, userId.value))) return;
     invitationInput.value = "";
