@@ -303,6 +303,12 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   const replaceQueue = !queueIsStale && needsQueueReplace(snapshot, localQueueIds);
   // 播放模式是独立维度：它变化时既没有新命令也不涉及队列替换，
   // 不能因为 !fresh && !replaceQueue 就提前返回
+  // 对端抢先改了模式：这条命令本身就是初始声明的终止条件。
+  // 少了它，claiming 会永远等不到自己声明的回显，把此后所有模式变化都吞掉。
+  // 必须先解除再计算 modeChanged，否则本轮已经算出 false，解除也没用
+  const remoteModeCommand =
+    fresh && command?.type === "PLAYMODE_CHANGE" && command.userId !== selfUserId;
+  if (remoteModeCommand) claimingMode = "";
   const claiming = claimingMode !== "" && snapshot.playMode !== claimingMode;
   const modeChanged =
     !claiming && snapshot.playMode !== "" && snapshot.playMode !== lastRemotePlayMode;
@@ -414,8 +420,12 @@ const tick = async (): Promise<void> => {
       pendingInitial = null;
       baseline = baselineOf(lastState);
       if (lastState.queueSongIds.length) {
-        localQueueIds = [...lastState.queueSongIds];
-        await guarded(() => reportQueue(lastState.queueSongIds), issuing);
+        const initialQueue = [...lastState.queueSongIds];
+        if (await guarded(() => reportQueue(initialQueue), issuing)) {
+          localQueueIds = initialQueue;
+        } else {
+          healthy = false;
+        }
       }
       if (lastState.songId) {
         healthy =
@@ -511,8 +521,11 @@ const tick = async (): Promise<void> => {
       const stale = issuing !== generation;
       if (!stale && awaitAdoption <= 0) {
         if (delta.changes.includes("queue")) {
-          if (await guarded(() => reportQueue(lastState.queueSongIds), issuing)) {
-            localQueueIds = [...lastState.queueSongIds];
+          // 发送值与写回值必须是同一个数组：请求期间本地可能已改成别的队列，
+          // 此时读 lastState 写回会让缓存与服务端实际持有的队列不一致
+          const sentQueue = [...lastState.queueSongIds];
+          if (await guarded(() => reportQueue(sentQueue), issuing)) {
+            localQueueIds = sentQueue;
             commit("queue");
           } else {
             healthy = false;

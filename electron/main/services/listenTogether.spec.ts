@@ -41,6 +41,7 @@ const snapshotBody = (
   anchorSongId = "",
   anchorPosition = -1,
   playMode = "ORDER_LOOP",
+  command: Record<string, unknown> | null = null,
 ) => ({
   status: 200,
   body: {
@@ -53,9 +54,20 @@ const snapshotBody = (
         displayList: { result: songIds },
         randomList: { result: songIds },
       },
-      playCommand: null,
+      playCommand: command,
     },
   },
+});
+
+/** 对端发出的播放模式命令 */
+const modeCommand = (userId: string, serverSeq = 1) => ({
+  userId,
+  commandType: "PLAYMODE_CHANGE",
+  playStatus: "",
+  formerSongId: "0",
+  targetSongId: "0",
+  progress: 0,
+  serverSeq,
 });
 
 const createBody = (roomId = "R1", users: number[] = [7]) => ({
@@ -1155,5 +1167,43 @@ describe("一起听房间状态机", () => {
       (e) => e.songIds.length === 2 && e.songIds[0] === "999" && e.songIds[1] === "998",
     );
     expect(dispatchedOld).toBe(false);
+  });
+  it("对端抢改模式时会解除初始认领", async () => {
+    const service = await load();
+    const applied: string[] = [];
+
+    let snapshotMode = "ORDER_LOOP";
+    let snapshotCommand: Record<string, unknown> | null = null;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        // 认领成功：服务端尚未回显
+        if (params.type === "PLAYMODE_CHANGE") return { status: 200, body: { code: 200 } };
+      }
+      if (name === "listen_together_sync_playlist_get") {
+        return snapshotBody(["100"], "", -1, snapshotMode, snapshotCommand);
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    service.onRemoteCommand((payload: { playMode?: string }) => {
+      if (payload.playMode) applied.push(payload.playMode);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    applied.length = 0;
+
+    // 对端抢先改成 SINGLE_LOOP，服务端一直不回显我们的 RANDOM
+    snapshotMode = "SINGLE_LOOP";
+    snapshotCommand = modeCommand("8", 5);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 必须解除认领并应用对端的模式
+    expect(applied).toContain("SINGLE_LOOP");
   });
 });
