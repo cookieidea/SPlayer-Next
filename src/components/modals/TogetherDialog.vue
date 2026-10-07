@@ -12,6 +12,7 @@ import type {
   TogetherFriend,
   TogetherInviteCard,
   TogetherMultiRoom,
+  TogetherRoom,
   TogetherRoomSong,
 } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
@@ -41,9 +42,12 @@ const friendListRef = ref<HTMLElement | null>(null);
 let friendListScroll = 0;
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
-const memberNames = ref("");
-const roomId = ref("");
-const memberText = computed(() => memberNames.value || t("player.together.waitingPeer"));
+/** 退出期间冻结房间信息：清空 store 后视图会翻到加入界面，淡出还没结束就"变脸" */
+const leavingDual = ref(false);
+const frozenDual = ref<TogetherRoom | null>(null);
+const dualRoom = computed(() => (leavingDual.value ? frozenDual.value : store.room));
+const roomId = computed(() => dualRoom.value?.roomId ?? "");
+const roomMembers = computed(() => dualRoom.value?.members ?? []);
 
 const multiRoom = computed(() => (leavingMulti.value ? frozenMulti.value : multiStore.room));
 
@@ -156,11 +160,6 @@ const onLeaveMulti = async (): Promise<void> => {
   }
 };
 
-const snapRoom = (): void => {
-  memberNames.value = store.memberNames;
-  roomId.value = store.room?.roomId ?? "";
-};
-
 watch(multiPane, (pane) => {
   if (pane === "invite") void loadMultiFriends();
 });
@@ -173,7 +172,6 @@ watch(
       return;
     }
     roomView.value = store.inRoom;
-    snapRoom();
     void loadInbox();
     if (store.inRoom) void loadFriends();
     else {
@@ -192,7 +190,6 @@ watch(
   () => {
     if (!props.open) return;
     if (!leaving) roomView.value = store.inRoom;
-    snapRoom();
     void loadInbox();
     if (store.inRoom) void loadFriends();
   },
@@ -215,7 +212,6 @@ const onCreate = async (): Promise<void> => {
   }
   pickedFriends.value = [];
   roomView.value = true;
-  snapRoom();
 };
 
 /** 建多人房并邀请已选好友。需要当前正在播放一首歌作为起播曲 */
@@ -226,7 +222,8 @@ const onCreateMulti = async (): Promise<void> => {
     await togetherMulti.inviteMultiFriends(pickedFriends.value);
   }
   pickedFriends.value = [];
-  emit("update:open", false);
+  // 不关对话框：多人房视图由 multiStore.room 驱动，关掉会让人以为退出去了，
+  // 得重新点一起听才看得到房间信息
 };
 
 const onJoin = async (): Promise<void> => {
@@ -246,15 +243,17 @@ const onJoin = async (): Promise<void> => {
   if (!(await together.joinRoom(value, userId.value))) return;
   invitationInput.value = "";
   roomView.value = true;
-  snapRoom();
 };
 
 const onLeave = async (): Promise<void> => {
   leaving = true;
+  frozenDual.value = store.room;
+  leavingDual.value = true;
   emit("update:open", false);
   try {
     await together.leaveRoom();
   } finally {
+    leavingDual.value = false;
     leaving = false;
   }
   friends.value = [];
@@ -274,7 +273,6 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   if (!(await together.acceptInvite(card, userId.value))) return;
   invites.value = [];
   roomView.value = true;
-  snapRoom();
 };
 
 /** 空串表示未在匹配；否则标明在匹配哪一类 */
@@ -456,7 +454,21 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
       <template v-else-if="roomView">
         <div class="flex flex-col gap-1">
           <span class="text-xs text-on-surface-variant">{{ t("player.together.members") }}</span>
-          <span class="text-sm break-all">{{ memberText }}</span>
+          <div v-if="roomMembers.length" class="flex flex-wrap gap-2">
+            <div
+              v-for="member in roomMembers"
+              :key="member.userId"
+              class="flex items-center gap-1.5"
+            >
+              <SImg :src="member.avatarUrl" class="size-6 rounded-full shrink-0" />
+              <span class="text-xs truncate max-w-[88px]">
+                {{ member.nickname || member.userId }}
+              </span>
+            </div>
+          </div>
+          <span v-else class="text-sm text-on-surface-variant/70">
+            {{ t("player.together.waitingPeer") }}
+          </span>
           <span class="text-xs text-on-surface-variant mt-2">{{ t("player.together.room") }}</span>
           <span class="text-xs break-all text-on-surface-variant/80">{{ roomId }}</span>
         </div>
