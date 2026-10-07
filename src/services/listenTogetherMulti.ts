@@ -262,7 +262,12 @@ export const voteSkipMultiSong = (): Promise<void> =>
 
 export const removeMultiSong = (songId: string): Promise<void> =>
   withBusy(async () => {
-    const message = await window.api.togetherMulti.removeSong(songId, 0);
+    // 删除要带房间里的 songBizId：实测它是服务端定位歌曲的凭据，
+    // 曲目菜单只拿得到 songId，所以在这里从房间歌曲里查
+    const room = useTogetherMultiStore().room;
+    const songs = [...(room?.playSong ? [room.playSong] : []), ...(room?.nextSongs ?? [])];
+    const song = songs.find((item) => item.songId === songId);
+    const message = await window.api.togetherMulti.removeSong(songId, song?.songBizId ?? 0);
     toast.success(message || "已从房间队列移除");
   }).then(() => undefined);
 

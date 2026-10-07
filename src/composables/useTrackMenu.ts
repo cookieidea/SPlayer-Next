@@ -8,7 +8,7 @@ import { useSettingsStore } from "@/stores/settings";
 import { usePluginsStore } from "@/stores/plugins";
 import { useStatusStore } from "@/stores/status";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
-import { addMultiSong, topMultiSong } from "@/services/listenTogetherMulti";
+import { addMultiSong, removeMultiSong, topMultiSong } from "@/services/listenTogetherMulti";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import { buildDownloadQualityItems } from "@/composables/useDownload";
@@ -109,6 +109,11 @@ export const useTrackMenu = (
               key: "togetherTop",
               label: t("player.together.topInRoom"),
               icon: markRaw(IconChevronsUp),
+            },
+            {
+              key: "togetherRemove",
+              label: t("player.together.removeFromRoom"),
+              icon: markRaw(IconTrash2),
             },
           ]
         : []),
@@ -223,6 +228,11 @@ export const useTrackMenu = (
     }
     if (key === "togetherTop") {
       await topMultiSong(current);
+      return;
+    }
+    if (key === "togetherRemove") {
+      // 删除只对「待播」生效，正在播的那首由服务端拒绝并给出文案
+      await removeMultiSong(current.id);
       return;
     }
     // 下载子菜单：download:<音质>，空音质表示默认
