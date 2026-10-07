@@ -280,6 +280,9 @@ export const restoreMultiRoom = async (userId: string): Promise<TogetherMultiRoo
   session = { roomId: next.roomId, userId, generation: issuing };
   publish(next, issuing);
   startMultiTick();
+  // 快照里的 playSong 可能为空，当前歌曲要等心跳。不立即拉一次的话，
+  // 恢复后要等一个心跳周期（8 秒）才开始跟随
+  void tick();
   return next;
 };
 

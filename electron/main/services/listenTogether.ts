@@ -1011,7 +1011,13 @@ export const restore = async (userId: string): Promise<TogetherRoom | null> => {
   const status = statusFromBody(await callNetease("listen_together_status", {}));
   if (operation !== roomOperation) return null;
   if (!status.inRoom || !status.room) return null;
-  return enterRoom(status.room, userId, "restore");
+  const restored = enterRoom(status.room, userId, "restore");
+  // status/get 只给房间与成员，当前歌曲/模式/队列要等快照。
+  // 不立即拉一次的话，恢复后要等一个快照周期（最长 4 秒）才开始跟随
+  void guarded(async () => {
+    await applySnapshot(true);
+  }, generation);
+  return restored;
 };
 
 export const updateLocal = (state: TogetherLocalState): void => {

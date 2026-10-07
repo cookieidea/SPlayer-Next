@@ -15,6 +15,7 @@ import {
   inviteToMultiRoom,
   setStrangerVisible,
   onMultiRoom,
+  restoreMultiRoom,
   startMultiMatch,
   startStrangerMatch,
   removeMultiSong,
@@ -426,6 +427,22 @@ describe("多人一起听", () => {
     expect(mocks.call).toHaveBeenLastCalledWith("listen_together_listening_privacy_update", {
       privacyKey: "listening_entrance",
       value: 0,
+    });
+  });
+
+  it("恢复会话时立即拉一次心跳，不必等周期", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: { multiLtRoomSnapshot: multiBody().body.data.multiLtRoomSnapshot },
+      },
+    });
+    await restoreMultiRoom("88");
+
+    // 不立即拉的话，恢复后要等 8 秒心跳周期才开始跟随
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_heartbeat", {
+      roomId: "R_1",
     });
   });
 });
