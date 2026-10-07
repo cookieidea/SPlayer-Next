@@ -245,7 +245,8 @@ const onJoin = async (): Promise<void> => {
   if (isMultiInvitation(value)) {
     if (!(await togetherMulti.joinTogetherMulti(value, userId.value))) return;
     invitationInput.value = "";
-    emit("update:open", false);
+    // 与建房一致：不关对话框。多人房视图由 multiStore.room 驱动，
+    // 关掉会让人以为没进去，还得重新点一起听才看得到房间
     return;
   }
   if (!(await together.joinRoom(value, userId.value))) return;
