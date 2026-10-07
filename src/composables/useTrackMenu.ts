@@ -5,6 +5,7 @@ import type { CollectionType } from "@/types/collection";
 import type { DropdownMenuItem } from "@/components/ui/SDropdownMenu.vue";
 import * as player from "@/core/player";
 import { useSettingsStore } from "@/stores/settings";
+import { useUserStore } from "@/stores/user";
 import { usePluginsStore } from "@/stores/plugins";
 import { useStatusStore } from "@/stores/status";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
@@ -70,6 +71,7 @@ export const useTrackMenu = (
   const settings = useSettingsStore();
   const plugins = usePluginsStore();
   const multiStore = useTogetherMultiStore();
+  const user = useUserStore();
   const { copy } = useCopyText();
   const isPlaylist = options.collectionType === "playlist";
   const isCloudView = options.collectionType === "cloud";
@@ -81,7 +83,9 @@ export const useTrackMenu = (
     togetherSongAction(
       multiStore.inRoom,
       String(track.value?.id ?? ""),
-      multiStore.queueTracks.map((item) => item.id),
+      String(user.profile?.userId ?? ""),
+      String(multiStore.room?.playSong?.songId ?? ""),
+      multiStore.room?.nextSongs ?? [],
     ),
   );
   // 菜单项
@@ -108,29 +112,29 @@ export const useTrackMenu = (
         separator: showPlay,
         show: canAddToPlaylist,
       },
-      ...(roomAction.value !== "none"
-        ? roomAction.value === "top"
+      ...(roomAction.value === "pending"
+        ? [
+            // 已在待播窗口且是自己加的：不再显示"加入"，只留置顶与移除
+            {
+              key: "togetherTop",
+              label: t("player.together.topInRoom"),
+              icon: markRaw(IconChevronsUp),
+            },
+            {
+              key: "togetherRemove",
+              label: t("player.together.removeFromRoom"),
+              icon: markRaw(IconTrash2),
+            },
+          ]
+        : roomAction.value === "add"
           ? [
-              // 已在房间：只能置顶或移除，再"加入"没有意义
-              {
-                key: "togetherTop",
-                label: t("player.together.topInRoom"),
-                icon: markRaw(IconChevronsUp),
-              },
-              {
-                key: "togetherRemove",
-                label: t("player.together.removeFromRoom"),
-                icon: markRaw(IconTrash2),
-              },
-            ]
-          : [
               {
                 key: "togetherAdd",
                 label: t("player.together.addToRoom"),
                 icon: markRaw(IconUsers),
               },
             ]
-        : []),
+          : []),
       {
         key: "showInExplorer",
         label: t("songList.context.showInExplorer"),
