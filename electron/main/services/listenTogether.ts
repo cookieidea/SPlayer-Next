@@ -121,6 +121,21 @@ export const onError = (listener: ErrorListener): (() => void) => {
 
 export const getSession = (): TogetherSession | null => session;
 
+const ROOM_GONE_CODES = new Set([488]);
+const ROOM_GONE_HINTS = ["一起听已失效", "连线已经由", "房间已失效", "room not exist", "已结束"];
+
+const roomGoneCode = (error: unknown): number => {
+  const response = (error as { response?: { body?: { code?: unknown } } })?.response;
+  const code = Number(response?.body?.code);
+  return Number.isFinite(code) ? code : 0;
+};
+
+const isRoomGone = (error: unknown): boolean => {
+  if (ROOM_GONE_CODES.has(roomGoneCode(error))) return true;
+  const text = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return ROOM_GONE_HINTS.some((hint) => text.includes(hint.toLowerCase()));
+};
+
 const isRateLimited = (error: unknown): boolean => {
   let current: unknown = error;
   for (let depth = 0; current && depth < 8; depth++) {
@@ -141,6 +156,10 @@ const isRateLimited = (error: unknown): boolean => {
 
 const registerFailure = (error: unknown): void => {
   const message = error instanceof Error ? error.message : String(error);
+  if (isRoomGone(error)) {
+    endSession("server");
+    return;
+  }
   emitError(message);
   if (!isRateLimited(error)) return;
   rateLimitFailures += 1;
@@ -284,12 +303,20 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
 const beat = async (): Promise<void> => {
   if (!session) return;
   const roomId = session.roomId;
-  await callNetease("listen_together_heartbeat", {
-    roomId,
-    songId: lastState.songId || "0",
-    playing: lastState.playing,
-    progressMs: lastState.positionMs,
-  });
+  try {
+    await callNetease("listen_together_heartbeat", {
+      roomId,
+      songId: lastState.songId || "0",
+      playing: lastState.playing,
+      progressMs: lastState.positionMs,
+    });
+  } catch (error) {
+    if (isRoomGone(error)) {
+      endSession("server");
+      return;
+    }
+    neteaseLog.warn("一起听心跳失败:", error);
+  }
   const status = statusFromBody(await callNetease("listen_together_status", {}));
   if (!session || session.roomId !== roomId) return;
   if (!status.inRoom) {
@@ -308,26 +335,41 @@ const handleEnded = (): void => {
   pendingAdvanceAt = Date.now();
 };
 
+const guarded = async (work: () => Promise<void>): Promise<boolean> => {
+  try {
+    await work();
+    return true;
+  } catch (error) {
+    neteaseLog.warn("一起听同步失败:", error);
+    registerFailure(error);
+    return false;
+  }
+};
+
 const tick = async (): Promise<void> => {
   if (!session || ticking || !hasLocalState) return;
   if (Date.now() < rateLimitUntil) return;
   ticking = true;
   const selfUserId = session.userId;
+  let healthy = true;
   try {
     if (pendingInitial === "report") {
       pendingInitial = null;
       baseline = baselineOf(lastState);
       if (lastState.queueSongIds.length) {
         localQueueIds = [...lastState.queueSongIds];
-        await reportQueue(lastState.queueSongIds);
+        await guarded(() => reportQueue(lastState.queueSongIds));
       }
-      if (lastState.songId) await reportCommand("GOTO", "", lastState.playing);
+      if (lastState.songId) {
+        healthy = (await guarded(() => reportCommand("GOTO", "", lastState.playing))) && healthy;
+      }
     } else if (pendingInitial === "adopt") {
       pendingInitial = null;
       if (await applySnapshot(true)) {
         awaitAdoption = ADOPT_CONFIRM_TICKS;
         if (mode === "restore") {
-          await reportCommand("PAUSE", lastState.songId, false);
+          healthy =
+            (await guarded(() => reportCommand("PAUSE", lastState.songId, false))) && healthy;
         }
       }
       tickCount += 1;
@@ -340,32 +382,40 @@ const tick = async (): Promise<void> => {
       baseline = delta.baseline;
       if (awaitAdoption <= 0) {
         if (delta.changes.includes("queue")) {
-          await reportQueue(lastState.queueSongIds);
+          healthy = (await guarded(() => reportQueue(lastState.queueSongIds))) && healthy;
           localQueueIds = [...lastState.queueSongIds];
         }
         if (delta.changes.includes("ended")) handleEnded();
         const action = lastState.songId ? reportFor(delta.changes, lastState.playing) : null;
         if (action) {
           if (action.type === "GOTO") leaderId = selfUserId;
-          await reportCommand(
-            action.type,
-            delta.changes.includes("track") ? previousSongId : "",
-            action.playing,
-          );
+          healthy =
+            (await guarded(() =>
+              reportCommand(
+                action.type,
+                delta.changes.includes("track") ? previousSongId : "",
+                action.playing,
+              ),
+            )) && healthy;
         }
       }
     }
     if (awaitAdoption > 0) awaitAdoption -= 1;
-    if (await applySnapshot(false)) awaitAdoption = ADOPT_CONFIRM_TICKS;
+    healthy =
+      (await guarded(async () => {
+        if (await applySnapshot(false)) awaitAdoption = ADOPT_CONFIRM_TICKS;
+      })) && healthy;
     tickCount += 1;
-    if (tickCount % HEARTBEAT_TICKS === 0) await beat();
+    if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await guarded(beat)) && healthy;
     if (pendingAdvanceAt && Date.now() - pendingAdvanceAt >= ADVANCE_HANDOVER_MS) {
       pendingAdvanceAt = 0;
       leaderId = selfUserId;
       emitAdvance();
     }
-    rateLimitFailures = 0;
-    rateLimitUntil = 0;
+    if (healthy) {
+      rateLimitFailures = 0;
+      rateLimitUntil = 0;
+    }
   } catch (error) {
     neteaseLog.warn("一起听同步失败:", error);
     registerFailure(error);

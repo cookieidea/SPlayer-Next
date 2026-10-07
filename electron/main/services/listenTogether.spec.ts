@@ -454,6 +454,52 @@ describe("一起听房间状态机", () => {
     expect(service.getSession()).not.toBeNull();
   });
 
+  it("上报失败不影响本轮的心跳与状态探测", async () => {
+    const service = await load();
+    const reasons: string[] = [];
+    service.onSessionEnd((reason: string) => reasons.push(reason));
+
+    const attempted: string[] = [];
+    mocks.call.mockImplementation(async (name: string) => {
+      attempted.push(name);
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        throw new Error("netease 488: 一起听已失效");
+      }
+      return snapshotBody(["100", "200"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "1" }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(reasons).toContain("server");
+    expect(service.getSession()).toBeNull();
+  });
+
+  it("心跳失败不阻塞状态探测", async () => {
+    const service = await load();
+    let statusCalls = 0;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") {
+        statusCalls += 1;
+        return statusBody(true, "R1", [7]);
+      }
+      if (name === "listen_together_heartbeat") throw new Error("网络抖动");
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    const before = statusCalls;
+    for (let i = 0; i < 8; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(statusCalls).toBeGreaterThan(before);
+  });
+
   it("状态查询失败时保留邀请卡片", async () => {
     const service = await load();
     const inboxBody = {
