@@ -584,4 +584,44 @@ describe("一起听渲染端服务", () => {
     const after = sync.mock.calls.at(-1)?.[0] as { queueSongIds: string[] };
     expect(after.queueSongIds).toEqual(ids);
   });
+  it("房间歌单过大时仍能起播当前曲目", async () => {
+    // 模拟上千首：一次要太多就整批失败（真实服务端的表现）
+    const big = Array.from({ length: 1000 }, (_, i) => String(i + 1));
+    const target = "500";
+    mocks.songsByIds.mockImplementation(async (ids) => {
+      const list = (ids as Array<string | number>).map(String);
+      if (list.length > 200) return [];
+      return list.map(track);
+    });
+    queue.setQueue([track("9999")]);
+    useStatusStore().playIndex = 0;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "GOTO",
+        formerSongId: "0",
+        targetSongId: target,
+        progressMs: 0,
+        playing: true,
+        serverSeq: 1,
+      },
+      songIds: big,
+      playMode: "",
+      anchorSongId: target,
+      anchorPosition: 499,
+      initial: true,
+      autoPlay: true,
+    });
+
+    await vi.waitFor(() => expect(mocks.playFrom).toHaveBeenCalled());
+    const call = mocks.playFrom.mock.calls[0] as unknown[];
+    const list = call[0] as Track[];
+    expect(list[call[1] as number as number]?.id).toBe(target);
+  });
 });

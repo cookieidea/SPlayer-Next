@@ -19,6 +19,10 @@ const REPORT_INTERVAL_MS = 1000;
 
 const QUEUE_FETCH_LIMIT = 500;
 
+/** 整表解析失败时，只解析目标曲目附近的这么多首。
+ *  房间歌单可能上千首，整表解析既慢又容易整批失败，而起播只需要当前那一首 */
+const ADOPT_WINDOW = 200;
+
 let busyCount = 0;
 
 const beginBusy = (): void => {
@@ -78,6 +82,16 @@ const pushState = (): void => {
   window.api.together.sync(collectState());
 };
 
+/** 以目标曲目为中心取一段窗口，务必包含目标本身 */
+const windowAround = (ids: readonly string[], targetId: string, size: number): string[] => {
+  if (ids.length <= size) return [...ids];
+  const at = ids.indexOf(targetId);
+  if (at < 0) return ids.slice(0, size);
+  const half = Math.floor(size / 2);
+  const start = Math.max(0, Math.min(at - half, ids.length - size));
+  return ids.slice(start, start + size);
+};
+
 const tracksForIds = async (songIds: readonly string[]): Promise<Track[]> => {
   const known = new Map<string, Track>();
   for (const item of queue.queue.value) {
@@ -132,7 +146,13 @@ const applyRemote = async (
   playOnEntry = false,
 ): Promise<void> => {
   if (songIds.length > 0) {
-    const tracks = await tracksForIds(songIds);
+    const targetId = command?.targetSongId || anchorSongId;
+    let tracks = await tracksForIds(songIds);
+    // 房间歌单可能上千首：整表解析失败或目标缺失时，退化为目标附近的窗口。
+    // 否则这里会静默返回——用户看到的就是"进房什么都没发生"
+    if (targetId && !tracks.some((track) => track.id === targetId)) {
+      tracks = await tracksForIds(windowAround(songIds, targetId, ADOPT_WINDOW));
+    }
     if (tracks.length === 0) return;
     if (!command) {
       const currentId = useStatusStore().currentTrack?.id ?? "";
