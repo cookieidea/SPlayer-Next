@@ -3,6 +3,7 @@ import { useHeartMode } from "@/composables/useHeartMode";
 import { useFmMode } from "@/composables/useFmMode";
 import { toast } from "@/composables/useToast";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import IconDices from "~icons/lucide/dices";
 import IconCalendarDays from "~icons/lucide/calendar-days";
 import IconHeart from "~icons/sp/heart-mode";
@@ -12,6 +13,7 @@ import IconRadio from "~icons/lucide/radio";
  * 首页快捷入口
  */
 export const useQuickActions = () => {
+  const guard = useTogetherPlaybackGuard();
   const { t } = useI18n();
   const router = useRouter();
   const user = useUserStore();
@@ -33,11 +35,11 @@ export const useQuickActions = () => {
     if (fromLocal) {
       const trackRes = await window.api.library.getRandomTrack();
       const localTrack = trackRes.success ? trackRes.data : null;
-      if (localTrack) await player.playNow(localTrack);
+      if (localTrack && !guard.blockLocalPlay(localTrack)) await player.playNow(localTrack);
       return;
     }
     const onlineTrack = online[Math.floor(Math.random() * online.length)];
-    if (onlineTrack) await player.playNow(onlineTrack);
+    if (onlineTrack && !guard.blockLocalPlay(onlineTrack)) await player.playNow(onlineTrack);
   }, 800);
 
   /** 进入心动模式 */

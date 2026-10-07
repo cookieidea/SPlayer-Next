@@ -4,6 +4,7 @@ import type { Track } from "@shared/types/player";
 import { useMediaStore } from "@/stores/media";
 import { useStatusStore } from "@/stores/status";
 import { useDownloadStore } from "@/stores/download";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import { useDownload } from "@/composables/useDownload";
 import { dialog } from "@/composables/useDialog";
 import { isLosslessQuality, getQualityLabel } from "@/utils/quality";
@@ -26,6 +27,7 @@ const props = defineProps<{
   tasks: DownloadTask[];
 }>();
 
+const guard = useTogetherPlaybackGuard();
 const { t } = useI18n();
 const media = useMediaStore();
 const status = useStatusStore();
@@ -76,6 +78,8 @@ const isPlaying = (task: DownloadTask): boolean =>
 
 /** 在可播放队列中定位并播放 */
 const playTask = (task: DownloadTask): void => {
+  // 本地文件不在房间队列里，加进去对方也放不了，只提示
+  if (guard.blockLocalPlay()) return;
   const index = playableTasks.value.findIndex((item) => item.taskId === task.taskId);
   if (index >= 0) void player.playFrom(playableTasks.value.map(toLocalTrack), index);
 };
@@ -113,6 +117,7 @@ const confirmDelete = async (task: DownloadTask): Promise<void> => {
 
 /** 播放全部已完成（供下载页顶栏调用） */
 const playAll = (): void => {
+  if (guard.blockLocalPlay()) return;
   if (playableTasks.value.length > 0) {
     void player.playFrom(playableTasks.value.map(toLocalTrack), 0);
   }

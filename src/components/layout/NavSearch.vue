@@ -9,6 +9,7 @@ import { navigateToAlbum, navigateToArtist, navigateToPlaylist } from "@/utils/n
 import { parseMusicLink, type LinkType } from "@/utils/link";
 import type { TrackSource } from "@shared/types/player";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import IconLucideMusic from "~icons/lucide/music";
 import IconLucideUser from "~icons/lucide/user";
 import IconLucideDisc from "~icons/lucide/disc";
@@ -16,6 +17,7 @@ import IconLucideListMusic from "~icons/lucide/list-music";
 import IconLucideAudioWaveform from "~icons/lucide/audio-waveform";
 
 const { t, locale } = useI18n();
+const guard = useTogetherPlaybackGuard();
 const router = useRouter();
 const data = useDataStore();
 const status = useStatusStore();
@@ -127,7 +129,7 @@ const navigateToResource = async (
     case "song":
       try {
         const [track] = await getNeteaseSongsByIds([Number(id)]);
-        if (track) await player.playNow(track);
+        if (track && !guard.blockLocalPlay(track)) await player.playNow(track);
       } catch (err) {
         console.warn("[NavSearch] play song failed:", err);
       }

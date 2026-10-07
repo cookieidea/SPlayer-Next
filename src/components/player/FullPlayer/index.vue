@@ -24,6 +24,8 @@ const media = useMediaStore();
 const settings = useSettingsStore();
 const fav = useFavorite();
 const { enqueue: enqueueDownload } = useDownload();
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
 const { t } = useI18n();
 const {
   isPlaying,
@@ -49,6 +51,24 @@ const initialLyricTimeMs = ref(0);
 const displayTrack = computed(() => media.track ?? status.currentTrack);
 const hasLyric = computed(() => media.parsedLyric.length > 0 || media.lyricLoading);
 const hasTrack = computed(() => !!displayTrack.value);
+
+const guard = useTogetherPlaybackGuard();
+
+const onPrev = async (): Promise<void> => {
+  if (guard.blockLocalPlay()) return;
+  await player.prevTrack();
+};
+
+const onNext = async (): Promise<void> => {
+  // 上/下一首没有具体曲目可加入队列，只提示
+  if (guard.blockLocalPlay()) return;
+  await player.nextTrack();
+};
+
+const onTogglePlay = async (): Promise<void> => {
+  if (guard.blockPause()) return;
+  await player.togglePlay();
+};
 
 /** 精确播放时间（毫秒） */
 const { start: startTick, stop: stopTick } = usePlaybackTime((currentMs) => {
@@ -431,7 +451,7 @@ const showComments = (): void => {
                 variant="ghost"
                 circle
                 :disabled="!hasTrack || fmMode"
-                @click="player.prevTrack()"
+                @click="onPrev"
               >
                 <template #icon><IconLucideSkipBack /></template>
               </SButton>
@@ -442,7 +462,7 @@ const showComments = (): void => {
                 circle
                 :loading="isLoading"
                 :disabled="!hasTrack && !isLoading"
-                @click="player.togglePlay()"
+                @click="onTogglePlay"
               >
                 <template #icon>
                   <SIconSwap :active="isPlaying">
@@ -451,13 +471,7 @@ const showComments = (): void => {
                   </SIconSwap>
                 </template>
               </SButton>
-              <SButton
-                type="cover"
-                variant="ghost"
-                circle
-                :disabled="!hasTrack"
-                @click="player.nextTrack()"
-              >
+              <SButton type="cover" variant="ghost" circle :disabled="!hasTrack" @click="onNext">
                 <template #icon><IconLucideSkipForward /></template>
               </SButton>
               <SButton

@@ -3,6 +3,7 @@ import type { Component } from "vue";
 import type { Track } from "@shared/types/player";
 import type { TopAlbum, TopArtist, TopTrack } from "@shared/types/stats";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import { navigateToAlbum, navigateToArtist } from "@/utils/navigate";
 import { formatCompact } from "@/utils/format";
 import { useLibraryStore } from "@/stores/library";
@@ -35,6 +36,7 @@ interface RankSection {
   onClick: (item: RankItem) => void;
 }
 
+const guard = useTogetherPlaybackGuard();
 const props = defineProps<{
   /** 最常听的歌曲 */
   songs: TopTrack[];
@@ -133,6 +135,7 @@ const playCountText = (plays: number): string => formatCompact(plays, locale.val
  * @param track - 曲目
  */
 const playSong = (track: Track): void => {
+  if (guard.blockLocalPlay(track)) return;
   void player.playNow(track);
 };
 </script>

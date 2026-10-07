@@ -3,6 +3,7 @@ import { useUserStore } from "@/stores/user";
 import { useDataStore } from "@/stores/data";
 import { toast } from "@/composables/useToast";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 
 /** hero 源类型 */
 type HeroKind = "daily" | "liked" | "local";
@@ -49,6 +50,7 @@ const toSource = (kind: HeroKind, tracks: Track[]): HeroSource | null =>
  * 每日推荐数据由 data store 按天缓存（IndexedDB），此处不再额外缓存。
  */
 export const useDailyRecommend = () => {
+  const guard = useTogetherPlaybackGuard();
   const { t } = useI18n();
   const user = useUserStore();
   const data = useDataStore();
@@ -117,6 +119,7 @@ export const useDailyRecommend = () => {
       toast.warning(t("home.hero.empty"));
       return;
     }
+    if (guard.blockLocalPlay(current.tracks[current.featuredIndex] ?? null)) return;
     await player.playFrom(current.tracks, current.featuredIndex);
   };
 

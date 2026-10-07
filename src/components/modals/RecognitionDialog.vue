@@ -5,6 +5,7 @@ import { songsByIds as getNeteaseSongsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { useRecognitionSession } from "@/composables/useRecognitionSession";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import { withPicSize } from "@/utils/format/netease";
 import IconLucideArrowLeft from "~icons/lucide/arrow-left";
 import IconLucideAudioWaveform from "~icons/lucide/audio-waveform";
@@ -12,6 +13,7 @@ import IconLucidePlay from "~icons/lucide/play";
 import IconLucideSearch from "~icons/lucide/search";
 
 const { t } = useI18n();
+const guard = useTogetherPlaybackGuard();
 const router = useRouter();
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{ "update:open": [value: boolean] }>();
@@ -70,6 +72,7 @@ const playCandidate = async (candidate: RecognitionCandidate): Promise<void> => 
     next.set(candidate.songId, fetched);
     trackCache.value = next;
   }
+  if (guard.blockLocalPlay(track)) return;
   playingId.value = candidate.songId;
   try {
     await player.playNow(track);

@@ -5,8 +5,7 @@ import type { SortField } from "@/types/list";
 import { useMediaStore } from "@/stores/media";
 import { useStatusStore } from "@/stores/status";
 import { useSettingsStore } from "@/stores/settings";
-import { useTogetherMultiStore } from "@/stores/togetherMulti";
-import { toast } from "@/composables/useToast";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import { useTrackMenu } from "@/composables/useTrackMenu";
 import { useMultiSelect } from "@/composables/useMultiSelect";
 import { useDownload } from "@/composables/useDownload";
@@ -277,16 +276,28 @@ const onListContextMenu = (event: MouseEvent): void => {
  * @param item - 歌曲数据
  * @param index - 列表索引
  */
-const multiStore = useTogetherMultiStore();
+const guard = useTogetherPlaybackGuard();
+
+/** 列表行左键播放：多人房里交给房间决定播放态，不给本地操作 */
+const onRowPlay = async (item: Track): Promise<void> => {
+  if (batch.active.value) {
+    batch.toggle(item.id);
+    return;
+  }
+  if (playingId.value === item.id) {
+    if (guard.blockPause()) return;
+    await player.togglePlay();
+    return;
+  }
+  if (guard.blockLocalPlay(item)) return;
+  await player.playNow(item, props.playbackContext);
+};
 
 const onTrackDblClick = (item: Track, index: number): void => {
   if (batch.active.value) return;
   // 多人房里本地换歌会被心跳拉回房间当前曲，等于白切，还会把本地队列打乱。
   // 要换歌只能靠房间的投票切歌
-  if (multiStore.inRoom) {
-    toast.warning("多人一起听中不能本地切歌，请用投票切歌");
-    return;
-  }
+  if (guard.blockLocalPlay(sortedItems.value[index] ?? null)) return;
   if (route.name === "search" && settings.player.searchPlayBehavior !== "all") {
     void player.playNow(item, props.playbackContext);
     return;
@@ -550,13 +561,7 @@ defineExpose({
                       ? 'text-primary'
                       : 'text-on-surface-variant'
                 "
-                @click.stop="
-                  batch.active.value
-                    ? batch.toggle(item.id)
-                    : playingId === item.id
-                      ? player.togglePlay()
-                      : player.playNow(item, props.playbackContext)
-                "
+                @click.stop="onRowPlay(item)"
               >
                 <!-- 多选模式 -->
                 <SCheckbox

@@ -7,6 +7,7 @@ import { useMediaStore } from "@/stores/media";
 import { useThemeStore } from "@/stores/theme";
 import { clearQueue, queue, queueLength } from "@/stores/queue";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 
 export interface UseQueuePanelOptions {
   listRef: Ref<SVirtualListExposed | null>;
@@ -19,6 +20,7 @@ export interface UseQueuePanelOptions {
  */
 export const useQueuePanel = (options: UseQueuePanelOptions) => {
   const { t } = useI18n();
+  const guard = useTogetherPlaybackGuard();
   const statusStore = useStatusStore();
   const mediaStore = useMediaStore();
 
@@ -30,6 +32,8 @@ export const useQueuePanel = (options: UseQueuePanelOptions) => {
 
   /** 播放指定索引；是否关闭面板交给调用方决定 */
   const playAt = async (index: number): Promise<void> => {
+    // 多人房里播放态由房间决定，本地点歌会被心跳拉回
+    if (guard.blockLocalPlay(queue.value[index] ?? null)) return;
     await player.playAtIndex(index);
   };
 
