@@ -68,6 +68,14 @@ describe("一起听本地变化识别", () => {
     expect(delta.changes).toEqual([]);
   });
 
+  it("切歌同时暂停时两个变化都要报", () => {
+    // 曾经的 else if 链会只报 track，导致对方不知道暂停了
+    const baseline = baselineOf(state({ playing: true }));
+    const delta = detectLocalChanges(state({ songId: "7", playing: false }), baseline);
+    expect(delta.changes).toContain("track");
+    expect(delta.changes).toContain("playState");
+  });
+
   it("切歌只上报一次", () => {
     const baseline = baselineOf(state());
     const delta = detectLocalChanges(state({ songId: "7" }), baseline);

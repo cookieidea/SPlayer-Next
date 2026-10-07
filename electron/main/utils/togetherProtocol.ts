@@ -88,9 +88,12 @@ export const detectLocalChanges = (
   }
   if (next.playMode !== baseline.playMode) changes.push("playMode");
   if (!next.songId) return { baseline: next, changes };
-  if (next.songId !== baseline.songId) changes.push("track");
-  else if (next.seekRevision !== baseline.seekRevision) changes.push("progress");
-  else if (next.playing !== baseline.playing) changes.push("playState");
+  const songChanged = next.songId !== baseline.songId;
+  if (songChanged) changes.push("track");
+  // 切歌与暂停可能发生在同一轮：这里是 if 而不是 else if，
+  // 否则"切歌同时暂停"只会报 track，对方不知道暂停了
+  if (!songChanged && next.seekRevision !== baseline.seekRevision) changes.push("progress");
+  if (next.playing !== baseline.playing) changes.push("playState");
   return { baseline: next, changes };
 };
 
