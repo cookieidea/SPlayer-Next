@@ -202,27 +202,31 @@ watch(
  * 建房。选 0~1 位好友建双人房，选 2 位以上建多人房
  * （多人房需要一首起播歌，因此要求当前正在播放）
  */
+/**
+ * 建双人房。选中 1 位好友时顺手邀请他。
+ * 多人房走另一个按钮，两者不再按人数自动分流，否则两个入口语义重叠
+ */
 const onCreate = async (): Promise<void> => {
-  if (!userId.value) {
-    toast.warning(t("player.together.needLogin"));
-    return;
-  }
-  const picked = pickedFriends.value;
-  if (picked.length >= 2) {
-    if (!(await togetherMulti.createMultiRoom(userId.value))) return;
-    await togetherMulti.inviteMultiFriends(picked);
-    pickedFriends.value = [];
-    emit("update:open", false);
-    return;
-  }
+  if (needLogin()) return;
   if (!(await together.createRoom(userId.value))) return;
-  if (picked.length === 1) {
-    const friend = createFriends.value.find((item) => item.userId === picked[0]);
+  if (pickedFriends.value.length > 0) {
+    const friend = createFriends.value.find((item) => item.userId === pickedFriends.value[0]);
     if (friend) await together.inviteFriend(friend);
   }
   pickedFriends.value = [];
   roomView.value = true;
   snapRoom();
+};
+
+/** 建多人房并邀请已选好友。需要当前正在播放一首歌作为起播曲 */
+const onCreateMulti = async (): Promise<void> => {
+  if (needLogin()) return;
+  if (!(await togetherMulti.createMultiRoom(userId.value))) return;
+  if (pickedFriends.value.length > 0) {
+    await togetherMulti.inviteMultiFriends(pickedFriends.value);
+  }
+  pickedFriends.value = [];
+  emit("update:open", false);
 };
 
 const onJoin = async (): Promise<void> => {
@@ -592,36 +596,42 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
             </div>
           </div>
         </div>
-        <SButton type="primary" :loading="store.busy" :disabled="!userId" @click="onCreate">
-          {{
-            pickedFriends.length >= 2
-              ? t("player.together.createMulti")
-              : t("player.together.create")
-          }}
-        </SButton>
-        <template v-if="!matching">
+        <div class="grid grid-cols-2 gap-2">
+          <SButton type="primary" :loading="store.busy" :disabled="!userId" @click="onCreate">
+            {{ t("player.together.create") }}
+          </SButton>
           <SButton
-            type="info"
             variant="secondary"
             :loading="multiStore.busy"
             :disabled="!userId"
-            @click="onStartMatch"
+            @click="onCreateMulti"
           >
-            {{ t("player.together.matchDuo") }}
+            {{ t("player.together.createMulti") }}
           </SButton>
-          <SButton
-            type="info"
-            variant="secondary"
-            :loading="multiStore.busy"
-            :disabled="!userId"
-            @click="onStartMultiMatch"
-          >
-            {{ t("player.together.matchMulti") }}
+          <template v-if="!matching">
+            <SButton
+              type="info"
+              variant="secondary"
+              :loading="multiStore.busy"
+              :disabled="!userId"
+              @click="onStartMatch"
+            >
+              {{ t("player.together.matchDuo") }}
+            </SButton>
+            <SButton
+              type="info"
+              variant="secondary"
+              :loading="multiStore.busy"
+              :disabled="!userId"
+              @click="onStartMultiMatch"
+            >
+              {{ t("player.together.matchMulti") }}
+            </SButton>
+          </template>
+          <SButton v-else type="error" variant="secondary" @click="onCancelMatch">
+            {{ t("player.together.cancelMatch") }}
           </SButton>
-        </template>
-        <SButton v-else type="error" variant="secondary" @click="onCancelMatch">
-          {{ t("player.together.cancelMatch") }}
-        </SButton>
+        </div>
         <SDivider />
         <div class="flex flex-col gap-2">
           <SInput

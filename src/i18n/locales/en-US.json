@@ -544,7 +544,7 @@
       "strangerMatch": "Match (2 people)",
       "matchDuo": "Match with a stranger",
       "createMulti": "Create multi room",
-      "pickFriendsHint": "Pick friends (2+ creates a multi room)",
+      "pickFriendsHint": "Pick friends to invite (optional; multi room needs a song playing)",
       "picked": "Picked",
       "allowStranger": "Allow strangers to join",
       "matchMulti": "Multi match",

@@ -5,6 +5,8 @@ import type { SortField } from "@/types/list";
 import { useMediaStore } from "@/stores/media";
 import { useStatusStore } from "@/stores/status";
 import { useSettingsStore } from "@/stores/settings";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { toast } from "@/composables/useToast";
 import { useTrackMenu } from "@/composables/useTrackMenu";
 import { useMultiSelect } from "@/composables/useMultiSelect";
 import { useDownload } from "@/composables/useDownload";
@@ -275,8 +277,16 @@ const onListContextMenu = (event: MouseEvent): void => {
  * @param item - 歌曲数据
  * @param index - 列表索引
  */
+const multiStore = useTogetherMultiStore();
+
 const onTrackDblClick = (item: Track, index: number): void => {
   if (batch.active.value) return;
+  // 多人房里本地换歌会被心跳拉回房间当前曲，等于白切，还会把本地队列打乱。
+  // 要换歌只能靠房间的投票切歌
+  if (multiStore.inRoom) {
+    toast.warning("多人一起听中不能本地切歌，请用投票切歌");
+    return;
+  }
   if (route.name === "search" && settings.player.searchPlayBehavior !== "all") {
     void player.playNow(item, props.playbackContext);
     return;

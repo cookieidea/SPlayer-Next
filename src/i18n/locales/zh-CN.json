@@ -532,7 +532,7 @@
       "strangerMatch": "与同好听歌（双人）",
       "matchDuo": "双人匹配",
       "createMulti": "创建多人房间",
-      "pickFriendsHint": "选择好友一起听（选 2 位以上将创建多人房间）",
+      "pickFriendsHint": "选择要邀请的好友（可跳过；创建多人房间需要先播放一首歌）",
       "picked": "已选",
       "allowStranger": "允许陌生人加入",
       "matchMulti": "多人匹配",
