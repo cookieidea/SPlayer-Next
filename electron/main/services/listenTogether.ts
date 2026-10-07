@@ -766,9 +766,10 @@ const tick = async (): Promise<void> => {
 const endSession = (reason: "left" | "server" | "logout", expected?: number): void => {
   // 旧请求的失败回调可能晚于切房到达，只有代次匹配才允许结束当前会话
   if (expected !== undefined && expected !== generation) return;
-  // 会话终止必须同时废弃在途的房间事务：否则登出/房间失效后，
-  // 一个还在飞的 create/join/restore 仍会把会话重新建起来
-  roomOperation += 1;
+  // 只在用户主动终止（退房/登出）时废弃在途的房间事务，避免旧会话复活。
+  // 服务端侧的房间失效（server）不能这么做：那是对"旧房间没了"的反应，
+  // 而用户此刻可能正好在接收新房间的邀请，取消它会让"点接收进不去"
+  if (reason !== "server") roomOperation += 1;
   const ended = generation;
   if (timer) clearInterval(timer);
   timer = null;

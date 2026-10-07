@@ -1474,4 +1474,60 @@ describe("一起听房间状态机", () => {
     const cards = await service.pendingInvites();
     expect(cards).toHaveLength(1);
   });
+  it("旧会话被判定失效不会打断在途的接收邀请", async () => {
+    const service = await load();
+    let releaseStatus!: (value: unknown) => void;
+    const heldStatus = new Promise((resolve) => {
+      releaseStatus = resolve;
+    });
+    let holdJoinStatus = false;
+    let oldRoomGone = false;
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody("R1", [7]);
+      if (name === "listen_together_status") {
+        if (holdJoinStatus) return heldStatus;
+        return statusBody(true, "R1", [7]);
+      }
+      if (name === "listen_together_sync_playlist_get") {
+        if (oldRoomGone) throw new Error("netease 488: 一起听已失效");
+        return snapshotBody(["100"]);
+      }
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true, status: "AVAILABLE" } } };
+      }
+      if (name === "listen_together_invitation_accept") {
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: { roomInfo: { roomId: "R2", creatorId: 8, roomUsers: [{ userId: 8 }] } },
+          },
+        };
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    // 先处于旧房间 R1
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 被邀请，开始接收 R2；把它的会话查询挂起
+    holdJoinStatus = true;
+    const joinPromise = service.join("R2", "8", "7");
+    await Promise.resolve();
+
+    // 旧房间在服务端已失效，tick 会结束旧会话
+    oldRoomGone = true;
+    holdJoinStatus = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(service.getSession()).toBeNull();
+
+    // 放行接收请求：不能被旧会话的失效取消
+    releaseStatus(statusBody(false));
+    await expect(joinPromise).resolves.toEqual(expect.objectContaining({ roomId: "R2" }));
+    expect(service.getSession()?.roomId).toBe("R2");
+  });
 });
