@@ -764,6 +764,8 @@ describe("一起听房间状态机", () => {
     await service.create("7");
     service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
     await vi.advanceTimersByTimeAsync(1000);
+    // 创建时会上报一次初始模式，这里只关心后续的回声判定
+    modeReports.length = 0;
 
     // 服务端把模式改成 RANDOM，本地跟随
     snapshotMode = "RANDOM";
@@ -988,5 +990,49 @@ describe("一起听房间状态机", () => {
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(1000);
     expect(modes).toEqual(["RANDOM", "ORDER_LOOP"]);
+  });
+  it("创建房间时上报本地初始播放模式", async () => {
+    const service = await load();
+    const types: string[] = [];
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        types.push(String(params.type));
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+    });
+
+    await service.create("7");
+    // 创建者是初始状态的权威：本地是 RANDOM，就应当上报 RANDOM
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(types).toContain("PLAYMODE_CHANGE");
+  });
+
+  it("创建后不会被服务端默认模式覆盖", async () => {
+    const service = await load();
+    const applied: string[] = [];
+    service.onRemoteCommand((payload: { playMode?: string }) => {
+      if (payload.playMode) applied.push(payload.playMode);
+    });
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      // 服务端创建后仍返回默认模式
+      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 创建者上报的 RANDOM 不应被服务端默认值弹回
+    expect(applied).not.toContain("ORDER_LOOP");
   });
 });

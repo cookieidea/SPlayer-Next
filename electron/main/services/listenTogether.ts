@@ -82,6 +82,9 @@ let roomOperation = 0;
 // 一次性回执：向渲染端下发过模式后，消费掉紧随其后的那一次同值上报。
 // 不能用持久比对（那样用户改回服务端当前模式会被误判成回声而丢失）
 let pendingModeAck = "";
+// 创建者刚上报的初始模式：在服务端回显它之前，快照里的其它模式值不是对端操作
+let claimingMode = "";
+// 创建者上报的初始模式：等快照确认服务端已接受前，不要被默认值覆盖
 
 let lastState: TogetherLocalState = {
   songId: "",
@@ -294,7 +297,10 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   const replaceQueue = needsQueueReplace(snapshot, localQueueIds);
   // 播放模式是独立维度：它变化时既没有新命令也不涉及队列替换，
   // 不能因为 !fresh && !replaceQueue 就提前返回
-  const modeChanged = snapshot.playMode !== "" && snapshot.playMode !== lastRemotePlayMode;
+  const claiming = claimingMode !== "" && snapshot.playMode !== claimingMode;
+  const modeChanged =
+    !claiming && snapshot.playMode !== "" && snapshot.playMode !== lastRemotePlayMode;
+  if (snapshot.playMode === claimingMode) claimingMode = "";
   if (!fresh && !replaceQueue && !modeChanged) return false;
 
   if (fresh && command) {
@@ -409,6 +415,14 @@ const tick = async (): Promise<void> => {
         healthy =
           (await guarded(() => reportCommand("GOTO", "", lastState.playing), issuing)) && healthy;
       }
+      // 创建者即房间初始状态的权威：本地播放器模式也要一起上报，
+      // 否则服务端默认值会在随后的快照里把创建者的模式覆盖掉。
+      // 预置 lastRemotePlayMode：上报值会被服务端回显，不先记下就会被当成对端改动
+      healthy =
+        (await guarded(() => reportCommand("PLAYMODE_CHANGE", "", lastState.playing), issuing)) &&
+        healthy;
+      lastRemotePlayMode = lastState.playMode;
+      claimingMode = lastState.playMode;
       // 上报期间可能已经换了房：后续阶段属于旧会话，不再继续
       if (issuing !== generation) {
         tickCount += 1;
@@ -584,6 +598,7 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   lastRemoteSeq = -1;
   lastRemotePlayMode = "";
   pendingModeAck = "";
+  claimingMode = "";
   awaitAdoption = 0;
   pendingInitial = null;
   pendingAdvanceAt = 0;
@@ -608,6 +623,7 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   // 未消费的回执同样会吞掉新房间的第一次同值上报
   lastRemotePlayMode = "";
   pendingModeAck = "";
+  claimingMode = "";
   awaitAdoption = 0;
   pendingAdvanceAt = 0;
   tickCount = 0;
