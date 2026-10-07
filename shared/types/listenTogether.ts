@@ -76,6 +76,8 @@ export type TogetherSyncEvent =
       anchorSongId: string;
       anchorPosition: number;
       initial: boolean;
+      /** 入场采纳（加入房间）时是否直接开始播放：仅改索引不会触碰播放器 */
+      autoPlay: boolean;
     }
   | {
       type: "advance";

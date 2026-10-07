@@ -151,6 +151,7 @@ describe("一起听渲染端服务", () => {
       playMode: "",
       anchorSongId: "",
       anchorPosition: -1,
+      autoPlay: false,
       initial: false,
     });
 
@@ -183,6 +184,7 @@ describe("一起听渲染端服务", () => {
       playMode: "",
       anchorSongId: "",
       anchorPosition: -1,
+      autoPlay: false,
       initial: false,
     });
 
@@ -216,6 +218,7 @@ describe("一起听渲染端服务", () => {
       playMode: "",
       anchorSongId: "",
       anchorPosition: -1,
+      autoPlay: false,
       initial: false,
     });
 
@@ -235,6 +238,7 @@ describe("一起听渲染端服务", () => {
       playMode: "RANDOM",
       anchorSongId: "",
       anchorPosition: -1,
+      autoPlay: false,
       initial: false,
     });
 
@@ -253,6 +257,7 @@ describe("一起听渲染端服务", () => {
       playMode: "SINGLE_LOOP",
       anchorSongId: "",
       anchorPosition: -1,
+      autoPlay: false,
       initial: false,
     });
 
@@ -403,5 +408,55 @@ describe("一起听渲染端服务", () => {
     emit?.(sessionEvent("R1"));
     emit?.({ type: "session-end", reason: "server", generation: 1 });
     expect(store.session).toBeNull();
+  });
+  it("入场采纳时真正加载并播放共享歌曲", async () => {
+    queue.setQueue([track("100")]);
+    mocks.songsByIds.mockResolvedValue([track("200"), track("300")]);
+
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: null,
+      songIds: ["200", "300"],
+      playMode: "",
+      anchorSongId: "300",
+      anchorPosition: 1,
+      initial: true,
+      autoPlay: true,
+    });
+
+    await vi.waitFor(() => expect(mocks.playFrom).toHaveBeenCalled());
+    const call = mocks.playFrom.mock.calls[0] as unknown[];
+    // 按锚点定位到房间当前曲目，而不是本地那首
+    expect(call[1]).toBe(1);
+    expect(call[3]).toBe(true);
+  });
+
+  it("常规队列更新不抢播放", async () => {
+    queue.setQueue([track("100")]);
+    mocks.songsByIds.mockResolvedValue([track("200"), track("300")]);
+
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: null,
+      songIds: ["200", "300"],
+      playMode: "",
+      anchorSongId: "300",
+      anchorPosition: 1,
+      initial: false,
+      autoPlay: false,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.playFrom).not.toHaveBeenCalled();
   });
 });

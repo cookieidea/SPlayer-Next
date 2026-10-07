@@ -71,6 +71,7 @@ export const registerTogetherIpc = (): void => {
       anchorSongId: payload.anchorSongId,
       anchorPosition: payload.anchorPosition,
       initial: payload.initial,
+      autoPlay: payload.autoPlay,
     });
   });
 

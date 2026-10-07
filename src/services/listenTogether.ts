@@ -112,6 +112,7 @@ const applyRemote = async (
   initial: boolean,
   anchorSongId = "",
   anchorPosition = -1,
+  playOnEntry = false,
 ): Promise<void> => {
   if (songIds.length > 0) {
     const tracks = await tracksForIds(songIds);
@@ -125,6 +126,17 @@ const applyRemote = async (
         keep = anchorPosition;
       }
       if (keep < 0) keep = 0;
+      // 入场采纳必须走 playFrom：只改 playIndex 不会触碰播放器，
+      // 用户听到的仍是本地那首，直到对端下发新的播放命令才同步
+      if (playOnEntry) {
+        pendingLoad = true;
+        try {
+          await player.playFrom(tracks, keep, TOGETHER_CONTEXT, true);
+        } finally {
+          pendingLoad = false;
+        }
+        return;
+      }
       queue.setQueue(tracks, TOGETHER_CONTEXT);
       useStatusStore().playIndex = keep;
       return;
@@ -226,6 +238,7 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     next.initial,
     next.anchorSongId,
     next.anchorPosition,
+    next.autoPlay,
   );
   if (next.command && !next.initial) toast.info(commandToast(next.command));
 };

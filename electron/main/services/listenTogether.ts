@@ -46,6 +46,7 @@ interface TogetherCommandPayload {
   anchorSongId: string;
   anchorPosition: number;
   initial: boolean;
+  autoPlay: boolean;
 }
 
 type RoomListener = (room: TogetherRoom, generation: number) => void;
@@ -395,6 +396,8 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
       anchorSongId: replaceQueue ? snapshot.anchorSongId : "",
       anchorPosition: replaceQueue ? snapshot.anchorPosition : -1,
       initial,
+      // 入场采纳才自动播放；恢复会话保持原语义（不抢播放）
+      autoPlay: initial && !restored,
     });
   }
   // 只有采纳了对端命令才需要压制本地回传；单纯队列对齐不该冻结本地上报，
