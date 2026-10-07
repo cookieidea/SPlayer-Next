@@ -76,6 +76,9 @@ const moreMenuItems = computed<DropdownMenuItem[]>(() => [
   { key: "speed", label: t("speed.title"), icon: IconLucideGauge },
   { key: "abLoop", label: t("abLoop.title"), icon: IconLucideRepeat2 },
   { key: "autoClose", label: t("autoClose.title"), icon: IconLucideClock },
+  ...(togetherVisible.value && props.cover
+    ? [{ key: "together", label: t("player.together.title"), icon: IconLucideUsers }]
+    : []),
 ]);
 
 const onMoreMenuSelect = (key: string): void => {
@@ -84,6 +87,7 @@ const onMoreMenuSelect = (key: string): void => {
   else if (key === "speed") speedOpen.value = true;
   else if (key === "abLoop") abLoopOpen.value = true;
   else if (key === "autoClose") autoCloseOpen.value = true;
+  else if (key === "together") togetherOpen.value = true;
 };
 </script>
 
