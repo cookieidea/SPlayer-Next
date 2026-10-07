@@ -23,6 +23,8 @@ const roomView = ref(false);
 let leaving = false;
 let inboxToken = 0;
 let friendsToken = 0;
+const friendListRef = ref<HTMLElement | null>(null);
+let friendListScroll = 0;
 const userId = computed(() => String(user.profile?.userId ?? ""));
 const invitation = computed(() => together.invitationOf());
 const memberNames = ref("");
@@ -124,12 +126,16 @@ const loadFriends = async (): Promise<void> => {
   }
   friendsLoading.value = true;
   const token = ++friendsToken;
+  const keepScroll = friendListRef.value?.scrollTop ?? friendListScroll;
   try {
     const next = await together.loadFriends(userId.value);
     if (token === friendsToken) friends.value = next;
   } finally {
     friendsLoading.value = false;
   }
+  friendListScroll = keepScroll;
+  await nextTick();
+  if (friendListRef.value) friendListRef.value.scrollTop = keepScroll;
   if (friendsPending) {
     friendsPending = false;
     void loadFriends();
@@ -137,7 +143,7 @@ const loadFriends = async (): Promise<void> => {
 };
 
 const onInvite = async (friend: TogetherFriend): Promise<void> => {
-  if (await together.inviteFriend(friend)) await loadFriends();
+  await together.inviteFriend(friend);
 };
 </script>
 
@@ -162,13 +168,20 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <span class="text-xs text-on-surface-variant">
             {{ t("player.together.inviteFriends") }}
           </span>
-          <p v-if="friendsLoading" class="text-xs text-on-surface-variant/70">
+          <p
+            v-if="friendsLoading && friends.length === 0"
+            class="text-xs text-on-surface-variant/70"
+          >
             {{ t("common.loading") }}
           </p>
           <p v-else-if="friends.length === 0" class="text-xs text-on-surface-variant/70">
             {{ t("player.together.noFriends") }}
           </p>
-          <div v-else class="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1">
+          <div
+            v-else
+            ref="friendListRef"
+            class="flex flex-col gap-1 max-h-[180px] overflow-y-auto pr-1"
+          >
             <div
               v-for="friend in friends"
               :key="friend.userId"
