@@ -1,4 +1,5 @@
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { restoreRoom } from "@/services/listenTogether";
 import { useStatusStore } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
 import * as queue from "@/stores/queue";
@@ -131,16 +132,17 @@ const stopMatchPoll = (): void => {
 };
 
 /**
- * 官方靠推送把匹配结果送到客户端，我们没有推送通道；
- * 实测 startMatch 可重复调用，匹配到房间时返回 existedRoomId，所以用轮询代替
+ * 匹配成功后服务端会把账号直接放进房间，本地要自己发现并跟上。
+ * 匹配房（roomType=MATCH_SONG）走的是双人协议——实测它的 heartbeat/sync 都按双人那套，
+ * 所以这里用双人的 restore，而不是多人那套
  */
 const pollMatch = async (userId: string): Promise<void> => {
   try {
-    const result = await window.api.togetherMulti.startMatch();
-    if (!result.roomId) return;
+    const session = await window.api.together.getSession();
+    if (!session) return;
     stopMatchPoll();
     toast.success("已找到听友");
-    await ackStrangerMatch(result.roomId, userId);
+    await restoreRoom(userId);
   } catch {
     stopMatchPoll();
   }
@@ -150,10 +152,6 @@ export const startStrangerMatch = (userId: string): Promise<unknown> =>
   withBusy(async () => {
     const result = await window.api.togetherMulti.startMatch();
     toast.info("正在为你寻找听友…");
-    if (result.roomId) {
-      await ackStrangerMatch(result.roomId, userId);
-      return result;
-    }
     stopMatchPoll();
     matchTimer = setInterval(() => void pollMatch(userId), MATCH_POLL_MS);
     return result;
