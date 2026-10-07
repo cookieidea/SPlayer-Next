@@ -189,8 +189,15 @@ listening/privacy/update { privacyKey: "listening_entrance", value: 0|1 }
 ## 四、已知不确定项（不要当成结论）
 
 - `multi/match/ack` 的 `checkToken`/`inviterUid` 是否需要、取什么值
-- `invite/message/send` 的 `ltType` 是否区分房型
 - `privilege/get` 的生效条件（实测恒 400）
 - `room/songs/list` 为什么有时返回 `songIds: null`
 - `song/match/identity/unlock` 的参数
-- `multi/special/song/operate` 与普通版的差别
+- `common/liked/song/report` 的 `actionType` 值域
+- `multi/match/msg/history` / `multi/special/msg/history` 为何 400
+
+已排除的疑问（实测确认）：
+
+- `invite/message/send` 的 `ltType` **不改变**"多人房 488"的结果，它只是类型校验
+- `multi/match/song/operate` 的 `checkToken` **可选**，不带也能加歌/删歌
+- `multi/special/song/operate` 与普通版**行为一致**，不是另一套语义
+- `emoticon/get` 的 `scenes` 要 JSON 数组字符串，不是裸值
