@@ -1336,4 +1336,76 @@ describe("一起听房间状态机", () => {
 
     expect(modes).toContain("RANDOM");
   });
+  it("远端采纳期间用户自己的 seek 仍会上报", async () => {
+    const service = await load();
+    const sent: string[] = [];
+    let remoteCommand: Record<string, unknown> | null = null;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        sent.push(String(params.type));
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100", "200"], "", -1, "ORDER_LOOP", remoteCommand);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    sent.length = 0;
+
+    // 对方切歌到 200
+    remoteCommand = {
+      userId: "8",
+      commandType: "GOTO",
+      playStatus: "PLAY",
+      formerSongId: "100",
+      targetSongId: "200",
+      progress: 0,
+      serverSeq: 1,
+    };
+    await vi.advanceTimersByTimeAsync(1000);
+    // 采纳命令本身不该被回声回报
+    expect(sent).toHaveLength(0);
+
+    // 用户在刚刚采纳远端后马上 seek
+    service.updateLocal(localState({ songId: "200", currentIndex: 1, seekRevision: 1 }));
+    for (let i = 0; i < 4; i++) await vi.advanceTimersByTimeAsync(1000);
+
+    expect(sent).toContain("PROGRESS");
+    // 用户操作只该发一次，不能被回声逻辑重复放大
+    expect(sent.filter((type) => type === "PROGRESS")).toHaveLength(1);
+    // 关键：渲染端跟随远端产生的 track 变化是回声，不能再报一次 GOTO
+    expect(sent.filter((type) => type === "GOTO")).toHaveLength(0);
+  });
+
+  it("认领预算耗尽后远端的模式变化仍会生效", async () => {
+    const service = await load();
+    const applied: string[] = [];
+    let snapshotMode = "ORDER_LOOP";
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report")
+        return { status: 200, body: { code: 200 } };
+      return snapshotBody(["100"], "", -1, snapshotMode);
+    });
+    service.onRemoteCommand((payload: { playMode?: string }) => {
+      if (payload.playMode) applied.push(payload.playMode);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(1000);
+    applied.length = 0;
+
+    // 服务端始终不回显 RANDOM，随后改成 SINGLE_LOOP
+    snapshotMode = "SINGLE_LOOP";
+    for (let i = 0; i < 8; i++) await vi.advanceTimersByTimeAsync(1000);
+
+    expect(applied).toContain("SINGLE_LOOP");
+  });
 });

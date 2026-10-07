@@ -70,7 +70,10 @@ let playlistVersion = 0;
 let lastRemoteSignature = "";
 let lastRemoteSeq = -1;
 let lastRemotePlayMode = "";
-let awaitAdoption = 0;
+// 远端采纳后需要吞掉一次的回声：按维度 + 期望值记录，而不是冻结整个上报窗口。
+// 时间窗会连用户在窗口内的真实操作一起吃掉
+let adoptionEcho: { dim: string; value: string }[] = [];
+let adoptionTicks = 0;
 let pendingInitial: "report" | "adopt" | null = null;
 let leaderId = "";
 let pendingAdvanceAt = 0;
@@ -84,6 +87,9 @@ let roomOperation = 0;
 let pendingModeAck = "";
 // 创建者刚上报的初始模式：在服务端回显它之前，快照里的其它模式值不是对端操作
 let claimingMode = "";
+// 认领的等待预算：服务端可能一直不回显（或已被对端覆盖），不能永久锁住模式同步
+let claimBudget = 0;
+const CLAIM_TICKS = 5;
 // 创建者上报的初始模式：等快照确认服务端已接受前，不要被默认值覆盖
 
 let lastState: TogetherLocalState = {
@@ -310,11 +316,30 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   // 必须先解除再计算 modeChanged，否则本轮已经算出 false，解除也没用
   const remoteModeCommand =
     fresh && command?.type === "PLAYMODE_CHANGE" && command.userId !== selfUserId;
-  if (remoteModeCommand) claimingMode = "";
-  const claiming = claimingMode !== "" && snapshot.playMode !== claimingMode;
+  if (remoteModeCommand) {
+    claimingMode = "";
+    claimBudget = 0;
+  }
+  // 认领只在等待自己声明的那个值：服务端回显它，或预算耗尽，都必须解除，
+  // 否则此后所有仅通过快照体现的远端模式变化都会被永久吞掉
+  if (claimingMode !== "") {
+    if (snapshot.playMode === claimingMode) {
+      claimingMode = "";
+      claimBudget = 0;
+    } else if (claimBudget > 0) {
+      claimBudget -= 1;
+    } else {
+      claimingMode = "";
+    }
+  }
+  // 本地模式还没确认上报成功（基线仍是哨兵）时，不要把服务端值推回渲染端：
+  // 否则用户选的模式会先被服务端默认值覆盖，重试就没有意义了
+  const modePending = baseline?.playMode === "";
   const modeChanged =
-    !claiming && snapshot.playMode !== "" && snapshot.playMode !== lastRemotePlayMode;
-  if (snapshot.playMode === claimingMode) claimingMode = "";
+    claimingMode === "" &&
+    !modePending &&
+    snapshot.playMode !== "" &&
+    snapshot.playMode !== lastRemotePlayMode;
   if (!fresh && !replaceQueue && !modeChanged) return false;
 
   if (fresh && command) {
@@ -334,6 +359,33 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   if (modeChanged) {
     lastRemotePlayMode = snapshot.playMode;
     pendingModeAck = snapshot.playMode;
+  }
+  // 登记接下来会出现的回声：采纳远端后，渲染端会把这几个维度改成本地状态，
+  // 随后的上报是回声而非用户操作。只登记真正会变的维度，其余照常上报，
+  // 这样远程采纳期间用户自己的操作不会被连带吞掉
+  // 只登记本地确实会跟随远端的那几个维度：本地值已经等于远端值时不会有回声，
+  // 未确认的维度（哨兵）更不能登记，否则会把待上报的操作当成回声吞掉
+  adoptionTicks = ADOPT_CONFIRM_TICKS;
+  adoptionEcho = [];
+  if (
+    replaceQueue &&
+    songIdsSignature(lastState.queueSongIds) !== songIdsSignature(snapshot.songIds)
+  ) {
+    adoptionEcho.push({ dim: "queue", value: songIdsSignature(snapshot.songIds) });
+  }
+  if (modeChanged && lastState.playMode !== snapshot.playMode) {
+    adoptionEcho.push({ dim: "playMode", value: snapshot.playMode });
+  }
+  if (fresh && command?.targetSongId && lastState.songId !== command.targetSongId) {
+    adoptionEcho.push({ dim: "track", value: command.targetSongId });
+  }
+  if (
+    fresh &&
+    command &&
+    (command.type === "PLAY" || command.type === "PAUSE") &&
+    lastState.playing !== command.playing
+  ) {
+    adoptionEcho.push({ dim: "playState", value: String(command.playing) });
   }
   for (const listener of commandListeners) {
     listener({
@@ -389,6 +441,26 @@ const beat = async (): Promise<boolean> => {
     registerFailure(error, issuingBeat);
   }
   return healthy;
+};
+
+/** delta 的变化名 → 基线维度名：两者命名不同，不能直接互用 */
+const dimensionOf = (change: string): "queue" | "songId" | "playing" | "seek" | "end" | "mode" => {
+  if (change === "track") return "songId";
+  if (change === "progress") return "seek";
+  if (change === "playState") return "playing";
+  if (change === "ended") return "end";
+  if (change === "playMode") return "mode";
+  return "queue";
+};
+
+/** 采纳远端后该维度的期望值，用于识别并吞掉一次回声 */
+const echoValue = (dimension: string, next: LocalBaseline): string => {
+  if (dimension === "queue") return next.queueSignature;
+  if (dimension === "songId" || dimension === "track") return next.songId;
+  if (dimension === "playing" || dimension === "playState") return String(next.playing);
+  if (dimension === "seek" || dimension === "progress") return String(next.seekRevision);
+  if (dimension === "end" || dimension === "ended") return String(next.endRevision);
+  return next.playMode;
 };
 
 const handleEnded = (): void => {
@@ -499,6 +571,7 @@ const tick = async (): Promise<void> => {
       if (modeReported) {
         lastRemotePlayMode = state.playMode;
         claimingMode = state.playMode;
+        claimBudget = CLAIM_TICKS;
         claim("mode");
       }
       // 上报期间可能已经换了房：后续阶段属于旧会话，不再继续
@@ -517,7 +590,7 @@ const tick = async (): Promise<void> => {
           await reportCommand("PAUSE", state.songId, false, state);
         }
       }, issuing);
-      if (ok && applied) awaitAdoption = ADOPT_CONFIRM_TICKS;
+      if (ok && applied) adoptionTicks = ADOPT_CONFIRM_TICKS;
       if (!ok) healthy = false;
       tickCount += 1;
       return;
@@ -576,7 +649,29 @@ const tick = async (): Promise<void> => {
       // 这一轮期间若换了房，delta 与 commit 都属于旧会话：只跳过写入，
       // 让 finally 正常收尾，不额外 return
       const stale = issuing !== generation;
-      if (!stale && awaitAdoption <= 0) {
+      // 只吞掉"与远端刚设的值一致"的那一次变化，其余照常上报
+      const echoCommitted: string[] = [];
+      if (adoptionTicks > 0) {
+        adoptionTicks -= 1;
+        const remaining: string[] = [];
+        for (const change of delta.changes) {
+          const index = adoptionEcho.findIndex(
+            (entry) =>
+              entry.dim === change &&
+              (entry.value === "*" || entry.value === echoValue(change, next)),
+          );
+          if (index >= 0) {
+            adoptionEcho.splice(index, 1);
+            echoCommitted.push(change);
+            continue;
+          }
+          remaining.push(change);
+        }
+        delta.changes = remaining as typeof delta.changes;
+      } else {
+        adoptionEcho = [];
+      }
+      if (!stale) {
         if (delta.changes.includes("queue")) {
           // 发送值与写回值必须是同一个数组：请求期间本地可能已改成别的队列，
           // 写回当前值会让缓存与服务端实际持有的队列不一致
@@ -626,11 +721,9 @@ const tick = async (): Promise<void> => {
           if (!delta.changes.includes("ended")) commit("end");
           if (!delta.changes.includes("playMode")) commit("mode");
         }
-      } else {
-        baseline = next;
       }
+      for (const change of echoCommitted) commit(dimensionOf(change));
     }
-    if (awaitAdoption > 0) awaitAdoption -= 1;
     // 执行链隔离：换房后不再对新房间发起无意义的快照请求
     if (issuing !== generation) {
       tickCount += 1;
@@ -638,7 +731,7 @@ const tick = async (): Promise<void> => {
     }
     healthy =
       (await guarded(async () => {
-        if (await applySnapshot(false)) awaitAdoption = ADOPT_CONFIRM_TICKS;
+        await applySnapshot(false);
       }, issuing)) && healthy;
     tickCount += 1;
     if (issuing !== generation) return;
@@ -681,7 +774,9 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   lastRemotePlayMode = "";
   pendingModeAck = "";
   claimingMode = "";
-  awaitAdoption = 0;
+  claimBudget = 0;
+  adoptionEcho = [];
+  adoptionTicks = 0;
   pendingInitial = null;
   pendingAdvanceAt = 0;
   tickCount = 0;
@@ -706,7 +801,9 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   lastRemotePlayMode = "";
   pendingModeAck = "";
   claimingMode = "";
-  awaitAdoption = 0;
+  claimBudget = 0;
+  adoptionEcho = [];
+  adoptionTicks = 0;
   pendingAdvanceAt = 0;
   tickCount = 0;
   baseline = null;
@@ -855,7 +952,7 @@ export const updateLocal = (state: TogetherLocalState): void => {
   lastState = state;
   hasLocalState = true;
   if (state.songId !== previousId) previousSongId = previousId;
-  if (!baseline || awaitAdoption > 0) {
+  if (!baseline) {
     baseline = baselineOf(state);
     previousSongId = state.songId;
   }
