@@ -1793,4 +1793,30 @@ describe("一起听房间状态机", () => {
 
     expect(commands.some((p) => p.type === "PAUSE")).toBe(true);
   });
+
+  it("渲染端没跟上队列替换时会重试", async () => {
+    const service = await load();
+    const events: { songIds: string[] }[] = [];
+    service.onRemoteCommand((payload: { songIds: string[] }) => events.push(payload));
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      return snapshotBody(["100", "200"]);
+    });
+
+    await service.create("7");
+    // 本地队列与房间不同，且渲染端始终没上报跟随（applyRemote 可能因取不到曲目提前返回）
+    service.updateLocal(localState({ songId: "900", queueSongIds: ["900"] }));
+    await cycle();
+    const first = events.length;
+    // 提前把 localQueueIds 推进成目标队列的话只会下发一次，
+    // 渲染端这次没跟上就再也不会重试，本地队列会与服务端永久分叉
+    expect(first).toBeGreaterThan(1);
+
+    await cycle();
+
+    // 但重试必须有上限：上千首的曲目请求不能每轮都重发一遍
+    expect(events.length).toBe(first);
+  });
 });

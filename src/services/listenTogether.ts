@@ -178,7 +178,9 @@ const applyRemote = async (
     if (!command) {
       const currentId = useStatusStore().currentTrack?.id ?? "";
       let keep = tracks.findIndex((track) => track.id === currentId);
-      // 本地曲目已不在共享队列里时，按服务端锚点定位
+      // 本地曲目已不在共享队列里时落到队首。
+      // 此时只改下标不加载是有意的：对方只是换了歌单、并没有发切歌命令，
+      // 不该抢走本地正在放的那首；界面会短暂显示成队首，等对方下发命令即恢复
       if (keep < 0) keep = 0;
       // 入场采纳必须走 playFrom：只改 playIndex 不会触碰播放器，
       // 用户听到的仍是本地那首，直到对端下发新的播放命令才同步

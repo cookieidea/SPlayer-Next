@@ -73,6 +73,7 @@ let playlistVersion = 0;
 let lastRemoteSignature = "";
 let lastRemoteSeq = -1;
 let lastRemotePlayMode = "";
+const QUEUE_REPLACE_RETRIES = 3;
 // 远端采纳后需要吞掉一次的回声：按维度 + 期望值记录，而不是冻结整个上报窗口。
 // 时间窗会连用户在窗口内的真实操作一起吃掉
 let adoptionEcho: { dim: string; value: string }[] = [];
@@ -80,6 +81,9 @@ let adoptionTicks = 0;
 let pendingInitial: "report" | "adopt" | null = null;
 let leaderId = "";
 let pendingAdvanceAt = 0;
+/** 已下发但渲染端尚未跟上的目标队列签名；重试若干次仍跟不上才放弃 */
+let pendingQueueSignature: string | null = null;
+let pendingQueueRetries = 0;
 // 上一次见到的房间成员 id：有人进来时要把当前进度重报一次，
 // 否则新进来的人会按服务端存的旧进度对齐
 let knownMemberIds: string[] = [];
@@ -369,10 +373,21 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
     if (command.userId) leaderId = command.userId;
   }
   if (replaceQueue) {
-    localQueueIds = [...snapshot.songIds];
-    // 这里不再直接推进队列基线：渲染端此刻还没跟随，提前写会让下一轮
-    // 把"本地仍是旧队列"当成变化而把自己的队列上报出去。交给回声机制，
-    // 渲染端真正跟随到房间队列时再提交
+    // 不能立刻推进 localQueueIds：needsQueueReplace 正是拿它比签名，提前推进会让
+    // 判据恒为假——渲染端这次没跟上就再也不会重试，本地队列从此与服务端分叉。
+    // 改成登记目标、由 updateLocal 在渲染端真的上报该队列时提交
+    const target = songIdsSignature(snapshot.songIds);
+    if (pendingQueueSignature !== target) {
+      pendingQueueSignature = target;
+      pendingQueueRetries = 0;
+    } else if (pendingQueueRetries >= QUEUE_REPLACE_RETRIES) {
+      // 重试够了还跟不上（比如目标曲目根本取不到），认下目标队列，
+      // 免得每轮都重发一遍上千首的曲目请求
+      localQueueIds = [...snapshot.songIds];
+      pendingQueueSignature = null;
+    } else {
+      pendingQueueRetries += 1;
+    }
   }
   const restored = mode === "restore" && initial;
   if (modeChanged) {
@@ -834,6 +849,8 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   adoptionTicks = 0;
   pendingInitial = null;
   pendingAdvanceAt = 0;
+  pendingQueueSignature = null;
+  pendingQueueRetries = 0;
   knownMemberIds = [];
   tickCount = 0;
   previousSongId = "";
@@ -861,6 +878,8 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   adoptionEcho = [];
   adoptionTicks = 0;
   pendingAdvanceAt = 0;
+  pendingQueueSignature = null;
+  pendingQueueRetries = 0;
   knownMemberIds = [];
   tickCount = 0;
   baseline = null;
@@ -1043,4 +1062,10 @@ export const updateLocal = (state: TogetherLocalState): void => {
     previousSongId = state.songId;
   }
   if (pendingAdvanceAt && state.songId !== previousId) pendingAdvanceAt = 0;
+  // 渲染端真的把队列换成了我们下发的目标，这时才认账
+  if (pendingQueueSignature && songIdsSignature(state.queueSongIds) === pendingQueueSignature) {
+    localQueueIds = [...state.queueSongIds];
+    pendingQueueSignature = null;
+    pendingQueueRetries = 0;
+  }
 };
