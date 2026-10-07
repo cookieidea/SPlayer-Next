@@ -42,9 +42,10 @@ export interface LocalBaseline {
   playing: boolean;
   seekRevision: number;
   endRevision: number;
+  playMode: string;
 }
 
-type LocalChange = "queue" | "track" | "progress" | "playState" | "ended";
+type LocalChange = "queue" | "track" | "progress" | "playState" | "ended" | "playMode";
 
 export const baselineOf = (state: TogetherLocalState): LocalBaseline => ({
   queueSignature: songIdsSignature(state.queueSongIds),
@@ -52,6 +53,7 @@ export const baselineOf = (state: TogetherLocalState): LocalBaseline => ({
   playing: state.playing,
   seekRevision: state.seekRevision,
   endRevision: state.endRevision,
+  playMode: state.playMode,
 });
 
 interface LocalDelta {
@@ -72,6 +74,7 @@ export const detectLocalChanges = (
     changes.push("ended");
     return { baseline: next, changes };
   }
+  if (next.playMode !== baseline.playMode) changes.push("playMode");
   if (!next.songId) return { baseline: next, changes };
   if (next.songId !== baseline.songId) changes.push("track");
   else if (next.seekRevision !== baseline.seekRevision) changes.push("progress");

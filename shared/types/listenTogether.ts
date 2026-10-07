@@ -41,11 +41,14 @@ export interface TogetherLocalState {
   transitioning: boolean;
   seekRevision: number;
   endRevision: number;
+  /** 本机播放模式，随状态上报以便对端跟随 */
+  playMode: string;
 }
 
 export interface TogetherSession {
   roomId: string;
   userId: string;
+  generation: number;
 }
 
 export type TogetherSyncEvent =
@@ -57,10 +60,12 @@ export type TogetherSyncEvent =
   | {
       type: "session-end";
       reason: "left" | "server" | "logout";
+      generation: number;
     }
   | {
       type: "room";
       room: TogetherRoom;
+      generation: number;
     }
   | {
       type: "command";
@@ -68,6 +73,8 @@ export type TogetherSyncEvent =
       command: TogetherCommand | null;
       songIds: string[];
       playMode: string;
+      anchorSongId: string;
+      anchorPosition: number;
       initial: boolean;
     }
   | {

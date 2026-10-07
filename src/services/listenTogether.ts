@@ -60,7 +60,14 @@ const collectState = (): TogetherLocalState => {
     transitioning: status.trackLoading || pendingLoad,
     seekRevision: counters.seekRevision,
     endRevision: counters.endRevision,
+    playMode: localPlayMode(status),
   };
+};
+
+const localPlayMode = (status: ReturnType<typeof useStatusStore>): string => {
+  if (status.repeatMode === "one") return "SINGLE_LOOP";
+  if (status.shuffleMode === "on") return "RANDOM";
+  return "ORDER_LOOP";
 };
 
 const pushState = (): void => {
@@ -102,6 +109,8 @@ const applyRemote = async (
   songIds: readonly string[],
   command: TogetherCommand | null,
   initial: boolean,
+  anchorSongId = "",
+  anchorPosition = -1,
 ): Promise<void> => {
   if (songIds.length > 0) {
     const tracks = await tracksForIds(songIds);
@@ -109,6 +118,11 @@ const applyRemote = async (
     if (!command) {
       const currentId = useStatusStore().currentTrack?.id ?? "";
       let keep = tracks.findIndex((track) => track.id === currentId);
+      // 本地曲目已不在共享队列里时，按服务端锚点定位
+      if (keep < 0 && anchorSongId) keep = tracks.findIndex((t) => t.id === anchorSongId);
+      if (keep < 0 && anchorPosition >= 0 && anchorPosition < tracks.length) {
+        keep = anchorPosition;
+      }
       if (keep < 0) keep = 0;
       queue.setQueue(tracks, TOGETHER_CONTEXT);
       useStatusStore().playIndex = keep;
@@ -116,15 +130,26 @@ const applyRemote = async (
     }
     const index = tracks.findIndex((track) => track.id === command.targetSongId);
     if (index < 0) return;
-    const seekOnly = command.type === "PROGRESS";
-    const autoPlay = !seekOnly && (!initial || command.playing);
+    // 纯时间轴命令：只对齐曲目与进度，不改播放态
+    if (command.type === "PROGRESS") {
+      pendingLoad = true;
+      try {
+        if (useStatusStore().currentTrack?.id !== command.targetSongId) {
+          await player.playFrom(tracks, index, TOGETHER_CONTEXT, false);
+        }
+        await player.seek(command.progressMs);
+      } finally {
+        pendingLoad = false;
+      }
+      return;
+    }
+    const autoPlay = !initial || command.playing;
     pendingLoad = true;
     try {
       await player.playFrom(tracks, index, TOGETHER_CONTEXT, autoPlay);
     } finally {
       pendingLoad = false;
     }
-    if (!autoPlay) return;
     if (!command.playing) await player.pause();
     return;
   }
@@ -191,7 +216,13 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     return;
   }
   if (next.playMode) applyPlayMode(next.playMode);
-  await applyRemote(next.songIds, next.command, next.initial);
+  await applyRemote(
+    next.songIds,
+    next.command,
+    next.initial,
+    next.anchorSongId,
+    next.anchorPosition,
+  );
   if (next.command && !next.initial) toast.info(commandToast(next.command));
 };
 

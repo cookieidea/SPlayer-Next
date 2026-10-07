@@ -19,6 +19,7 @@ const localState = (patch: Partial<TogetherLocalState> = {}): TogetherLocalState
   transitioning: false,
   seekRevision: 0,
   endRevision: 0,
+  playMode: "ORDER_LOOP",
   ...patch,
 });
 

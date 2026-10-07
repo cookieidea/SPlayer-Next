@@ -25,6 +25,18 @@ export const useTogetherStore = defineStore("together", () => {
   const invitedByRoom = ref<Record<string, string[]>>(readInvited());
 
   const apply = (next: TogetherSyncEvent): void => {
+    // 旧会话的迟到事件必须丢弃：切房/退房后它会把新会话的状态覆盖掉
+    // error 不属于任何会话，直接放过
+    if (next.type === "error") return;
+    const expected = session.value?.generation;
+    const incoming =
+      next.type === "session"
+        ? next.session.generation
+        : next.type === "command" || next.type === "advance"
+          ? next.session.generation
+          : next.generation;
+    if (next.type !== "session" && incoming !== expected) return;
+
     if (next.type === "session") {
       session.value = next.session;
       room.value = next.room;

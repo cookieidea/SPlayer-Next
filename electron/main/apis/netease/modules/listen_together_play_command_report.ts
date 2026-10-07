@@ -9,6 +9,9 @@ const listenTogetherPlayCommandReport: NeteaseModule = (query, request) => {
     formerSongId: String(query.formerSongId ?? "0"),
     targetSongId: String(query.targetSongId ?? "0"),
     clientSeq: Number(query.clientSeq) || 0,
+    ...(query.type === "PLAYMODE_CHANGE" && query.playMode
+      ? { playMode: String(query.playMode) }
+      : {}),
   };
   const data = {
     roomId: query.roomId,

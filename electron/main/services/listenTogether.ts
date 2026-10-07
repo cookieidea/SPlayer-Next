@@ -43,11 +43,13 @@ interface TogetherCommandPayload {
   command: TogetherCommand | null;
   songIds: string[];
   playMode: string;
+  anchorSongId: string;
+  anchorPosition: number;
   initial: boolean;
 }
 
-type RoomListener = (room: TogetherRoom) => void;
-type EndListener = (reason: "left" | "server" | "logout") => void;
+type RoomListener = (room: TogetherRoom, generation: number) => void;
+type EndListener = (reason: "left" | "server" | "logout", generation: number) => void;
 type CommandListener = (payload: TogetherCommandPayload) => void;
 type AdvanceListener = () => void;
 type ErrorListener = (message: string) => void;
@@ -85,6 +87,7 @@ let lastState: TogetherLocalState = {
   transitioning: false,
   seekRevision: 0,
   endRevision: 0,
+  playMode: "ORDER_LOOP",
 };
 let hasLocalState = false;
 
@@ -154,10 +157,10 @@ const isRateLimited = (error: unknown): boolean => {
   return false;
 };
 
-const registerFailure = (error: unknown): void => {
+const registerFailure = (error: unknown, expected?: number): void => {
   const message = error instanceof Error ? error.message : String(error);
   if (isRoomGone(error)) {
-    endSession("server");
+    endSession("server", expected);
     return;
   }
   emitError(message);
@@ -191,7 +194,7 @@ const publishRoom = (value: TogetherRoom): void => {
   const signature = signatureOf(value);
   if (signature === roomSignature) return;
   roomSignature = signature;
-  for (const listener of roomListeners) listener(value);
+  for (const listener of roomListeners) listener(value, generation);
 };
 
 const pickLeader = (value: TogetherRoom, selfUserId: string): string => {
@@ -209,15 +212,19 @@ const pickLeader = (value: TogetherRoom, selfUserId: string): string => {
 const reportFor = (
   changes: readonly string[],
   playing: boolean,
-): { type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE"; playing: boolean } | null => {
+): {
+  type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE" | "PLAYMODE_CHANGE";
+  playing: boolean;
+} | null => {
   if (changes.includes("track")) return { type: "GOTO", playing };
   if (changes.includes("progress")) return { type: "PROGRESS", playing };
   if (changes.includes("playState")) return { type: playing ? "PLAY" : "PAUSE", playing };
+  if (changes.includes("playMode")) return { type: "PLAYMODE_CHANGE", playing };
   return null;
 };
 
 const reportCommand = async (
-  type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE",
+  type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE" | "PLAYMODE_CHANGE",
   formerSongId: string,
   playing: boolean,
   progressMs = lastState.positionMs,
@@ -237,6 +244,7 @@ const reportCommand = async (
     formerSongId: formerSongId || "0",
     targetSongId,
     clientSeq: seq,
+    playMode: type === "PLAYMODE_CHANGE" ? lastState.playMode : "",
   });
 };
 
@@ -294,6 +302,8 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
       command: fresh && command ? (restored ? { ...command, playing: false } : command) : null,
       songIds: replaceQueue ? [...snapshot.songIds] : [],
       playMode: modeChanged ? snapshot.playMode : "",
+      anchorSongId: replaceQueue ? snapshot.anchorSongId : "",
+      anchorPosition: replaceQueue ? snapshot.anchorPosition : -1,
       initial,
     });
   }
@@ -305,6 +315,7 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
 const beat = async (): Promise<void> => {
   if (!session) return;
   const roomId = session.roomId;
+  const issuingBeat = generation;
   try {
     await callNetease("listen_together_heartbeat", {
       roomId,
@@ -314,10 +325,12 @@ const beat = async (): Promise<void> => {
     });
   } catch (error) {
     if (isRoomGone(error)) {
-      endSession("server");
+      endSession("server", issuingBeat);
       return;
     }
-    neteaseLog.warn("一起听心跳失败:", error);
+    // 心跳失败要计入退避（否则 429 被吞），但不能因此跳过状态探测——
+    // 房间是否还在只有 status 能回答
+    registerFailure(error, issuingBeat);
   }
   const status = statusFromBody(await callNetease("listen_together_status", {}));
   if (!session || session.roomId !== roomId) return;
@@ -337,13 +350,13 @@ const handleEnded = (): void => {
   pendingAdvanceAt = Date.now();
 };
 
-const guarded = async (work: () => Promise<void>): Promise<boolean> => {
+const guarded = async (work: () => Promise<void>, expected?: number): Promise<boolean> => {
   try {
     await work();
     return true;
   } catch (error) {
     neteaseLog.warn("一起听同步失败:", error);
-    registerFailure(error);
+    registerFailure(error, expected);
     return false;
   }
 };
@@ -353,6 +366,7 @@ const tick = async (): Promise<void> => {
   if (Date.now() < rateLimitUntil) return;
   ticking = true;
   const selfUserId = session.userId;
+  const issuing = generation;
   let healthy = true;
   try {
     if (pendingInitial === "report") {
@@ -360,10 +374,11 @@ const tick = async (): Promise<void> => {
       baseline = baselineOf(lastState);
       if (lastState.queueSongIds.length) {
         localQueueIds = [...lastState.queueSongIds];
-        await guarded(() => reportQueue(lastState.queueSongIds));
+        await guarded(() => reportQueue(lastState.queueSongIds), issuing);
       }
       if (lastState.songId) {
-        healthy = (await guarded(() => reportCommand("GOTO", "", lastState.playing))) && healthy;
+        healthy =
+          (await guarded(() => reportCommand("GOTO", "", lastState.playing), issuing)) && healthy;
       }
     } else if (pendingInitial === "adopt") {
       pendingInitial = null;
@@ -371,7 +386,8 @@ const tick = async (): Promise<void> => {
         awaitAdoption = ADOPT_CONFIRM_TICKS;
         if (mode === "restore") {
           healthy =
-            (await guarded(() => reportCommand("PAUSE", lastState.songId, false))) && healthy;
+            (await guarded(() => reportCommand("PAUSE", lastState.songId, false), issuing)) &&
+            healthy;
         }
       }
       tickCount += 1;
@@ -389,7 +405,7 @@ const tick = async (): Promise<void> => {
       baseline = delta.baseline;
       if (awaitAdoption <= 0) {
         if (delta.changes.includes("queue")) {
-          healthy = (await guarded(() => reportQueue(lastState.queueSongIds))) && healthy;
+          healthy = (await guarded(() => reportQueue(lastState.queueSongIds), issuing)) && healthy;
           localQueueIds = [...lastState.queueSongIds];
         }
         if (delta.changes.includes("ended")) handleEnded();
@@ -397,12 +413,14 @@ const tick = async (): Promise<void> => {
         if (action) {
           if (action.type === "GOTO") leaderId = selfUserId;
           healthy =
-            (await guarded(() =>
-              reportCommand(
-                action.type,
-                delta.changes.includes("track") ? previousSongId : "",
-                action.playing,
-              ),
+            (await guarded(
+              () =>
+                reportCommand(
+                  action.type,
+                  delta.changes.includes("track") ? previousSongId : "",
+                  action.playing,
+                ),
+              issuing,
             )) && healthy;
         }
       }
@@ -411,9 +429,9 @@ const tick = async (): Promise<void> => {
     healthy =
       (await guarded(async () => {
         if (await applySnapshot(false)) awaitAdoption = ADOPT_CONFIRM_TICKS;
-      })) && healthy;
+      }, issuing)) && healthy;
     tickCount += 1;
-    if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await guarded(beat)) && healthy;
+    if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await guarded(beat, issuing)) && healthy;
     if (pendingAdvanceAt && Date.now() - pendingAdvanceAt >= ADVANCE_HANDOVER_MS) {
       pendingAdvanceAt = 0;
       leaderId = selfUserId;
@@ -431,7 +449,10 @@ const tick = async (): Promise<void> => {
   }
 };
 
-const endSession = (reason: "left" | "server" | "logout"): void => {
+const endSession = (reason: "left" | "server" | "logout", expected?: number): void => {
+  // 旧请求的失败回调可能晚于切房到达，只有代次匹配才允许结束当前会话
+  if (expected !== undefined && expected !== generation) return;
+  const ended = generation;
   if (timer) clearInterval(timer);
   timer = null;
   generation += 1;
@@ -451,13 +472,13 @@ const endSession = (reason: "left" | "server" | "logout"): void => {
   previousSongId = "";
   rateLimitUntil = 0;
   rateLimitFailures = 0;
-  for (const listener of endListeners) listener(reason);
+  for (const listener of endListeners) listener(reason, ended);
 };
 
 const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): TogetherRoom => {
   if (timer) clearInterval(timer);
   generation += 1;
-  session = { roomId: nextRoom.roomId, userId };
+  session = { roomId: nextRoom.roomId, userId, generation };
   mode = nextMode;
   roomSignature = "";
   publishRoom(nextRoom);
@@ -483,11 +504,15 @@ export const create = async (userId: string): Promise<TogetherRoom> => {
   const created = roomFromBody(await callNetease("listen_together_room_create", {}));
   if (!created) throw new Error("创建房间未返回 roomId");
   const room = enterRoom(created, userId, "create");
-  const status = statusFromBody(await callNetease("listen_together_status", {}));
-  if (status.room && status.room.roomId === room.roomId) {
-    roomSignature = "";
-    publishRoom(status.room);
-  }
+  // 校准是尽力而为：它失败不该让调用方以为建房失败，否则会留下
+  // "界面报错但主进程已进房"的幽灵会话
+  await guarded(async () => {
+    const status = statusFromBody(await callNetease("listen_together_status", {}));
+    if (status.room && status.room.roomId === room.roomId) {
+      roomSignature = "";
+      publishRoom(status.room);
+    }
+  }, generation);
   return room;
 };
 

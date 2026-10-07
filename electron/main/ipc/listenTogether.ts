@@ -11,9 +11,9 @@ const send = (event: TogetherSyncEvent): void => {
   broadcast("together:event", event);
 };
 
-const sendRoom = (room: TogetherRoom): void => {
+const sendRoom = (room: TogetherRoom, generation: number): void => {
   if (!together.getSession()) return;
-  send({ type: "room", room });
+  send({ type: "room", room, generation });
 };
 
 export const registerTogetherIpc = (): void => {
@@ -68,6 +68,8 @@ export const registerTogetherIpc = (): void => {
       command: payload.command,
       songIds: payload.songIds,
       playMode: payload.playMode,
+      anchorSongId: payload.anchorSongId,
+      anchorPosition: payload.anchorPosition,
       initial: payload.initial,
     });
   });
@@ -77,8 +79,8 @@ export const registerTogetherIpc = (): void => {
     if (session) send({ type: "advance", session });
   });
 
-  together.onSessionEnd((reason) => {
-    send({ type: "session-end", reason });
+  together.onSessionEnd((reason, generation) => {
+    send({ type: "session-end", reason, generation });
   });
 
   together.onError((message) => {

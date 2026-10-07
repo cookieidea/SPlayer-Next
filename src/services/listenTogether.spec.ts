@@ -44,7 +44,7 @@ let emit: ((event: TogetherSyncEvent) => void) | null = null;
 
 const sessionEvent = (roomId = "R1"): TogetherSyncEvent => ({
   type: "session",
-  session: { roomId, userId: "7" },
+  session: { roomId, userId: "7", generation: 1 },
   room: { roomId, creatorId: "7", members: [{ userId: "7", nickname: "我", avatarUrl: "" }] },
 });
 
@@ -104,7 +104,7 @@ describe("一起听渲染端服务", () => {
   it("会话结束后退出房间状态并提示", async () => {
     mods.initTogether();
     emit?.(sessionEvent());
-    emit?.({ type: "session-end", reason: "server" });
+    emit?.({ type: "session-end", reason: "server", generation: 1 });
     expect(mods.isTogetherActive()).toBe(false);
     await vi.waitFor(() => expect(mocks.toast.warning).toHaveBeenCalled());
   });
@@ -113,7 +113,7 @@ describe("一起听渲染端服务", () => {
     mods.initTogether();
     emit?.(sessionEvent());
     mocks.toast.warning.mockClear();
-    emit?.({ type: "session-end", reason: "left" });
+    emit?.({ type: "session-end", reason: "left", generation: 1 });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(mocks.toast.warning).not.toHaveBeenCalled();
   });
@@ -123,7 +123,7 @@ describe("一起听渲染端服务", () => {
     emit?.(sessionEvent());
     emit?.({
       type: "advance",
-      session: { roomId: "R1", userId: "7" },
+      session: { roomId: "R1", userId: "7", generation: 1 },
     });
     await vi.waitFor(() => expect(mocks.nextTrack).toHaveBeenCalled());
   });
@@ -141,10 +141,12 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "command",
-      session: { roomId: "R1", userId: "7" },
+      session: { roomId: "R1", userId: "7", generation: 1 },
       command: null,
       songIds: ["100", "200", "300"],
       playMode: "",
+      anchorSongId: "",
+      anchorPosition: -1,
       initial: false,
     });
 
@@ -163,7 +165,7 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "command",
-      session: { roomId: "R1", userId: "7" },
+      session: { roomId: "R1", userId: "7", generation: 1 },
       command: {
         userId: "8",
         type: "GOTO",
@@ -175,6 +177,8 @@ describe("一起听渲染端服务", () => {
       },
       songIds: [],
       playMode: "",
+      anchorSongId: "",
+      anchorPosition: -1,
       initial: false,
     });
 
@@ -194,7 +198,7 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "command",
-      session: { roomId: "R1", userId: "7" },
+      session: { roomId: "R1", userId: "7", generation: 1 },
       command: {
         userId: "8",
         type: "PROGRESS",
@@ -206,6 +210,8 @@ describe("一起听渲染端服务", () => {
       },
       songIds: [],
       playMode: "",
+      anchorSongId: "",
+      anchorPosition: -1,
       initial: false,
     });
 
@@ -223,10 +229,12 @@ describe("一起听渲染端服务", () => {
     emit?.(sessionEvent());
     emit?.({
       type: "command",
-      session: { roomId: "R1", userId: "7" },
+      session: { roomId: "R1", userId: "7", generation: 1 },
       command: null,
       songIds: [],
       playMode: "RANDOM",
+      anchorSongId: "",
+      anchorPosition: -1,
       initial: false,
     });
 
@@ -243,10 +251,12 @@ describe("一起听渲染端服务", () => {
     emit?.(sessionEvent());
     emit?.({
       type: "command",
-      session: { roomId: "R1", userId: "7" },
+      session: { roomId: "R1", userId: "7", generation: 1 },
       command: null,
       songIds: [],
       playMode: "SINGLE_LOOP",
+      anchorSongId: "",
+      anchorPosition: -1,
       initial: false,
     });
 
@@ -352,7 +362,7 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "session",
-      session: { roomId: "R2", userId: "7" },
+      session: { roomId: "R2", userId: "7", generation: 1 },
       room: { roomId: "R2", creatorId: "7", members: [] },
     });
     expect(useTogetherStore().isInvited("9")).toBe(false);
@@ -366,5 +376,36 @@ describe("一起听渲染端服务", () => {
     const ok = await mods.inviteFriend({ userId: "9", nickname: "", avatarUrl: "", joined: false });
     expect(ok).toBe(false);
     expect(mocks.toast.error).toHaveBeenCalled();
+  });
+  it("旧会话的迟到事件被丢弃", () => {
+    const store = useTogetherStore();
+    mods.initTogether();
+    emit?.(sessionEvent("R1"));
+    expect(store.session?.roomId).toBe("R1");
+
+    emit?.({
+      type: "session",
+      session: { roomId: "R2", userId: "7", generation: 2 },
+      room: { roomId: "R2", creatorId: "7", members: [] },
+    });
+    expect(store.session?.roomId).toBe("R2");
+
+    emit?.({ type: "session-end", reason: "server", generation: 1 });
+    expect(store.session?.roomId).toBe("R2");
+
+    emit?.({
+      type: "room",
+      room: { roomId: "R1", creatorId: "9", members: [] },
+      generation: 1,
+    });
+    expect(store.room?.roomId).toBe("R2");
+  });
+
+  it("当前会话的结束事件正常生效", () => {
+    const store = useTogetherStore();
+    mods.initTogether();
+    emit?.(sessionEvent("R1"));
+    emit?.({ type: "session-end", reason: "server", generation: 1 });
+    expect(store.session).toBeNull();
   });
 });
