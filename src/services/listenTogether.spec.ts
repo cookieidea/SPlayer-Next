@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   songsByIds: vi.fn<(ids: Array<string | number>) => Promise<unknown[]>>(() => Promise.resolve([])),
   toast: { info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() },
   setShuffleMode: vi.fn(),
+  restoreTogetherMulti: vi.fn(() => Promise.resolve(null)),
   setRepeatMode: vi.fn(),
 }));
 
@@ -26,6 +27,9 @@ vi.mock("@/core/player", () => ({
 
 vi.mock("@/apis/song/netease", () => ({ songsByIds: mocks.songsByIds }));
 vi.mock("@/composables/useToast", () => ({ toast: mocks.toast }));
+vi.mock("@/services/listenTogetherMulti", () => ({
+  restoreTogetherMulti: mocks.restoreTogetherMulti,
+}));
 
 import type { TogetherSyncEvent } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
@@ -109,6 +113,31 @@ describe("一起听渲染端服务", () => {
     mods.initTogether();
     emit?.(sessionEvent());
     expect(mods.isTogetherActive()).toBe(true);
+  });
+
+  it("房间被升级为多人时切协议，第二次再遇到升级仍然生效", async () => {
+    const roomEvent = (): TogetherSyncEvent => ({
+      type: "room",
+      generation: 1,
+      room: {
+        roomId: "R1",
+        creatorId: "7",
+        roomType: "MULTI_MATCH_SONG",
+        members: [{ userId: "7", nickname: "我", avatarUrl: "" }],
+      },
+    });
+    mods.initTogether();
+
+    emit?.(sessionEvent());
+    emit?.(roomEvent());
+    await vi.waitFor(() => expect(mocks.restoreTogetherMulti).toHaveBeenCalledTimes(1));
+
+    // 退房后重新来一轮：标志位不复位的话这里会停在 1 次，
+    // 双人轮询就会继续跑在多人房上把队列覆盖掉
+    emit?.({ type: "session-end", reason: "left", generation: 1 });
+    emit?.(sessionEvent());
+    emit?.(roomEvent());
+    await vi.waitFor(() => expect(mocks.restoreTogetherMulti).toHaveBeenCalledTimes(2));
   });
 
   it("在多人房里也算一起听中：否则本曲播完会先播成本地队列的下一首", async () => {

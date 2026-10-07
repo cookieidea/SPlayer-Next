@@ -287,6 +287,9 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
   if (next.type === "session-end") {
     setTogetherCounting(false);
     stopReporting();
+    // 必须复位：否则第二次遇到"双人房被升级为多人"就不切协议，
+    // 双人轮询会继续跑在多人房上，把房间队列反复覆盖
+    switchedToMulti = false;
     if (next.reason !== "left") toast.warning("一起听已结束");
     return;
   }
