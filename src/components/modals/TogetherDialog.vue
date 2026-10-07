@@ -54,6 +54,14 @@ const multiQueueSongs = computed(() => {
   return [...(room.playSong ? [room.playSong] : []), ...room.nextSongs];
 });
 
+/** 陌生人可见性（账号级设置，实测由 listening/privacy 的 listening_entrance 控制） */
+const strangerVisible = ref(false);
+
+const onToggleStranger = async (value: boolean): Promise<void> => {
+  strangerVisible.value = value;
+  await togetherMulti.setStrangerVisible(value);
+};
+
 /** 建房前选择要邀请的好友：0~1 人建双人房，2 人以上建多人房 */
 const createFriends = shallowRef<TogetherFriend[]>([]);
 const pickedFriends = ref<string[]>([]);
@@ -165,7 +173,10 @@ watch(
     snapRoom();
     void loadInbox();
     if (store.inRoom) void loadFriends();
-    else void loadCreateFriends();
+    else {
+      void loadCreateFriends();
+      void togetherMulti.getStrangerVisible().then((v) => (strangerVisible.value = v));
+    }
   },
 );
 
@@ -552,6 +563,10 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
         <p class="text-sm text-on-surface-variant leading-relaxed">
           {{ userId ? t("player.together.hint") : t("player.together.needLogin") }}
         </p>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm">{{ t("player.together.allowStranger") }}</span>
+          <SSwitch :model-value="strangerVisible" @update:model-value="onToggleStranger" />
+        </div>
         <div class="flex flex-col gap-2">
           <span class="text-xs text-on-surface-variant">
             {{ t("player.together.pickFriendsHint") }}

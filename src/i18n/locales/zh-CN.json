@@ -534,6 +534,7 @@
       "createMulti": "创建多人房间",
       "pickFriendsHint": "选择好友一起听（选 2 位以上将创建多人房间）",
       "picked": "已选",
+      "allowStranger": "允许陌生人加入",
       "matchMulti": "多人匹配",
       "me": "我",
       "recommended": "推荐",

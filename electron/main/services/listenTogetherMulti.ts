@@ -309,6 +309,26 @@ export const roomSongsList = async (): Promise<TogetherRoomSongList> => {
   return { songIds, followers };
 };
 
+/**
+ * 账号对陌生人的可见性开关。实测 privacyKey 只接受 listening_entrance，
+ * 值域 0/1：0 对应 visibleStatus=0（隐藏），1 对应 visibleStatus=2（公开）
+ */
+export const getStrangerVisible = async (): Promise<boolean> => {
+  const response = await callNetease("listen_together_listening_privacy_get", {});
+  const body = obj(obj(response)?.body) ?? {};
+  const data = obj(body.data) ?? {};
+  return Number(data.visibleStatus) !== 0;
+};
+
+export const setStrangerVisible = async (visible: boolean): Promise<void> => {
+  const response = await callNetease("listen_together_listening_privacy_update", {
+    privacyKey: "listening_entrance",
+    value: visible ? 1 : 0,
+  });
+  const body = obj(obj(response)?.body) ?? {};
+  if (body.code !== 200) throw new Error(str(body.message) || "修改可见性失败");
+};
+
 /** 多人房站内邀请。实测 {roomId, inviteUids, groupIds} 是正确参数组合 */
 export const inviteToMultiRoom = async (uids: readonly string[]): Promise<void> => {
   if (!session || uids.length === 0) return;

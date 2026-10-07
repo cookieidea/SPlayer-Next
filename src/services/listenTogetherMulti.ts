@@ -222,6 +222,16 @@ export const cancelStrangerMatch = (): Promise<void> =>
     await window.api.togetherMulti.cancelMatch();
   }).then(() => undefined);
 
+/** 账号对陌生人的可见性：开着才会被陌生人匹配到 */
+export const getStrangerVisible = (): Promise<boolean> =>
+  window.api.togetherMulti.getStrangerVisible().catch(() => false);
+
+export const setStrangerVisible = (visible: boolean): Promise<void> =>
+  withBusy(async () => {
+    await window.api.togetherMulti.setStrangerVisible(visible);
+    toast.success(visible ? "已允许陌生人加入" : "已关闭陌生人加入");
+  }).then(() => undefined);
+
 /** 建房后最多把当前队列的这么多首带进房间：服务端待播窗口有限，加多也留不住 */
 const ROOM_SEED_LIMIT = 30;
 

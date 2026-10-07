@@ -11,7 +11,9 @@ import {
   cancelMultiMatch,
   cancelStrangerMatch,
   createMultiRoom,
+  getStrangerVisible,
   inviteToMultiRoom,
+  setStrangerVisible,
   onMultiRoom,
   roomSongsList,
   startMultiMatch,
@@ -425,5 +427,35 @@ describe("多人一起听", () => {
       body: { code: 200, data: { success: false, failedMessage: "歌曲条件不满足" } },
     });
     await expect(createMultiRoom("0", "88")).rejects.toThrow("歌曲条件不满足");
+  });
+
+  it("读陌生人可见性：visibleStatus 非 0 即公开", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { visibleStatus: 2, entranceStatus: 1 } },
+    });
+    expect(await getStrangerVisible()).toBe(true);
+
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { visibleStatus: 0, entranceStatus: 0 } },
+    });
+    expect(await getStrangerVisible()).toBe(false);
+  });
+
+  it("改可见性用 listening_entrance 且值为 0/1", async () => {
+    mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+
+    await setStrangerVisible(true);
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_listening_privacy_update", {
+      privacyKey: "listening_entrance",
+      value: 1,
+    });
+
+    await setStrangerVisible(false);
+    expect(mocks.call).toHaveBeenLastCalledWith("listen_together_listening_privacy_update", {
+      privacyKey: "listening_entrance",
+      value: 0,
+    });
   });
 });

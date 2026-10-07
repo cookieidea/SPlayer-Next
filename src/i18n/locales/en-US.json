@@ -546,6 +546,7 @@
       "createMulti": "Create multi room",
       "pickFriendsHint": "Pick friends (2+ creates a multi room)",
       "picked": "Picked",
+      "allowStranger": "Allow strangers to join",
       "matchMulti": "Multi match",
       "me": "Me",
       "recommended": "Recommended",
