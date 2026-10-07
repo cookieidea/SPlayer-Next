@@ -36,23 +36,23 @@
 
 ### 多人房
 
-| 端点                              | 参数                                                  | 状态                        |
-| --------------------------------- | ----------------------------------------------------- | --------------------------- |
-| `multi/room/create`               | `type`(整数, `1` 可用) + `songId`(真实可播)           | ✅ **实测建房成功**         |
-| `multi/invite`                    | `roomId`, `inviteUids`, `groupIds`                    | ✅ 实测 200                 |
-| `multi/match`                     | `songId`, `checkToken`（须传字符串 `"null"`）         | ✅ 实测                     |
-| `multi/match/ack`                 | `roomId`, `agree`, **`checkToken`**, **`inviterUid`** | 未实测                      |
-| `multi/match/cancel`              | 无参                                                  | ✅ 实测                     |
-| `multi/match/exit`                | `roomId`, `exitType`                                  | 本项目只传 roomId           |
-| `multi/match/heartbeat`           | `roomId`                                              | ✅ 实测（房间状态来自响应） |
-| `multi/match/status/get`          | 无参                                                  | ✅ 实测                     |
-| `multi/match/song/operate`        | `roomId`, `songId`, `bizId`, `operate`                | ✅ **实测 0/2/4/7**         |
-| `multi/special/song/operate`      | 同 `song/operate`                                     | 未实测                      |
-| `multi/match/msg/history`         | `roomId`                                              | 未实测                      |
-| `multi/special/msg/history`       | `roomId`                                              | 未实测                      |
-| `multi/match/msg/translate/retry` | `roomId`, `msgId`                                     | 未实测                      |
-| `multi/start/msg`                 | `roomId`                                              | 实测 200                    |
-| `multi/match`（无子路径）         | `checkToken`, `songId`                                | 见上                        |
+| 端点                              | 参数                                                  | 状态                                              |
+| --------------------------------- | ----------------------------------------------------- | ------------------------------------------------- |
+| `multi/room/create`               | `type`(整数, `1` 可用) + `songId`(真实可播)           | ✅ **实测建房成功**                               |
+| `multi/invite`                    | `roomId`, `inviteUids`, `groupIds`                    | ✅ 实测 200                                       |
+| `multi/match`                     | `songId`, `checkToken`（须传字符串 `"null"`）         | ✅ 实测                                           |
+| `multi/match/ack`                 | `roomId`, `agree`, **`checkToken`**, **`inviterUid`** | 未实测                                            |
+| `multi/match/cancel`              | 无参                                                  | ✅ 实测                                           |
+| `multi/match/exit`                | `roomId`, `exitType`                                  | ✅ 实测：带与不带响应相同（都含结果页 `orpheus`） |
+| `multi/match/heartbeat`           | `roomId`                                              | ✅ 实测（房间状态来自响应）                       |
+| `multi/match/status/get`          | 无参                                                  | ✅ 实测                                           |
+| `multi/match/song/operate`        | `roomId`, `songId`, `bizId`, `operate`                | ✅ **实测 0/2/4/7**                               |
+| `multi/special/song/operate`      | 同 `song/operate`                                     | 未实测                                            |
+| `multi/match/msg/history`         | `roomId`                                              | 未实测                                            |
+| `multi/special/msg/history`       | `roomId`                                              | 未实测                                            |
+| `multi/match/msg/translate/retry` | `roomId`, `msgId`                                     | 未实测                                            |
+| `multi/start/msg`                 | `roomId`                                              | 实测 200                                          |
+| `multi/match`（无子路径）         | `checkToken`, `songId`                                | 见上                                              |
 
 ### 陌生人匹配（song/match 族）
 

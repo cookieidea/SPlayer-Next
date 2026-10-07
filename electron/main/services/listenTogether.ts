@@ -297,11 +297,13 @@ const reportQueue = async (songIds: readonly string[]): Promise<void> => {
   const userId = Number(session.userId) || 0;
   const version = playlistVersion;
   if (issuing !== generation) return;
+  clientSeq += 1;
   neteaseLog.info(`[一起听] 上报队列 ${songIds.length}首`);
   await callNetease("listen_together_sync_list_report", {
     roomId,
     userId,
     version,
+    clientSeq,
     songIds: [...songIds],
     // 播放模式必须随列表一起上报：实测服务端只在 displayList 为对象形态时
     // 才接受 playMode，数组形态会静默丢弃它（对端就同步不了当前歌曲）

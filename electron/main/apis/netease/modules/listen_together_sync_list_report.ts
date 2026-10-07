@@ -21,7 +21,13 @@ const listenTogetherSyncListReport: NeteaseModule = (query, request) => {
   };
   return request(
     "/api/listen/together/sync/list/command/report",
-    { roomId: query.roomId, playlistParam: JSON.stringify(playlist) },
+    {
+      roomId: query.roomId,
+      playlistParam: JSON.stringify(playlist),
+      // 官方载荷带 clientSeq：服务端据此判定队列更新的先后，
+      // 缺了它就没法比较两次上报谁更新，可能把旧队列广播出去
+      clientSeq: Number(query.clientSeq) || 0,
+    },
     createOption(query, "eapi"),
   );
 };
