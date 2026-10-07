@@ -271,6 +271,16 @@ const ROOM_SEED_LIMIT = 30;
  * 创建多人房。接口只接受一个"起播歌"，队列不会被带进去
  * （实测 nextSongIds / playlistIds 都被忽略），因此建完房再把当前队列逐首加进去
  */
+/**
+ * 房间操作的结果提示。
+ * 无消息且未被拒说明请求可能压根没发出去（会话已失效），此时不提示，
+ * 免得弹出与事实相反的文案
+ */
+const reportOperate = (message: string, rejected: boolean, rejectFallback: string): void => {
+  if (rejected) toast.warning(message || rejectFallback);
+  else if (message) toast.success(message);
+};
+
 export const createMultiRoom = (userId: string): Promise<unknown> =>
   withBusy(async () => {
     const current = useStatusStore().currentTrack;
@@ -347,8 +357,7 @@ export const addMultiSong = (track: Track): Promise<void> =>
       return;
     }
     const { message, rejected } = await window.api.togetherMulti.addSong(track.id, 0);
-    if (rejected) toast.warning(message || "这首歌暂时加不进房间");
-    else toast.success(message || "已加入一起听队列");
+    reportOperate(message, rejected, "这首歌暂时加不进房间");
   }).then(() => undefined);
 
 /** 投票切歌：人数够时服务端直接切走，不够时记一票 */
@@ -382,15 +391,13 @@ export const removeMultiSong = (songId: string): Promise<void> =>
       songId,
       song?.songBizId ?? 0,
     );
-    if (rejected) toast.warning(message || "这首歌删不掉");
-    else toast.success(message || "已从房间队列移除");
+    reportOperate(message, rejected, "这首歌删不掉");
   }).then(() => undefined);
 
 export const topMultiSong = (track: Track): Promise<void> =>
   withBusy(async () => {
     const { message, rejected } = await window.api.togetherMulti.topSong(track.id, 0);
-    if (rejected) toast.warning(message || "置顶失败");
-    else toast.success(message || "已置顶");
+    reportOperate(message, rejected, "置顶失败");
   }).then(() => undefined);
 
 export const shareMultiInvitation = (roomId: string, inviterUid: string): string =>

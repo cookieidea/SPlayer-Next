@@ -181,19 +181,6 @@ export interface TogetherApi {
   invite: (acceptorId: string) => Promise<void>;
   rejectInvitation: (roomId: string) => Promise<void>;
   leave: () => Promise<void>;
-  inviteFriends: (uids: string[]) => Promise<void>;
-  refresh: () => Promise<void>;
-  getStrangerVisible: () => Promise<boolean>;
-  setStrangerVisible: (visible: boolean) => Promise<void>;
-  createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;
-  startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
-  cancelMatch: () => Promise<void>;
-  startMultiMatch: (songId: string) => Promise<{
-    matching: boolean;
-    maxWaitMs: number;
-    roomId: string;
-  }>;
-  cancelMultiMatch: () => Promise<void>;
   sync: (state: TogetherLocalState) => void;
   onEvent: (callback: (event: TogetherSyncEvent) => void) => () => void;
 }

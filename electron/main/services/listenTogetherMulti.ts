@@ -1,4 +1,5 @@
 import { callNetease } from "@main/apis/netease";
+import { setMultiRoomActive } from "@main/services/togetherPresence";
 import { list, multiRoomFromBody, obj, str, toRoomSong } from "@main/utils/togetherParse";
 import type {
   TogetherMultiEndReason,
@@ -40,10 +41,11 @@ type ErrorListener = (message: string) => void;
 
 let session: TogetherMultiSession | null = null;
 let room: TogetherMultiRoom | null = null;
-let roomKey = "";
 let generation = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticking = false;
+/** 心跳在途期间收到的刷新请求，在当前这轮结束后补做一次 */
+let refreshPending = false;
 
 let roomListener: RoomListener | null = null;
 let endListener: EndListener | null = null;
@@ -74,26 +76,11 @@ export const getMultiSession = (): TogetherMultiSession | null => session;
 
 export const getMultiRoom = (): TogetherMultiRoom | null => room;
 
-const songKeyOf = (room: TogetherMultiRoom): string =>
-  [
-    room.playSong?.songId ?? "",
-    ...room.nextSongs.map((song) => song.songId),
-    // 起播时刻也进键：同一首歌里对方拖了进度时服务端会改 startTime，
-    // 不去重的话本地进度不会跟着对齐。正常播放时它是恒定值，不会造成重复推送
-    String(room.playStartTime ?? ""),
-  ].join(",");
-
 const publish = (next: TogetherMultiRoom, issuing: number): void => {
   if (generation !== issuing) return;
   room = next;
-  roomKey = songKeyOf(next);
+  setMultiRoomActive(true);
   roomListener?.(next, issuing);
-};
-
-// 房间队列没变时不重复推给渲染端：8 秒一次心跳，每次都推会让播放器反复重建队列
-const publishIfChanged = (next: TogetherMultiRoom, issuing: number): void => {
-  if (songKeyOf(next) === roomKey) return;
-  publish(next, issuing);
 };
 
 const stop = (reason: TogetherMultiEndReason): void => {
@@ -102,7 +89,7 @@ const stop = (reason: TogetherMultiEndReason): void => {
   generation += 1;
   session = null;
   room = null;
-  roomKey = "";
+  setMultiRoomActive(false);
   if (timer) clearInterval(timer);
   timer = null;
   endListener?.(reason, ended.generation);
@@ -115,10 +102,20 @@ const codeOf = (value: unknown): number => {
   return Number(body.code) || 0;
 };
 
+const ROOM_GONE_HINTS = ["一起听已失效", "房间已失效", "房间不存在", "room not exist"];
+
+/**
+ * 房间是否已被服务端结束。
+ *
+ * 抛出的 NeteaseRequestError 把响应体放在 error.response.body，
+ * 读 error.body 会恒得 0，于是死房间永远退不出去、每轮心跳都报一次错
+ */
 const isRoomGone = (error: unknown): boolean => {
-  if (codeOf(obj(error)) === ROOM_GONE_CODE) return true;
-  const message = str(obj(error)?.message);
-  return message.includes("房间") && message.includes("失效");
+  const response = (error as { response?: { body?: { code?: unknown } } })?.response;
+  const code = Number(response?.body?.code);
+  if (Number.isFinite(code) && code === ROOM_GONE_CODE) return true;
+  const text = str(obj(error)?.message);
+  return ROOM_GONE_HINTS.some((hint) => text.includes(hint));
 };
 
 const failWith = (value: unknown, fallback: string): string => {
@@ -127,7 +124,32 @@ const failWith = (value: unknown, fallback: string): string => {
   return str(data.failedMessage) || str(body.message) || fallback;
 };
 
-export const startMultiTick = (): void => {
+export /** 认领一次会话操作：推进代次，任何更早的在途请求都会被判为过期 */
+const claimGeneration = (): number => {
+  generation += 1;
+  return generation;
+};
+
+/**
+ * 请求在途时若代次被别的操作推进，说明这次结果已经过期，必须丢弃。
+ * 缺了这道校验会把过期响应写进 session，出现"主进程在旧房间里轮询、
+ * 渲染端却不在房间"的分叉
+ */
+const assertCurrent = (issuing: number): void => {
+  if (generation !== issuing) throw new Error("房间操作已被后续操作取代");
+};
+
+/** 新房间确认后再拆旧会话：请求失败时不该把用户从原房间里踢出去却仍占着它 */
+const enterMultiRoom = (next: TogetherMultiRoom, userId: string): TogetherMultiRoom => {
+  if (session) stop("left");
+  const issuing = claimGeneration();
+  session = { roomId: next.roomId, userId, generation: issuing };
+  publish(next, issuing);
+  startMultiTick();
+  return next;
+};
+
+const startMultiTick = (): void => {
   if (timer) clearInterval(timer);
   timer = setInterval(() => void tick(), MULTI_HEARTBEAT_MS);
 };
@@ -142,7 +164,7 @@ const tick = async (): Promise<void> => {
     });
     if (!session || generation !== issuing) return;
     const next = roomFromResponse(response);
-    if (next) publishIfChanged(next, issuing);
+    if (next) publish(next, issuing);
   } catch (error) {
     if (generation !== issuing) return;
     if (isRoomGone(error)) {
@@ -152,6 +174,10 @@ const tick = async (): Promise<void> => {
     errorListener?.(str(obj(error)?.message) || "一起听心跳失败");
   } finally {
     ticking = false;
+    if (refreshPending) {
+      refreshPending = false;
+      void tick();
+    }
   }
 };
 
@@ -172,6 +198,12 @@ export interface StrangerMatchResult {
  */
 export const refreshMultiRoom = async (): Promise<void> => {
   if (!session) return;
+  // 心跳在途时直接 tick 会被 ticking 守卫吞掉，静默失去"播完立刻续上"的意义，
+  // 改为留个待办，由当前这轮在 finally 里补一次
+  if (ticking) {
+    refreshPending = true;
+    return;
+  }
   await tick();
 };
 
@@ -179,19 +211,15 @@ export const createMultiRoom = async (
   songId: string,
   userId: string,
 ): Promise<TogetherMultiRoom> => {
-  if (session) stop("left");
-  const issuing = generation + 1;
-  generation = issuing;
+  const issuing = claimGeneration();
   const response = await callNetease("listen_together_multi_room_create", {
     type: 1,
     songId,
   });
+  assertCurrent(issuing);
   const next = roomFromResponse(response);
   if (!next) throw new Error(failWith(response, "创建多人房失败"));
-  session = { roomId: next.roomId, userId, generation: issuing };
-  publish(next, issuing);
-  startMultiTick();
-  return next;
+  return enterMultiRoom(next, userId);
 };
 
 /**
@@ -259,46 +287,36 @@ export const joinMultiRoom = async (
   userId: string,
   deviceId: string,
 ): Promise<TogetherMultiRoom> => {
-  if (session) stop("left");
-  const issuing = generation + 1;
-  generation = issuing;
+  const issuing = claimGeneration();
   const response = await callNetease("listen_together_multi_ack", {
     roomId,
     inviterUid,
     deviceId,
   });
+  assertCurrent(issuing);
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
   if (body.code !== 200 || data.success === false) {
-    generation = issuing + 1;
     throw new Error(failWith(response, "加入多人群房失败"));
   }
   const next = roomFromResponse(response);
-  if (!next) {
-    generation = issuing + 1;
-    throw new Error("加入多人群房失败：未返回房间信息");
-  }
-  session = { roomId: next.roomId || roomId, userId, generation: issuing };
-  publish(next, issuing);
-  startMultiTick();
-  return next;
+  if (!next) throw new Error("加入多人群房失败：未返回房间信息");
+  return enterMultiRoom({ ...next, roomId: next.roomId || roomId }, userId);
 };
 
 /** 应用重启后服务端仍在多人房里时恢复，房间状态交给第一次心跳拉取 */
 export const restoreMultiRoom = async (userId: string): Promise<TogetherMultiRoom | null> => {
+  const issuing = claimGeneration();
   const response = await callNetease("listen_together_multi_status_get", {});
+  assertCurrent(issuing);
   if (codeOf(response) !== 200) return null;
   const next = roomFromResponse(response);
   if (!next) return null;
-  const issuing = generation + 1;
-  generation = issuing;
-  session = { roomId: next.roomId, userId, generation: issuing };
-  publish(next, issuing);
-  startMultiTick();
+  const room = enterMultiRoom(next, userId);
   // 快照里的 playSong 可能为空，当前歌曲要等心跳。不立即拉一次的话，
   // 恢复后要等一个心跳周期（8 秒）才开始跟随
   void tick();
-  return next;
+  return room;
 };
 
 /**
@@ -323,7 +341,9 @@ export const setStrangerVisible = async (visible: boolean): Promise<void> => {
 
 /** 多人房站内邀请。实测 {roomId, inviteUids, groupIds} 是正确参数组合 */
 export const inviteToMultiRoom = async (uids: readonly string[]): Promise<void> => {
-  if (!session || uids.length === 0) return;
+  if (uids.length === 0) return;
+  // 静默返回会让上层的"已邀请 N 位好友"变成假成功
+  if (!session) throw new Error("已不在房间里，无法邀请");
   const response = await callNetease("listen_together_multi_invite", {
     roomId: session.roomId,
     inviteUids: [...uids],
@@ -354,7 +374,8 @@ const operate = async (
   songBizId: number,
   action: number,
 ): Promise<TogetherRoomOperateResult> => {
-  if (!session) return { room: null, message: "", rejected: true };
+  // 不是"被服务端否决"：请求可能压根没发出去，别让界面弹出与事实相反的原因
+  if (!session) return { room: null, message: "", rejected: false };
   const issuing = generation;
   const response = await callNetease("listen_together_multi_song_operate", {
     roomId: session.roomId,
@@ -362,7 +383,7 @@ const operate = async (
     bizId: songBizId,
     operate: action,
   });
-  if (generation !== issuing) return { room: null, message: "", rejected: true };
+  if (generation !== issuing) return { room: null, message: "", rejected: false };
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
   const message = str(data.failedMsg);

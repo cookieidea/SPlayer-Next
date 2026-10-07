@@ -50,6 +50,10 @@ import type {
   TransitionPreference,
 } from "@shared/types/player";
 import type { MediaEvent } from "@main/services/media";
+import { isMultiRoomActive } from "@main/services/togetherPresence";
+
+/** 多人房里要屏蔽的系统媒体事件：它们直接控制引擎，不经过渲染端 */
+const MEDIA_PLAYBACK_EVENTS = new Set<MediaEvent["type"]>(["Play", "Pause", "Stop"]);
 import { JsPlayerEvent } from "@splayer/audio-engine";
 import type { JsMusicMetadata } from "@splayer/audio-engine";
 
@@ -877,6 +881,10 @@ export const registerPlayerIpc = (): void => {
   mediaService.onEvent((event: MediaEvent) => {
     try {
       const inst = getPlayer();
+      // 多人一起听里播放态由房间决定，而媒体键（MPRIS/键盘）直接落到引擎上，
+      // 绕过了渲染端的守卫：按一下暂停会真的静音，房间却还在播。
+      // 双人房不拦——那边播放/暂停是要上报同步的
+      if (isMultiRoomActive() && MEDIA_PLAYBACK_EVENTS.has(event.type)) return;
       switch (event.type) {
         case "Play":
           void inst.play().catch(() => {});

@@ -15,6 +15,7 @@ import { callKugou, clearKugouSession, mergeKugouSession } from "@main/apis/kugo
 import { openNeteaseLoginWindow } from "@main/window/login";
 import { coreLog } from "@main/utils/logger";
 import * as together from "@main/services/listenTogether";
+import * as togetherMulti from "@main/services/listenTogetherMulti";
 import type { ApiPlatform } from "@shared/types/apis";
 
 /** 各平台的调用器：统一返回 `{ status?, body?, data? }` 由前端按需取 */
@@ -66,6 +67,9 @@ export const registerApisIpc = (): void => {
   ipcMain.handle("apis:clearSession", (_evt, platform: ApiPlatform) => {
     if (platform === "netease") {
       together.abandon();
+      // 多人侧必须一起结束：cookie 清掉后心跳会一直失败，
+      // 会话与定时器不清就会每 8 秒报一次错
+      togetherMulti.endMultiOnLogout();
       clearNeteaseCookies();
     }
     if (platform === "qqmusic") clearQQMusicCookies();

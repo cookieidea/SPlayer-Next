@@ -40,6 +40,16 @@ const subscribe = <T>(channel: string, callback: (data: T) => void): (() => void
 };
 
 /**
+ * 单消费者事件通道的订阅。
+ * 先清掉同名通道上的旧监听：渲染端模块被 HMR 重新求值时会丢掉 unsubscribe，
+ * 旧 handler 会一直留在 ipcRenderer 上，导致每次广播被投递多次
+ */
+const subscribeExclusive = <T>(channel: string, callback: (data: T) => void): (() => void) => {
+  ipcRenderer.removeAllListeners(channel);
+  return subscribe<T>(channel, callback);
+};
+
+/**
  * 推断安装类型
  * @returns nsis | portable | appx | dmg | appimage
  */
@@ -446,7 +456,7 @@ const api = {
     leave: () => ipcRenderer.invoke("together:leave"),
     sync: (state: TogetherLocalState) => ipcRenderer.send("together:sync", state),
     onEvent: (callback: (event: TogetherSyncEvent) => void) =>
-      subscribe<TogetherSyncEvent>("together:event", callback),
+      subscribeExclusive<TogetherSyncEvent>("together:event", callback),
   },
   togetherMulti: {
     getSession: () => ipcRenderer.invoke("togetherMulti:getSession"),
@@ -475,7 +485,7 @@ const api = {
     voteSkip: (songId: string, songBizId: number) =>
       ipcRenderer.invoke("togetherMulti:voteSkip", songId, songBizId),
     onEvent: (callback: (event: TogetherMultiEvent) => void) =>
-      subscribe<TogetherMultiEvent>("togetherMulti:event", callback),
+      subscribeExclusive<TogetherMultiEvent>("togetherMulti:event", callback),
   },
   apis: {
     // 调用任意平台的任意接口

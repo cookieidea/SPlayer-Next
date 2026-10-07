@@ -124,7 +124,7 @@ describe("多人一起听", () => {
     expect(getMultiRoom()?.playSong?.songId).toBe("999");
   });
 
-  it("房间队列没变时不重复推送", async () => {
+  it("内容相同的心跳也照推：渲染端靠它周期对齐进度", async () => {
     mocks.call.mockResolvedValue(multiBody("R_1", "123", ["456"]));
     await joinMultiRoom("R_1", "77", "88", "d");
 
@@ -133,7 +133,9 @@ describe("多人一起听", () => {
     await tick();
     await tick();
 
-    expect(pushed).toHaveLength(0);
+    // 曾经按"歌曲 id 没变"去重，结果同一首歌里对方拖了进度本地也不再对齐；
+    // 队列重建本来就由渲染端的 roomQueueKey 去重，这里不必再省
+    expect(pushed).toHaveLength(2);
   });
 
   it("心跳报 488 时结束会话并停掉定时器", async () => {
@@ -142,7 +144,13 @@ describe("多人一起听", () => {
 
     const reasons: string[] = [];
     onMultiEnd((reason) => reasons.push(reason));
-    mocks.call.mockRejectedValue(Object.assign(new Error("房间已失效"), { body: { code: 488 } }));
+    // 必须按真实形状造错：NeteaseRequestError 把响应体放在 error.response.body，
+    // 早先的用例把 body 直接挂在 error 上，于是代码读错路径也照样通过
+    mocks.call.mockRejectedValue(
+      Object.assign(new Error("netease 488: 一起听已失效，可邀请好友进入新的一起听"), {
+        response: { body: { code: 488, message: "一起听已失效，可邀请好友进入新的一起听" } },
+      }),
+    );
     await tick();
 
     expect(reasons).toEqual(["server"]);
@@ -150,6 +158,18 @@ describe("多人一起听", () => {
     mocks.call.mockClear();
     await tick();
     expect(mocks.call).not.toHaveBeenCalled();
+  });
+
+  it("文案不含房间二字时也能判定房间失效", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    const reasons: string[] = [];
+    onMultiEnd((reason) => reasons.push(reason));
+    // 服务端实际文案就是这句，只含"一起听已失效"，不含"房间"
+    mocks.call.mockRejectedValue(new Error("netease 488: 一起听已失效，可邀请好友进入新的一起听"));
+    await tick();
+
+    expect(reasons).toEqual(["server"]);
   });
 
   it("加歌走 song/operate 的 ADD", async () => {
@@ -498,58 +518,59 @@ describe("多人一起听", () => {
     expect(pushed[0].roomId).toBe("R_1");
   });
 
-  it("同一首歌里起播时刻变了要重新推送：否则对方拖进度本地不跟随", async () => {
-    const roomWithStart = (startTime: number) => ({
-      status: 200,
-      body: {
-        code: 200,
-        data: {
-          multiLtRoomSnapshot: {
-            roomId: "R_1",
-            multiRoomInfoDTO: { roomId: "R_1", creatorId: 77, chatRoomId: "chat1" },
-            multiLtRoomUserAgg: {
-              onlineUserInfos: [{ userId: 88, nickname: "B", avatarUrl: "" }],
-            },
-            roomPlaySongInfo: {
-              playSong: { songId: 123, songBizId: 5, songRcmdUid: 77 },
-              nextSongs: [{ songId: 456, songBizId: 0, songRcmdUid: 77 }],
-              startTime,
-              songDuration: 200000,
-            },
-          },
-        },
-      },
-    });
+  it("每轮心跳都推给渲染端：不去重才能周期对齐进度", async () => {
     mocks.call.mockResolvedValue(multiBody());
     await joinMultiRoom("R_1", "77", "88", "d");
     const pushed: TogetherMultiRoom[] = [];
     onMultiRoom((room) => pushed.push(room));
 
-    mocks.call.mockResolvedValue(roomWithStart(1000));
+    mocks.call.mockResolvedValue(multiBody());
     await refreshMultiRoom();
     const first = pushed.length;
     expect(first).toBeGreaterThan(0);
 
-    // 队列没变，只有起播时刻往后挪（= 对方拖了进度）
-    mocks.call.mockResolvedValue(roomWithStart(31_000));
+    // 内容完全相同的心跳也要推：渲染端靠这次推送重新对齐进度，
+    // 否则本地被拖了进度就再也回不到房间的位置
     await refreshMultiRoom();
 
     expect(pushed.length).toBeGreaterThan(first);
-    expect(pushed.at(-1)?.playStartTime).toBe(31_000);
   });
 
-  it("队列与起播时刻都没变时不重复推送", async () => {
+  it("建房失败时不把用户从原房间踢出去", async () => {
     mocks.call.mockResolvedValue(multiBody());
     await joinMultiRoom("R_1", "77", "88", "d");
-    const pushed: TogetherMultiRoom[] = [];
-    onMultiRoom((room) => pushed.push(room));
+    const ends: string[] = [];
+    onMultiEnd((reason) => ends.push(reason));
+    mocks.call.mockRejectedValue(new Error("网络错误"));
 
+    await expect(createMultiRoom("123", "88")).rejects.toThrow("网络错误");
+
+    // 旧会话必须完好：请求失败却先 stop 会让用户"被踢出但服务端仍占着旧房间"
+    expect(ends).toEqual([]);
+    expect(getMultiSession()?.roomId).toBe("R_1");
+  });
+
+  it("过期响应不写入会话：代次已被后续操作推进时丢弃", async () => {
     mocks.call.mockResolvedValue(multiBody());
-    await refreshMultiRoom();
-    const first = pushed.length;
+    await joinMultiRoom("R_1", "77", "88", "d");
+    // 建房请求在途时先退房（代次被推进），响应回来必须被丢弃
+    // 用对象属性存句柄：局部变量的赋值发生在 Promise 回调里，
+    // TS 的控制流分析会在调用点把它收窄成 null
+    const gate: { release: (() => void) | null } = { release: null };
+    mocks.call.mockImplementation((name: string) => {
+      // 只让建房那次卡住，退出请求照常返回
+      if (name === "listen_together_multi_room_create") {
+        return new Promise((resolve) => {
+          gate.release = () => resolve(multiBody("R_STALE"));
+        });
+      }
+      return Promise.resolve({ status: 200, body: { code: 200 } });
+    });
+    const pending = createMultiRoom("123", "88");
+    await exitMultiRoom();
+    gate.release?.();
 
-    await refreshMultiRoom();
-
-    expect(pushed.length).toBe(first);
+    await expect(pending).rejects.toThrow("已被后续操作取代");
+    expect(getMultiSession()).toBeNull();
   });
 });
