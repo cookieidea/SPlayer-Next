@@ -31,7 +31,7 @@ const OPERATE_DELETE = 7;
 // 实测：对当前曲投「不想听」，人够就切走。返回 "有足够多的人不想听，切歌成功！"
 const OPERATE_VOTE_SKIP = 4;
 
-/** 与双人共建房，靠 roomType 区分：不传是 FRIEND(双人)，MULTI_MATCH_SONG 是多人 */
+/** 多人房的 roomType 取值（来源：真实房间响应），但它是否能让 room/create 建出多人房仍未证实 */
 export const MULTI_ROOM_TYPE = "MULTI_MATCH_SONG";
 
 type RoomListener = (room: TogetherMultiRoom, generation: number) => void;

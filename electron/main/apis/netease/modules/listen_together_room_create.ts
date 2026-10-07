@@ -3,8 +3,8 @@ import type { NeteaseModule } from "../core/types";
 
 const listenTogetherRoomCreate: NeteaseModule = (query, request) => {
   const data: Record<string, unknown> = { refer: "songplay_more" };
-  // 实测：带 roomType=MULTI_MATCH_SONG 建出的是多人房（响应 roomType 随之改变），
-  // 不传或传其他值都是双人房 FRIEND
+  // 注意：roomType 对房型的作用尚未证实——此前"能看到 MULTI_MATCH_SONG"是因为
+  // 当时人已在多人房里，room/create 直接返回了现有房间。待不在任何房间时复测
   if (typeof query.roomType === "string" && query.roomType) data.roomType = query.roomType;
   return request("/api/listen/together/room/create", data, createOption(query, "eapi"));
 };
