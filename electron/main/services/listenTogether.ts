@@ -77,6 +77,8 @@ let pendingAdvanceAt = 0;
 let previousSongId = "";
 let rateLimitUntil = 0;
 let rateLimitFailures = 0;
+// 房间操作代号：后发的 create/join/restore 使先发操作的最终提交失效
+let roomOperation = 0;
 
 let lastState: TogetherLocalState = {
   songId: "",
@@ -369,6 +371,9 @@ const handleEnded = (): void => {
 const guarded = async (work: () => Promise<void>, expected?: number): Promise<boolean> => {
   try {
     await work();
+    // 成功返回也要校验代次：请求在飞行途中换房时，这次结果属于旧会话，
+    // 让调用方按失败处理，避免旧 tick 继续写新房间的状态
+    if (expected !== undefined && expected !== generation) return false;
     return true;
   } catch (error) {
     neteaseLog.warn("一起听同步失败:", error);
@@ -398,22 +403,17 @@ const tick = async (): Promise<void> => {
       }
     } else if (pendingInitial === "adopt") {
       pendingInitial = null;
-      // 这条路径同样要经 guarded：applySnapshot 在切房后 reject 时，
-      // 没传代次就会把旧房间的失败算到新房间的限流上
-      if (
-        await guarded(async () => {
-          if (await applySnapshot(true)) {
-            awaitAdoption = ADOPT_CONFIRM_TICKS;
-            if (mode === "restore") {
-              await reportCommand("PAUSE", lastState.songId, false);
-            }
-          }
-        }, issuing)
-      ) {
-        awaitAdoption = Math.max(awaitAdoption, ADOPT_CONFIRM_TICKS);
-      } else {
-        healthy = false;
-      }
+      // applied 与 guarded 的返回值是两件事：guarded 只表示这次没失败/没过期，
+      // 是否真的采纳了快照要看 applySnapshot 自己的结果
+      let applied = false;
+      const ok = await guarded(async () => {
+        applied = await applySnapshot(true);
+        if (applied && mode === "restore") {
+          await reportCommand("PAUSE", lastState.songId, false);
+        }
+      }, issuing);
+      if (ok && applied) awaitAdoption = ADOPT_CONFIRM_TICKS;
+      if (!ok) healthy = false;
       tickCount += 1;
       return;
     } else if (lastState.transitioning) {
@@ -427,6 +427,12 @@ const tick = async (): Promise<void> => {
     } else {
       const delta = detectLocalChanges(lastState, baseline ?? baselineOf(lastState));
       const next = delta.baseline;
+      // 本地模式恰好等于最近从服务端采纳的那个：这是 applyPlayMode 的结果而非用户操作，
+      // 不该再报回服务端（用户随后改别的模式时仍会正常上报）
+      const modeIsEcho = delta.changes.includes("playMode") && next.playMode === lastRemotePlayMode;
+      if (modeIsEcho) {
+        delta.changes = delta.changes.filter((c) => c !== "playMode");
+      }
       const prev = baseline ?? baselineOf(lastState);
       // 基线按维度提交：某项上报成功后只推进该维度，失败的下轮还能被检出。
       // 一次性提交整个 delta 会让失败的变化永久丢失。
@@ -443,7 +449,10 @@ const tick = async (): Promise<void> => {
           ...(dimension === "mode" ? { playMode: next.playMode } : {}),
         };
       };
-      if (awaitAdoption <= 0) {
+      // 这一轮期间若换了房，delta 与 commit 都属于旧会话：只跳过写入，
+      // 让 finally 正常收尾，不额外 return
+      const stale = issuing !== generation;
+      if (!stale && awaitAdoption <= 0) {
         if (delta.changes.includes("queue")) {
           if (await guarded(() => reportQueue(lastState.queueSongIds), issuing)) {
             localQueueIds = [...lastState.queueSongIds];
@@ -504,7 +513,7 @@ const tick = async (): Promise<void> => {
       leaderId = selfUserId;
       emitAdvance();
     }
-    if (healthy) {
+    if (healthy && issuing === generation) {
       rateLimitFailures = 0;
       rateLimitUntil = 0;
     }
@@ -568,7 +577,9 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
 };
 
 export const create = async (userId: string): Promise<TogetherRoom> => {
+  const operation = ++roomOperation;
   const created = roomFromBody(await callNetease("listen_together_room_create", {}));
+  if (operation !== roomOperation) throw new Error("房间操作已被后续操作取代");
   if (!created) throw new Error("创建房间未返回 roomId");
   const room = enterRoom(created, userId, "create");
   // 校准是尽力而为：它失败不该让调用方以为建房失败，否则会留下
@@ -588,7 +599,9 @@ export const join = async (
   inviterId: string,
   userId: string,
 ): Promise<TogetherRoom> => {
+  const operation = ++roomOperation;
   const current = statusFromBody(await callNetease("listen_together_status", {}));
+  if (operation !== roomOperation) throw new Error("房间操作已被后续操作取代");
   if (current.inRoom && current.room?.roomId === roomId) {
     return enterRoom(current.room, userId, "restore");
   }
@@ -601,6 +614,7 @@ export const join = async (
       inviterId: inviterId || "0",
     }),
   );
+  if (operation !== roomOperation) throw new Error("房间操作已被后续操作取代");
   return enterRoom(accepted ?? { roomId, creatorId: "", members: [] }, userId, "join");
 };
 
@@ -662,6 +676,7 @@ export const invite = async (acceptorId: string): Promise<void> => {
 };
 
 export const leave = async (): Promise<void> => {
+  roomOperation += 1;
   const current = session;
   endSession("left");
   if (!current) return;
@@ -678,7 +693,9 @@ export const abandon = (): void => {
 
 export const restore = async (userId: string): Promise<TogetherRoom | null> => {
   if (session) return room;
+  const operation = ++roomOperation;
   const status = statusFromBody(await callNetease("listen_together_status", {}));
+  if (operation !== roomOperation) return null;
   if (!status.inRoom || !status.room) return null;
   return enterRoom(status.room, userId, "restore");
 };

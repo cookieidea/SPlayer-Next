@@ -664,4 +664,82 @@ describe("一起听房间状态机", () => {
     // 当前代次的限流应当给出提示
     await vi.waitFor(() => expect(errors.some((m) => m.includes("受限"))).toBe(true));
   });
+
+  it("采纳失败时不进入 adoption 冻结", async () => {
+    const service = await load();
+    // join 走 adopt 路径；快照无变化时 applySnapshot 返回 false
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_status") {
+        return statusBody(false);
+      }
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true } } };
+      }
+      if (name === "listen_together_invitation_accept") {
+        return {
+          status: 200,
+          body: { code: 200, data: { roomInfo: { roomId: "R1", creatorId: 8, roomUsers: [] } } },
+        };
+      }
+      // 快照与本地一致 → applySnapshot 返回 false
+      return {
+        status: 200,
+        body: { code: 200, data: { playlist: { displayList: { result: [] } } } },
+      };
+    });
+
+    await service.join("R1", "8", "7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+    // 未采纳快照时不该冻结上报：本轮应能正常上报本地状态
+    expect(service.getSession()).not.toBeNull();
+  });
+
+  it("后发的房间操作使先发操作失效", async () => {
+    const service = await load();
+    // 让 join 的 status 查询挂起
+    let releaseJoin!: () => void;
+    const heldStatus = new Promise<void>((resolve) => {
+      releaseJoin = resolve;
+    });
+    let holdJoinStatus = false;
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_status") {
+        if (holdJoinStatus) {
+          await heldStatus;
+          return statusBody(false);
+        }
+        return statusBody(true, "R2", [7]);
+      }
+      if (name === "listen_together_room_create") return createBody("R2", [7]);
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true } } };
+      }
+      if (name === "listen_together_invitation_accept") {
+        return {
+          status: 200,
+          body: { code: 200, data: { roomInfo: { roomId: "R1", creatorId: 8, roomUsers: [] } } },
+        };
+      }
+      return snapshotBody([]);
+    });
+
+    // 先发起 join R1（会挂起）
+    holdJoinStatus = true;
+    const joinPromise = service.join("R1", "8", "7");
+    await Promise.resolve();
+
+    // 再发起 create R2 并成功
+    holdJoinStatus = false;
+    const room = await service.create("7");
+    expect(room.roomId).toBe("R2");
+    const afterCreate = service.getSession();
+    expect(afterCreate?.roomId).toBe("R2");
+
+    // 放行 join：它已被取代，不能覆盖 R2
+    releaseJoin();
+    await expect(joinPromise).rejects.toThrow("已被后续操作取代");
+    expect(service.getSession()).toEqual(afterCreate);
+  });
 });
