@@ -1085,4 +1085,75 @@ describe("一起听房间状态机", () => {
     );
     expect(dispatchedOld).toBe(false);
   });
+  it("创建时初始模式上报失败则不被认领", async () => {
+    const service = await load();
+    const applied: string[] = [];
+    service.onRemoteCommand((payload: { playMode?: string }) => {
+      if (payload.playMode) applied.push(payload.playMode);
+    });
+
+    let failMode = true;
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report" && params.type === "PLAYMODE_CHANGE") {
+        if (failMode) throw new Error("网络错误");
+      }
+      // 服务端始终返回默认模式
+      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    failMode = false;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 上报失败不算认领：服务端返回的 ORDER_LOOP 应当正常下发
+    expect(applied).toContain("ORDER_LOOP");
+  });
+
+  it("队列变空后旧快照不再覆盖", async () => {
+    const service = await load();
+    const events: { songIds: string[] }[] = [];
+    service.onRemoteCommand((payload: { songIds: string[] }) => events.push(payload));
+
+    let releaseSnapshot!: (value: unknown) => void;
+    const heldSnapshot = new Promise((resolve) => {
+      releaseSnapshot = resolve;
+    });
+    let holdSnapshot = false;
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_sync_playlist_get") {
+        if (holdSnapshot) return heldSnapshot;
+        return snapshotBody(["100", "200"]);
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100", "200"] }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    holdSnapshot = true;
+    vi.advanceTimersByTime(1000);
+    await Promise.resolve();
+    holdSnapshot = false;
+
+    // 快照在飞时本地队列变成空（例如切到非网易云音源）
+    service.updateLocal(localState({ songId: "", queueSongIds: [], currentIndex: -1 }));
+
+    releaseSnapshot(snapshotBody(["999", "998"]));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const dispatchedOld = events.some(
+      (e) => e.songIds.length === 2 && e.songIds[0] === "999" && e.songIds[1] === "998",
+    );
+    expect(dispatchedOld).toBe(false);
+  });
 });

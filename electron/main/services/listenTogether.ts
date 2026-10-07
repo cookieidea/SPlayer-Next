@@ -297,9 +297,9 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   const fresh =
     command !== null &&
     (initial || isFreshCommand(command, lastRemoteSignature, lastRemoteSeq, selfUserId));
-  const queueIsStale =
-    queueAtRequest !== songIdsSignature(lastState.queueSongIds) &&
-    lastState.queueSongIds.length > 0;
+  // 新鲜度只看队列是否变过：本地变空同样意味着这份快照已经过期。
+  // "空队列不作为主动清空上传"是发送侧的协议语义，不该混进这里的接收判断
+  const queueIsStale = queueAtRequest !== songIdsSignature(lastState.queueSongIds);
   const replaceQueue = !queueIsStale && needsQueueReplace(snapshot, localQueueIds);
   // 播放模式是独立维度：它变化时既没有新命令也不涉及队列替换，
   // 不能因为 !fresh && !replaceQueue 就提前返回
@@ -423,12 +423,17 @@ const tick = async (): Promise<void> => {
       }
       // 创建者即房间初始状态的权威：本地播放器模式也要一起上报，
       // 否则服务端默认值会在随后的快照里把创建者的模式覆盖掉。
-      // 预置 lastRemotePlayMode：上报值会被服务端回显，不先记下就会被当成对端改动
-      healthy =
-        (await guarded(() => reportCommand("PLAYMODE_CHANGE", "", lastState.playing), issuing)) &&
-        healthy;
-      lastRemotePlayMode = lastState.playMode;
-      claimingMode = lastState.playMode;
+      // 只有上报成功才登记为"已认领"：失败还登记的话，服务端之后真实返回的
+      // 模式会被 claiming 当作"未回显"吞掉，而该值此后再无补报机会
+      const modeReported = await guarded(
+        () => reportCommand("PLAYMODE_CHANGE", "", lastState.playing),
+        issuing,
+      );
+      healthy = modeReported && healthy;
+      if (modeReported) {
+        lastRemotePlayMode = lastState.playMode;
+        claimingMode = lastState.playMode;
+      }
       // 上报期间可能已经换了房：后续阶段属于旧会话，不再继续
       if (issuing !== generation) {
         tickCount += 1;
