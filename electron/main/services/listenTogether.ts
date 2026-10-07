@@ -286,6 +286,9 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   if (!session) return false;
   const selfUserId = session.userId;
   const issuing = generation;
+  // 请求发出瞬间的本地队列：返回时若已变化，说明用户期间改了队列，
+  // 这份快照的队列与锚点都已过期，不能推给渲染端覆盖用户操作
+  const queueAtRequest = songIdsSignature(lastState.queueSongIds);
   const snapshot = snapshotFromBody(
     await callNetease("listen_together_sync_playlist_get", { roomId: session.roomId }),
   );
@@ -294,7 +297,10 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   const fresh =
     command !== null &&
     (initial || isFreshCommand(command, lastRemoteSignature, lastRemoteSeq, selfUserId));
-  const replaceQueue = needsQueueReplace(snapshot, localQueueIds);
+  const queueIsStale =
+    queueAtRequest !== songIdsSignature(lastState.queueSongIds) &&
+    lastState.queueSongIds.length > 0;
+  const replaceQueue = !queueIsStale && needsQueueReplace(snapshot, localQueueIds);
   // 播放模式是独立维度：它变化时既没有新命令也不涉及队列替换，
   // 不能因为 !fresh && !replaceQueue 就提前返回
   const claiming = claimingMode !== "" && snapshot.playMode !== claimingMode;

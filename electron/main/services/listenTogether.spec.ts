@@ -1035,4 +1035,54 @@ describe("一起听房间状态机", () => {
     // 创建者上报的 RANDOM 不应被服务端默认值弹回
     expect(applied).not.toContain("ORDER_LOOP");
   });
+
+  it("在途旧快照不会用过期队列覆盖本地新队列", async () => {
+    const service = await load();
+    const events: { songIds: string[] }[] = [];
+    service.onRemoteCommand((payload: { songIds: string[] }) => events.push(payload));
+
+    let releaseSnapshot!: (value: unknown) => void;
+    const heldSnapshot = new Promise((resolve) => {
+      releaseSnapshot = resolve;
+    });
+    let holdSnapshot = false;
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_sync_list_report") {
+        return { status: 200, body: { code: 200 } };
+      }
+      if (name === "listen_together_sync_playlist_get") {
+        if (holdSnapshot) return heldSnapshot;
+        return snapshotBody(["100", "200"]);
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100", "200"] }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 让快照请求挂起
+    holdSnapshot = true;
+    vi.advanceTimersByTime(1000);
+    await Promise.resolve();
+    holdSnapshot = false;
+
+    // 快照在飞时用户换了队列
+    service.updateLocal(localState({ songId: "300", queueSongIds: ["300", "400"] }));
+
+    // 放行旧快照：其队列与已上报的队列不同，若不设栅栏就会被采纳并下发
+    releaseSnapshot(snapshotBody(["999", "998"]));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 不得下发旧队列
+    const dispatchedOld = events.some(
+      (e) => e.songIds.length === 2 && e.songIds[0] === "999" && e.songIds[1] === "998",
+    );
+    expect(dispatchedOld).toBe(false);
+  });
 });
