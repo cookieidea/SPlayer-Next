@@ -316,10 +316,11 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
   return fresh;
 };
 
-const beat = async (): Promise<void> => {
-  if (!session) return;
+const beat = async (): Promise<boolean> => {
+  if (!session) return true;
   const roomId = session.roomId;
   const issuingBeat = generation;
+  let healthy = true;
   try {
     await callNetease("listen_together_heartbeat", {
       roomId,
@@ -330,19 +331,30 @@ const beat = async (): Promise<void> => {
   } catch (error) {
     if (isRoomGone(error)) {
       endSession("server", issuingBeat);
-      return;
+      return true;
     }
-    // 心跳失败要计入退避（否则 429 被吞），但不能因此跳过状态探测——
-    // 房间是否还在只有 status 能回答
+    // 心跳失败要计入退避，但不能因此跳过状态探测——房间是否还在只有 status 能回答。
+    // 健康状态必须回传，否则 tick 收尾会把刚设好的退避当成"本轮成功"清掉
+    healthy = false;
     registerFailure(error, issuingBeat);
   }
-  const status = statusFromBody(await callNetease("listen_together_status", {}));
-  if (!session || session.roomId !== roomId) return;
-  if (!status.inRoom) {
-    endSession("server");
-    return;
+  try {
+    const status = statusFromBody(await callNetease("listen_together_status", {}));
+    if (!session || session.roomId !== roomId || generation !== issuingBeat) return healthy;
+    if (!status.inRoom) {
+      endSession("server", issuingBeat);
+      return true;
+    }
+    if (status.room) publishRoom(status.room);
+  } catch (error) {
+    if (isRoomGone(error)) {
+      endSession("server", issuingBeat);
+      return true;
+    }
+    healthy = false;
+    registerFailure(error, issuingBeat);
   }
-  if (status.room) publishRoom(status.room);
+  return healthy;
 };
 
 const handleEnded = (): void => {
@@ -386,13 +398,21 @@ const tick = async (): Promise<void> => {
       }
     } else if (pendingInitial === "adopt") {
       pendingInitial = null;
-      if (await applySnapshot(true)) {
-        awaitAdoption = ADOPT_CONFIRM_TICKS;
-        if (mode === "restore") {
-          healthy =
-            (await guarded(() => reportCommand("PAUSE", lastState.songId, false), issuing)) &&
-            healthy;
-        }
+      // 这条路径同样要经 guarded：applySnapshot 在切房后 reject 时，
+      // 没传代次就会把旧房间的失败算到新房间的限流上
+      if (
+        await guarded(async () => {
+          if (await applySnapshot(true)) {
+            awaitAdoption = ADOPT_CONFIRM_TICKS;
+            if (mode === "restore") {
+              await reportCommand("PAUSE", lastState.songId, false);
+            }
+          }
+        }, issuing)
+      ) {
+        awaitAdoption = Math.max(awaitAdoption, ADOPT_CONFIRM_TICKS);
+      } else {
+        healthy = false;
       }
       tickCount += 1;
       return;
@@ -406,32 +426,70 @@ const tick = async (): Promise<void> => {
       };
     } else {
       const delta = detectLocalChanges(lastState, baseline ?? baselineOf(lastState));
-      baseline = delta.baseline;
+      const next = delta.baseline;
+      const prev = baseline ?? baselineOf(lastState);
+      // 基线按维度提交：某项上报成功后只推进该维度，失败的下轮还能被检出。
+      // 一次性提交整个 delta 会让失败的变化永久丢失。
+      const commit = (
+        dimension: "queue" | "songId" | "playing" | "seek" | "end" | "mode",
+      ): void => {
+        baseline = {
+          ...(baseline ?? prev),
+          ...(dimension === "queue" ? { queueSignature: next.queueSignature } : {}),
+          ...(dimension === "songId" ? { songId: next.songId } : {}),
+          ...(dimension === "playing" ? { playing: next.playing } : {}),
+          ...(dimension === "seek" ? { seekRevision: next.seekRevision } : {}),
+          ...(dimension === "end" ? { endRevision: next.endRevision } : {}),
+          ...(dimension === "mode" ? { playMode: next.playMode } : {}),
+        };
+      };
       if (awaitAdoption <= 0) {
         if (delta.changes.includes("queue")) {
-          healthy = (await guarded(() => reportQueue(lastState.queueSongIds), issuing)) && healthy;
-          localQueueIds = [...lastState.queueSongIds];
+          if (await guarded(() => reportQueue(lastState.queueSongIds), issuing)) {
+            localQueueIds = [...lastState.queueSongIds];
+            commit("queue");
+          } else {
+            healthy = false;
+          }
+        } else {
+          commit("queue");
         }
-        if (delta.changes.includes("ended")) handleEnded();
+        if (delta.changes.includes("ended")) {
+          handleEnded();
+          commit("end");
+        }
         const actions = lastState.songId ? reportFor(delta.changes, lastState.playing) : [];
         for (const action of actions) {
           if (action.type === "GOTO") leaderId = selfUserId;
-          healthy =
-            (await guarded(
-              () =>
-                reportCommand(
-                  action.type,
-                  delta.changes.includes("track") ? previousSongId : "",
-                  action.playing,
-                ),
-              issuing,
-            )) && healthy;
+          const sent = await guarded(
+            () =>
+              reportCommand(
+                action.type,
+                delta.changes.includes("track") ? previousSongId : "",
+                action.playing,
+              ),
+            issuing,
+          );
+          if (!sent) {
+            healthy = false;
+            continue;
+          }
+          if (action.type === "GOTO") commit("songId");
+          if (action.type === "PROGRESS") commit("seek");
+          if (action.type === "PLAY" || action.type === "PAUSE") commit("playing");
           // 自己上报的模式就是服务端之后会返回的模式，先记下来，
           // 否则下一帧会被当成"对端改了模式"再弹回本地
           if (action.type === "PLAYMODE_CHANGE") {
             lastRemotePlayMode = lastState.playMode;
+            commit("mode");
           }
         }
+        if (actions.length === 0) {
+          if (!delta.changes.includes("ended")) commit("end");
+          if (!delta.changes.includes("playMode")) commit("mode");
+        }
+      } else {
+        baseline = next;
       }
     }
     if (awaitAdoption > 0) awaitAdoption -= 1;
@@ -440,7 +498,7 @@ const tick = async (): Promise<void> => {
         if (await applySnapshot(false)) awaitAdoption = ADOPT_CONFIRM_TICKS;
       }, issuing)) && healthy;
     tickCount += 1;
-    if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await guarded(beat, issuing)) && healthy;
+    if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await beat()) && healthy;
     if (pendingAdvanceAt && Date.now() - pendingAdvanceAt >= ADVANCE_HANDOVER_MS) {
       pendingAdvanceAt = 0;
       leaderId = selfUserId;

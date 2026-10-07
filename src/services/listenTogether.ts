@@ -186,6 +186,7 @@ const applyPlayMode = (mode: string): void => {
 };
 
 const commandToast = (command: TogetherCommand): string => {
+  if (command.type === "PLAYMODE_CHANGE") return "对方更改了播放模式";
   if (command.type === "PROGRESS") return "对方调整了播放进度";
   if (command.type === "PLAY") return "对方开始播放";
   if (command.type === "PAUSE") return "对方暂停了播放";

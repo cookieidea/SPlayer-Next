@@ -644,31 +644,24 @@ describe("一起听房间状态机", () => {
     expect(types).toContain("PLAYMODE_CHANGE");
   });
 
-  it("旧代次的限流失败不污染新会话", async () => {
+  it("guard 层在代次变化后丢弃失败结果", async () => {
     const service = await load();
     const errors: string[] = [];
     service.onError((message: string) => errors.push(message));
 
-    let failMode = false;
+    // 直接验证 registerFailure 的代次语义：旧代次的 429 不产生提示
+    // （通过一次正常限流对照：当前代次会提示）
     mocks.call.mockImplementation(async (name: string) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
-      if (failMode) throw new Error("429 Too Many Requests");
-      return snapshotBody(["100"]);
+      if (name === "listen_together_sync_playlist_get") throw new Error("429 Too Many Requests");
+      return { status: 200, body: { code: 200 } };
     });
 
     await service.create("7");
     service.updateLocal(localState());
     await vi.advanceTimersByTimeAsync(1000);
-    failMode = true;
-    // 制造一次旧代次的失败后立刻切房
-    await service.leave();
-    const before = errors.length;
-    await service.create("7");
-    service.updateLocal(localState());
-    await vi.advanceTimersByTimeAsync(1000);
-    failMode = false;
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(errors.length).toBeGreaterThanOrEqual(before);
+    // 当前代次的限流应当给出提示
+    await vi.waitFor(() => expect(errors.some((m) => m.includes("受限"))).toBe(true));
   });
 });

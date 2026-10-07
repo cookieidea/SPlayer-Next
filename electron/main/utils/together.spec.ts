@@ -410,6 +410,14 @@ describe("卡片消息甄别（实测样本）", () => {
   });
 });
 
+it("整曲播完时保留播放模式变化", () => {
+  const baseline = baselineOf(state());
+  const delta = detectLocalChanges(state({ endRevision: 1, playMode: "SINGLE_LOOP" }), baseline);
+  expect(delta.changes).toContain("ended");
+  expect(delta.changes).toContain("playMode");
+  expect(delta.changes).not.toContain("track");
+});
+
 describe("房间成员比较", () => {
   it("换房后成员列表不同即视为变化", () => {
     const before = roomFromBody({

@@ -70,8 +70,11 @@ export const detectLocalChanges = (
   if (next.queueSignature !== baseline.queueSignature && state.queueSongIds.length > 0) {
     changes.push("queue");
   }
+  // 整曲播完时歌曲往往已被自动切走：那个 track 变化是播放器的结果而非用户操作，
+  // 不能当成 GOTO 上报（推进权由 handleEnded 决定）。播放模式变化与它无关，仍要检出。
   if (next.endRevision !== baseline.endRevision) {
     changes.push("ended");
+    if (next.playMode !== baseline.playMode) changes.push("playMode");
     return { baseline: next, changes };
   }
   if (next.playMode !== baseline.playMode) changes.push("playMode");
