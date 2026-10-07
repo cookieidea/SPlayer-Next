@@ -11,6 +11,7 @@ import { useStatusStore } from "@/stores/status";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { addMultiSong, removeMultiSong, topMultiSong } from "@/services/listenTogetherMulti";
 import { togetherSongAction } from "@/utils/togetherRoom";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import { buildDownloadQualityItems } from "@/composables/useDownload";
@@ -72,6 +73,7 @@ export const useTrackMenu = (
   const plugins = usePluginsStore();
   const multiStore = useTogetherMultiStore();
   const user = useUserStore();
+  const guard = useTogetherPlaybackGuard();
   const { copy } = useCopyText();
   const isPlaylist = options.collectionType === "playlist";
   const isCloudView = options.collectionType === "cloud";
@@ -281,9 +283,13 @@ export const useTrackMenu = (
     }
     switch (key) {
       case "play":
+        // 多人房里"播放"改为加入房间队列
+        if (guard.blockLocalPlay(current)) break;
         player.playNow(current, options.playbackContext?.value);
         break;
       case "playNext":
+        // 房内队列由房间决定，插到本地"下一首"不会生效，也会误导
+        if (guard.blockLocalQueueEdit()) break;
         player.insertToQueue(current, undefined, options.playbackContext?.value);
         toast.success(t("songList.toast.addedToNext"));
         break;

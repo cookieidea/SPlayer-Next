@@ -537,6 +537,8 @@
       "allowStranger": "允许陌生人加入",
       "pauseDisabled": "多人一起听中不能暂停，播放由房间同步",
       "localPlayDisabled": "已加入房间队列（多人一起听中由房间决定播放）",
+      "batchPlayDisabled": "多人一起听中不能批量播放，请逐首加入房间队列",
+      "localQueueDisabled": "请用「加入一起听房间」，本地排队不会生效",
       "matchMulti": "多人匹配",
       "me": "我",
       "recommended": "推荐",

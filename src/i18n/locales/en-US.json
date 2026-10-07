@@ -549,6 +549,8 @@
       "allowStranger": "Allow strangers to join",
       "pauseDisabled": "Pause is disabled; playback is synced by the room",
       "localPlayDisabled": "Added to the room queue",
+      "batchPlayDisabled": "Batch play is disabled in a multi room; add songs one by one",
+      "localQueueDisabled": "Use Add to room; local queueing has no effect",
       "matchMulti": "Multi match",
       "me": "Me",
       "recommended": "Recommended",

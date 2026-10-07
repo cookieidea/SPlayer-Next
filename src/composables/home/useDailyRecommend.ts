@@ -119,7 +119,8 @@ export const useDailyRecommend = () => {
       toast.warning(t("home.hero.empty"));
       return;
     }
-    if (guard.blockLocalPlay(current.tracks[current.featuredIndex] ?? null)) return;
+    // 批量播放房内一律拒绝
+    if (guard.blockBatchPlay()) return;
     await player.playFrom(current.tracks, current.featuredIndex);
   };
 
