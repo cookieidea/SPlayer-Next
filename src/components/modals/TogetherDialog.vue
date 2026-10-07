@@ -193,6 +193,22 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   snapRoom();
 };
 
+const matching = ref(false);
+
+const onStartMatch = async (): Promise<void> => {
+  if (!userId.value) {
+    toast.warning(t("player.together.needLogin"));
+    return;
+  }
+  matching.value = true;
+  await togetherMulti.startStrangerMatch();
+};
+
+const onCancelMatch = async (): Promise<void> => {
+  await togetherMulti.cancelStrangerMatch();
+  matching.value = false;
+};
+
 const onRejectInvite = async (card: TogetherInviteCard): Promise<void> => {
   await together.rejectInvite(card.roomId);
   invites.value = invites.value.filter((item) => item.roomId !== card.roomId);
@@ -407,6 +423,19 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
         </p>
         <SButton type="primary" :loading="store.busy" :disabled="!userId" @click="onCreate">
           {{ t("player.together.create") }}
+        </SButton>
+        <SButton
+          v-if="!matching"
+          type="info"
+          variant="secondary"
+          :loading="multiStore.busy"
+          :disabled="!userId"
+          @click="onStartMatch"
+        >
+          {{ t("player.together.strangerMatch") }}
+        </SButton>
+        <SButton v-else type="error" variant="secondary" @click="onCancelMatch">
+          {{ t("player.together.cancelMatch") }}
         </SButton>
         <SDivider />
         <div class="flex flex-col gap-2">

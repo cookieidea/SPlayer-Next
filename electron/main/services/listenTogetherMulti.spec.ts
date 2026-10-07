@@ -8,7 +8,9 @@ import {
   joinMultiRoom,
   onMultiEnd,
   onMultiError,
+  cancelStrangerMatch,
   onMultiRoom,
+  startStrangerMatch,
   removeMultiSong,
   voteSkipMultiSong,
   topMultiSong,
@@ -238,5 +240,33 @@ describe("多人一起听", () => {
       bizId: 55,
       operate: 4,
     });
+  });
+
+  it("陌生人匹配走 song/match/start 并返回等待时长", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { success: true, maxWaitTimeMills: 60000 } },
+    });
+
+    const result = await startStrangerMatch();
+
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_song_match_start", {
+      matchType: "match_start",
+    });
+    expect(result.maxWaitMs).toBe(60000);
+  });
+
+  it("匹配失败时抛服务端文案", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { success: false, failedMsg: "当前人数过多" } },
+    });
+    await expect(startStrangerMatch()).rejects.toThrow("当前人数过多");
+  });
+
+  it("取消匹配走 song/match/cancel", async () => {
+    mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+    await cancelStrangerMatch();
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_song_match_cancel", {});
   });
 });

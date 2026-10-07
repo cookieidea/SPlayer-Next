@@ -541,6 +541,8 @@
       "invitedBy": "{name} invited you",
       "accept": "Accept",
       "reject": "Decline",
+      "strangerMatch": "Match with strangers",
+      "cancelMatch": "Cancel matching",
       "addToRoom": "Add to listen-together room",
       "topInRoom": "Pin in room",
       "roomQueue": "Room queue",
