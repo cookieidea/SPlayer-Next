@@ -9,6 +9,7 @@ import { usePluginsStore } from "@/stores/plugins";
 import { useStatusStore } from "@/stores/status";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { addMultiSong, removeMultiSong, topMultiSong } from "@/services/listenTogetherMulti";
+import { togetherSongAction } from "@/utils/togetherRoom";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import { buildDownloadQualityItems } from "@/composables/useDownload";
@@ -74,6 +75,15 @@ export const useTrackMenu = (
   const isCloudView = options.collectionType === "cloud";
   const showPlay = !options.hidePlayActions;
   const canRemove = options.canRemove !== false;
+  // 加歌/置顶/移除都只该对"房间里的歌"有意义：
+  // 不在房间的歌谈不上移除，已在房间的歌才需要置顶
+  const roomAction = computed(() =>
+    togetherSongAction(
+      multiStore.inRoom,
+      String(track.value?.id ?? ""),
+      multiStore.queueTracks.map((item) => item.id),
+    ),
+  );
   // 菜单项
   const items = computed<DropdownMenuItem[]>(() => {
     const source = track.value?.source;
@@ -98,24 +108,28 @@ export const useTrackMenu = (
         separator: showPlay,
         show: canAddToPlaylist,
       },
-      ...(multiStore.inRoom
-        ? [
-            {
-              key: "togetherAdd",
-              label: t("player.together.addToRoom"),
-              icon: markRaw(IconUsers),
-            },
-            {
-              key: "togetherTop",
-              label: t("player.together.topInRoom"),
-              icon: markRaw(IconChevronsUp),
-            },
-            {
-              key: "togetherRemove",
-              label: t("player.together.removeFromRoom"),
-              icon: markRaw(IconTrash2),
-            },
-          ]
+      ...(roomAction.value !== "none"
+        ? roomAction.value === "top"
+          ? [
+              // 已在房间：只能置顶或移除，再"加入"没有意义
+              {
+                key: "togetherTop",
+                label: t("player.together.topInRoom"),
+                icon: markRaw(IconChevronsUp),
+              },
+              {
+                key: "togetherRemove",
+                label: t("player.together.removeFromRoom"),
+                icon: markRaw(IconTrash2),
+              },
+            ]
+          : [
+              {
+                key: "togetherAdd",
+                label: t("player.together.addToRoom"),
+                icon: markRaw(IconUsers),
+              },
+            ]
         : []),
       {
         key: "showInExplorer",
