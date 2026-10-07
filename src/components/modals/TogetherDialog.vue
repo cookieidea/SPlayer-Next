@@ -7,7 +7,11 @@ import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
 import * as togetherMulti from "@/services/listenTogetherMulti";
 import { isMultiInvitation } from "@shared/utils/togetherInvitation";
-import type { TogetherFriend, TogetherInviteCard } from "@shared/types/listenTogether";
+import type {
+  TogetherFriend,
+  TogetherInviteCard,
+  TogetherMultiRoom,
+} from "@shared/types/listenTogether";
 
 const props = defineProps<{ open: boolean }>();
 
@@ -25,6 +29,9 @@ const friendsLoading = ref(false);
 const invites = shallowRef<TogetherInviteCard[]>([]);
 const roomView = ref(false);
 let leaving = false;
+const leavingMulti = ref(false);
+const frozenMulti = ref<TogetherMultiRoom | null>(null);
+const frozenMembers = ref("");
 let inboxToken = 0;
 let friendsToken = 0;
 const friendListRef = ref<HTMLElement | null>(null);
@@ -35,18 +42,30 @@ const memberNames = ref("");
 const roomId = ref("");
 const memberText = computed(() => memberNames.value || t("player.together.waitingPeer"));
 
-const multiRoom = computed(() => multiStore.room);
-const multiMemberText = computed(() => multiStore.memberNames || t("player.together.waitingPeer"));
+const multiRoom = computed(() => (leavingMulti.value ? frozenMulti.value : multiStore.room));
+const multiMemberText = computed(
+  () =>
+    (leavingMulti.value ? frozenMembers.value : multiStore.memberNames) ||
+    t("player.together.waitingPeer"),
+);
 
 const onCopyMultiLink = (): void => {
-  const room = multiStore.room;
+  const room = multiRoom.value;
   if (!room) return;
   copy(togetherMulti.shareMultiInvitation(room.roomId, userId.value));
 };
 
 const onLeaveMulti = async (): Promise<void> => {
+  // 退出期间冻结房间信息：store 被清空后视图会翻到加入界面，淡出还没结束就"变脸"
+  frozenMulti.value = multiStore.room;
+  frozenMembers.value = multiStore.memberNames;
+  leavingMulti.value = true;
   emit("update:open", false);
-  await togetherMulti.leaveTogetherMulti();
+  try {
+    await togetherMulti.leaveTogetherMulti();
+  } finally {
+    leavingMulti.value = false;
+  }
 };
 
 const snapRoom = (): void => {
