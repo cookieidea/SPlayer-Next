@@ -63,3 +63,7 @@ export const buildMultiInvitation = (roomId: string, inviterUid: string): string
   `https://st.music.163.com/listen-together/multishare/index.html?roomId=${encodeURIComponent(
     roomId,
   )}&inviterUid=${encodeURIComponent(inviterUid)}`;
+
+/** 多人房分享链接与双人共用同一个输入框，只能靠路径区分 */
+export const isMultiInvitation = (input: string): boolean =>
+  /listen-together\/multishare\//i.test(input ?? "");

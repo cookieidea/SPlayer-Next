@@ -6,6 +6,7 @@ import { useUserStore } from "@/stores/user";
 import { useOrpheusProtocol } from "@/composables/useOrpheusProtocol";
 import { useExternalFileHandler } from "@/composables/useExternalFileHandler";
 import { initTogether, restoreRoom } from "@/services/listenTogether";
+import { initTogetherMulti, restoreTogetherMulti } from "@/services/listenTogetherMulti";
 
 const route = useRoute();
 const status = useStatusStore();
@@ -17,9 +18,11 @@ useExternalFileHandler();
 
 const user = useUserStore();
 initTogether();
+initTogetherMulti();
 onMounted(() => {
   const id = user.profile?.userId;
   if (id) void restoreRoom(String(id));
+  if (id) void restoreTogetherMulti(String(id));
 });
 
 watch(

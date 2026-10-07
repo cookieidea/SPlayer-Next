@@ -4,6 +4,8 @@ import { useUserStore } from "@/stores/user";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
+import * as togetherMulti from "@/services/listenTogetherMulti";
+import { isMultiInvitation } from "@shared/utils/togetherInvitation";
 import type { TogetherFriend, TogetherInviteCard } from "@shared/types/listenTogether";
 
 const props = defineProps<{ open: boolean }>();
@@ -82,6 +84,13 @@ const onJoin = async (): Promise<void> => {
   }
   const value = invitationInput.value.trim();
   if (!value) return;
+  // 多人房分享链接与双人共用这一个输入框：多人没有建房接口，只能靠链接被邀请进入
+  if (isMultiInvitation(value)) {
+    if (!(await togetherMulti.joinTogetherMulti(value, userId.value))) return;
+    invitationInput.value = "";
+    emit("update:open", false);
+    return;
+  }
   if (!(await together.joinRoom(value, userId.value))) return;
   invitationInput.value = "";
   roomView.value = true;

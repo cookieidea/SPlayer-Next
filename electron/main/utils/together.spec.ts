@@ -21,6 +21,7 @@ import {
   parseInvitation,
   buildInvitation,
   buildMultiInvitation,
+  isMultiInvitation,
 } from "@shared/utils/togetherInvitation";
 import type {
   TogetherCommand,
@@ -647,5 +648,11 @@ describe("多人房邀请链接", () => {
       roomId: "ABC_1791391074",
       inviterId: "77",
     });
+  });
+
+  it("能区分多人链接与双人链接", () => {
+    expect(isMultiInvitation(buildMultiInvitation("ABC_1791391074", "77"))).toBe(true);
+    expect(isMultiInvitation(buildInvitation("R1", "77"))).toBe(false);
+    expect(isMultiInvitation("")).toBe(false);
   });
 });
