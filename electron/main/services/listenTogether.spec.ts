@@ -742,4 +742,39 @@ describe("一起听房间状态机", () => {
     await expect(joinPromise).rejects.toThrow("已被后续操作取代");
     expect(service.getSession()).toEqual(afterCreate);
   });
+
+  it("远端采纳的播放模式不会再次上报", async () => {
+    const service = await load();
+    const modeReports: unknown[] = [];
+    let snapshotMode = "ORDER_LOOP";
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        if (params.type === "PLAYMODE_CHANGE") modeReports.push(params);
+        return { status: 200, body: { code: 200 } };
+      }
+      if (name === "listen_together_sync_playlist_get") {
+        return snapshotBody(["100", "200"], "", -1, snapshotMode);
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 服务端把模式改成 RANDOM，本地跟随
+    snapshotMode = "RANDOM";
+    await vi.advanceTimersByTimeAsync(1000);
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(modeReports).toHaveLength(0);
+
+    // 用户真的改到别的模式：应当上报
+    service.updateLocal(localState({ songId: "100", playMode: "SINGLE_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(modeReports).toHaveLength(1);
+  });
 });

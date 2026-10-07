@@ -289,7 +289,10 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
     command !== null &&
     (initial || isFreshCommand(command, lastRemoteSignature, lastRemoteSeq, selfUserId));
   const replaceQueue = needsQueueReplace(snapshot, localQueueIds);
-  if (!fresh && !replaceQueue) return false;
+  // 播放模式是独立维度：它变化时既没有新命令也不涉及队列替换，
+  // 不能因为 !fresh && !replaceQueue 就提前返回
+  const modeChanged = snapshot.playMode !== "" && snapshot.playMode !== lastRemotePlayMode;
+  if (!fresh && !replaceQueue && !modeChanged) return false;
 
   if (fresh && command) {
     lastRemoteSignature = commandSignature(command);
@@ -301,7 +304,6 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
     if (baseline) baseline.queueSignature = songIdsSignature(snapshot.songIds);
   }
   const restored = mode === "restore" && initial;
-  const modeChanged = snapshot.playMode !== "" && snapshot.playMode !== lastRemotePlayMode;
   if (modeChanged) lastRemotePlayMode = snapshot.playMode;
   for (const listener of commandListeners) {
     listener({
@@ -401,6 +403,11 @@ const tick = async (): Promise<void> => {
         healthy =
           (await guarded(() => reportCommand("GOTO", "", lastState.playing), issuing)) && healthy;
       }
+      // 上报期间可能已经换了房：后续阶段属于旧会话，不再继续
+      if (issuing !== generation) {
+        tickCount += 1;
+        return;
+      }
     } else if (pendingInitial === "adopt") {
       pendingInitial = null;
       // applied 与 guarded 的返回值是两件事：guarded 只表示这次没失败/没过期，
@@ -489,7 +496,8 @@ const tick = async (): Promise<void> => {
           // 自己上报的模式就是服务端之后会返回的模式，先记下来，
           // 否则下一帧会被当成"对端改了模式"再弹回本地
           if (action.type === "PLAYMODE_CHANGE") {
-            lastRemotePlayMode = lastState.playMode;
+            // 同一个变量承载"已知模式"：既用于判定远端是否真的改了模式，
+            // 也用于识别本地跟随产生的回声。值必须与下一轮服务端返回的一致
             commit("mode");
           }
         }
@@ -502,11 +510,17 @@ const tick = async (): Promise<void> => {
       }
     }
     if (awaitAdoption > 0) awaitAdoption -= 1;
+    // 执行链隔离：换房后不再对新房间发起无意义的快照请求
+    if (issuing !== generation) {
+      tickCount += 1;
+      return;
+    }
     healthy =
       (await guarded(async () => {
         if (await applySnapshot(false)) awaitAdoption = ADOPT_CONFIRM_TICKS;
       }, issuing)) && healthy;
     tickCount += 1;
+    if (issuing !== generation) return;
     if (tickCount % HEARTBEAT_TICKS === 0) healthy = (await beat()) && healthy;
     if (pendingAdvanceAt && Date.now() - pendingAdvanceAt >= ADVANCE_HANDOVER_MS) {
       pendingAdvanceAt = 0;
