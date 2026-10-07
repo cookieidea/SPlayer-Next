@@ -296,8 +296,9 @@ export const restoreTogetherMulti = (userId: string): Promise<unknown> =>
 
 export const addMultiSong = (track: Track): Promise<void> =>
   withBusy(async () => {
-    const message = await window.api.togetherMulti.addSong(track.id, 0);
-    toast.success(message || "已加入一起听队列");
+    const { message, rejected } = await window.api.togetherMulti.addSong(track.id, 0);
+    if (rejected) toast.warning(message || "这首歌暂时加不进房间");
+    else toast.success(message || "已加入一起听队列");
   }).then(() => undefined);
 
 /** 投票切歌：人数够时服务端直接切走，不够时记一票 */
@@ -311,8 +312,13 @@ export const voteSkipMultiSong = (): Promise<void> =>
     }
     // 投票可能是「直接切走」也可能是「记了一票」，必须把服务端文案透出来，
     // 否则用户点了 ⏭ 毫无反馈，不知道这一票有没有生效
-    const message = await window.api.togetherMulti.voteSkip(song.songId, song.songBizId);
-    if (message) toast.info(message);
+    const { message, rejected } = await window.api.togetherMulti.voteSkip(
+      song.songId,
+      song.songBizId,
+    );
+    // 被拒时用警告色：用户需要知道"这一票没生效"以及为什么
+    if (rejected) toast.warning(message || "投票切歌失败");
+    else if (message) toast.info(message);
   }).then(() => undefined);
 
 export const removeMultiSong = (songId: string): Promise<void> =>
@@ -322,14 +328,19 @@ export const removeMultiSong = (songId: string): Promise<void> =>
     const room = useTogetherMultiStore().room;
     const songs = [...(room?.playSong ? [room.playSong] : []), ...(room?.nextSongs ?? [])];
     const song = songs.find((item) => item.songId === songId);
-    const message = await window.api.togetherMulti.removeSong(songId, song?.songBizId ?? 0);
-    toast.success(message || "已从房间队列移除");
+    const { message, rejected } = await window.api.togetherMulti.removeSong(
+      songId,
+      song?.songBizId ?? 0,
+    );
+    if (rejected) toast.warning(message || "这首歌删不掉");
+    else toast.success(message || "已从房间队列移除");
   }).then(() => undefined);
 
 export const topMultiSong = (track: Track): Promise<void> =>
   withBusy(async () => {
-    const message = await window.api.togetherMulti.topSong(track.id, 0);
-    toast.success(message || "已置顶");
+    const { message, rejected } = await window.api.togetherMulti.topSong(track.id, 0);
+    if (rejected) toast.warning(message || "置顶失败");
+    else toast.success(message || "已置顶");
   }).then(() => undefined);
 
 export const shareMultiInvitation = (roomId: string, inviterUid: string): string =>

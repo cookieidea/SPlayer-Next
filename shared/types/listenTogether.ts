@@ -32,6 +32,8 @@ export interface TogetherRoomOperateResult {
   room: TogetherMultiRoom | null;
   /** 服务端对本次操作的说明（成功也有文案，如投票是否够数） */
   message: string;
+  /** 服务端是否否决了本次操作（歌已播完、太频繁、非本人添加等） */
+  rejected: boolean;
 }
 
 export interface TogetherMultiSession {
@@ -65,10 +67,10 @@ export interface TogetherMultiApi {
     roomId: string;
   }>;
   cancelMultiMatch: () => Promise<void>;
-  addSong: (songId: string, songBizId: number) => Promise<string>;
-  topSong: (songId: string, songBizId: number) => Promise<string>;
-  removeSong: (songId: string, songBizId: number) => Promise<string>;
-  voteSkip: (songId: string, songBizId: number) => Promise<string>;
+  addSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
+  topSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
+  removeSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
+  voteSkip: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
   onEvent: (callback: (event: TogetherMultiEvent) => void) => () => void;
 }
 

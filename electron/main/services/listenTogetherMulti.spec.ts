@@ -23,6 +23,7 @@ import {
   topMultiSong,
 } from "./listenTogetherMulti";
 
+import type { TogetherMultiRoom } from "@shared/types/listenTogether";
 const mocks = vi.hoisted(() => ({ call: vi.fn() }));
 
 vi.mock("@main/apis/netease", () => ({ callNetease: mocks.call }));
@@ -188,7 +189,27 @@ describe("多人一起听", () => {
       body: { code: 200, data: { result: false, failedMsg: "该歌曲不可加入" } },
     });
 
-    await expect(addMultiSong("789")).rejects.toThrow("该歌曲不可加入");
+    // 否决是正常业务结果：返回 rejected + 文案，界面据此给警告提示。
+    // 抛异常会变成 IPC handler 错误，界面拿不到原因
+    const result = await addMultiSong("789");
+    expect(result.rejected).toBe(true);
+    expect(result.message).toBe("该歌曲不可加入");
+  });
+
+  it("服务端否决时不推送房间状态", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    const pushed: unknown[] = [];
+    onMultiRoom((room) => pushed.push(room));
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { result: false, failedMsg: "切歌操作太频繁需要稍等一下" } },
+    });
+
+    const result = await voteSkipMultiSong("123", 1);
+
+    expect(result.rejected).toBe(true);
+    expect(pushed).toHaveLength(0);
   });
 
   it("退出走 multi/match/exit 并清空状态", async () => {
@@ -444,5 +465,35 @@ describe("多人一起听", () => {
     expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_heartbeat", {
       roomId: "R_1",
     });
+  });
+
+  it("加歌成功后房间歌曲立即更新（operate 只回 roomSongInfo）", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    await joinMultiRoom("R_1", "77", "88", "d");
+    const pushed: TogetherMultiRoom[] = [];
+    onMultiRoom((room) => pushed.push(room));
+    // operate 的响应没有 roomInfo/multiLtRoomSnapshot，只有 roomSongInfo
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          result: true,
+          failedMsg: "已将你带来的歌曲推荐给大家",
+          roomSongInfo: {
+            playSong: { songId: 1, songBizId: 11, songRcmdUid: 77 },
+            nextSongs: [{ songId: 2, songBizId: 22, songRcmdUid: 77 }],
+          },
+        },
+      },
+    });
+
+    await addMultiSong("2", 0);
+
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0].playSong?.songId).toBe("1");
+    expect(pushed[0].nextSongs.map((s) => s.songId)).toEqual(["2"]);
+    // 房间的其它字段要从缓存里保留
+    expect(pushed[0].roomId).toBe("R_1");
   });
 });

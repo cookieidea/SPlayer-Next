@@ -1,5 +1,5 @@
 import { callNetease } from "@main/apis/netease";
-import { multiRoomFromBody, obj, str } from "@main/utils/togetherParse";
+import { list, multiRoomFromBody, obj, str, toRoomSong } from "@main/utils/togetherParse";
 import type {
   TogetherMultiEndReason,
   TogetherMultiRoom,
@@ -339,7 +339,7 @@ const operate = async (
   songBizId: number,
   action: number,
 ): Promise<TogetherRoomOperateResult> => {
-  if (!session) return { room: null, message: "" };
+  if (!session) return { room: null, message: "", rejected: true };
   const issuing = generation;
   const response = await callNetease("listen_together_multi_song_operate", {
     roomId: session.roomId,
@@ -347,17 +347,39 @@ const operate = async (
     bizId: songBizId,
     operate: action,
   });
-  if (generation !== issuing) return { room: null, message: "" };
+  if (generation !== issuing) return { room: null, message: "", rejected: true };
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
   const message = str(data.failedMsg);
-  // 服务端有权否决（歌不可播、房间策略等），原因必须透出去而不是静默失败
-  if (data.result === false) throw new Error(message || "操作失败");
-  const next = roomFromResponse(response);
-  if (next) publish(next, issuing);
-  // 成功的文案也要带出去：投票可能是"记了一票"而非"已切歌"，
-  // 用户需要知道自己这一票的效果（如"有足够多的人不想听，切歌成功！"）
-  return { room: next, message };
+  // 服务端否决（歌已播完、太频繁、不是自己加的等）是正常业务结果而非异常：
+  // 抛异常会变成 IPC handler 错误，界面拿不到原因，用户只看到"点了没反应"
+  const rejected = data.result === false;
+  // operate 的响应没有 roomInfo/multiLtRoomSnapshot，只有 roomSongInfo。
+  // 之前只看前者会解析成 null，于是加歌成功但界面不更新
+  const next = applyOperateResult(response);
+  if (!rejected && next) publish(next, issuing);
+  // 文案一律透出：投票可能是"记了一票"、"太频繁"或"切歌成功"，都要让用户看到
+  return { room: next, message, rejected };
+};
+
+/**
+ * operate 系列只回 roomSongInfo（当前曲 + 待播），没有房间快照。
+ * 把它合并进缓存里的房间，让界面立刻反映加歌/删歌/置顶的结果
+ */
+const applyOperateResult = (response: unknown): TogetherMultiRoom | null => {
+  const fromSnapshot = roomFromResponse(response);
+  if (fromSnapshot) return fromSnapshot;
+  const body = obj(obj(response)?.body) ?? {};
+  const data = obj(body.data) ?? {};
+  const songInfo = obj(data.roomSongInfo);
+  if (!songInfo || !room) return null;
+  // 不能走 roomFromResponse：它要求 roomId，而 roomSongInfo 里没有
+  const playSong = obj(songInfo.playSong);
+  return {
+    ...room,
+    playSong: playSong ? toRoomSong(playSong) : null,
+    nextSongs: list(songInfo.nextSongs).map(toRoomSong),
+  };
 };
 
 export const addMultiSong = (songId: string, songBizId = 0): Promise<TogetherRoomOperateResult> =>

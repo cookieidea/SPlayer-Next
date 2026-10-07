@@ -60,25 +60,25 @@ export const registerTogetherMultiIpc = (): void => {
   ipcMain.handle(
     "togetherMulti:addSong",
     async (_event, songId: string, songBizId: number) =>
-      (await multi.addMultiSong(songId, songBizId)).message,
+      await multi.addMultiSong(songId, songBizId),
   );
 
   ipcMain.handle(
     "togetherMulti:topSong",
     async (_event, songId: string, songBizId: number) =>
-      (await multi.topMultiSong(songId, songBizId)).message,
+      await multi.topMultiSong(songId, songBizId),
   );
 
   ipcMain.handle(
     "togetherMulti:removeSong",
     async (_event, songId: string, songBizId: number) =>
-      (await multi.removeMultiSong(songId, songBizId)).message,
+      await multi.removeMultiSong(songId, songBizId),
   );
 
   ipcMain.handle(
     "togetherMulti:voteSkip",
     async (_event, songId: string, songBizId: number) =>
-      (await multi.voteSkipMultiSong(songId, songBizId)).message,
+      await multi.voteSkipMultiSong(songId, songBizId),
   );
 
   multi.onMultiRoom((room, generation) => {

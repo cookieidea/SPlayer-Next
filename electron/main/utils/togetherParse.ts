@@ -14,7 +14,7 @@ type Json = Record<string, unknown>;
 export const obj = (value: unknown): Json | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Json) : null;
 
-const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+export const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const parseJson = (value: unknown): Json | null => {
   if (typeof value === "string") {
@@ -58,7 +58,7 @@ const toMember = (raw: unknown): TogetherMember => {
   };
 };
 
-const toRoomSong = (raw: unknown): TogetherRoomSong => {
+export const toRoomSong = (raw: unknown): TogetherRoomSong => {
   const item = obj(raw) ?? {};
   return {
     songId: str(item.songId),
