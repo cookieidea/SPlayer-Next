@@ -148,15 +148,30 @@ const tick = async (): Promise<void> => {
   }
 };
 
-/** 开始陌生人匹配。服务端返回 maxWaitTimeMills，匹配成功后由 song/match/ack 进入房间 */
-export const startStrangerMatch = async (): Promise<{ maxWaitMs: number }> => {
+export interface StrangerMatchResult {
+  maxWaitMs: number;
+  /** 已匹配到房间时直接给出：实测重复调用会返回 existedRoomId，无需推送通道 */
+  roomId: string;
+  roomType: string;
+}
+
+/**
+ * 开始（或查询）陌生人匹配。实测该接口可重复调用：
+ * 未匹配到时返回 success=true；已匹配到房间时返回 failedType=ALREADY_IN_ROOM
+ * 并带上 existedRoomId，因此轮询它即可代替官方推送
+ */
+export const startStrangerMatch = async (): Promise<StrangerMatchResult> => {
   const response = await callNetease("listen_together_song_match_start", {
     matchType: "match_start",
   });
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
-  if (data.success !== true) throw new Error(str(data.failedMsg) || "开始匹配失败");
-  return { maxWaitMs: Number(data.maxWaitTimeMills) || 0 };
+  const roomId = str(data.existedRoomId);
+  const roomType = str(data.existedRoomType);
+  if (!roomId && data.success !== true) {
+    throw new Error(str(data.failedMsg) || str(data.failedType) || "开始匹配失败");
+  }
+  return { maxWaitMs: Number(data.maxWaitTimeMills) || 0, roomId, roomType };
 };
 
 export const cancelStrangerMatch = async (): Promise<void> => {

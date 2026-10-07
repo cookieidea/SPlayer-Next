@@ -201,7 +201,7 @@ const onStartMatch = async (): Promise<void> => {
     return;
   }
   matching.value = true;
-  await togetherMulti.startStrangerMatch();
+  await togetherMulti.startStrangerMatch(userId.value);
 };
 
 const onCancelMatch = async (): Promise<void> => {

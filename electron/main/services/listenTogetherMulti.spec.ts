@@ -254,6 +254,29 @@ describe("多人一起听", () => {
       matchType: "match_start",
     });
     expect(result.maxWaitMs).toBe(60000);
+    expect(result.roomId).toBe("");
+  });
+
+  it("已匹配到房间时从 existedRoomId 取房间", async () => {
+    // 实测：重复调用会返回 ALREADY_IN_ROOM + existedRoomId，用它代替推送
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: {
+          success: false,
+          failedType: "ALREADY_IN_ROOM",
+          existedRoomId: "R_MATCH",
+          existedRoomType: "MATCH_SONG",
+          maxWaitTimeMills: 60000,
+        },
+      },
+    });
+
+    const result = await startStrangerMatch();
+
+    expect(result.roomId).toBe("R_MATCH");
+    expect(result.roomType).toBe("MATCH_SONG");
   });
 
   it("匹配失败时抛服务端文案", async () => {

@@ -112,15 +112,47 @@ export const joinTogetherMulti = (input: string, userId: string): Promise<unknow
   });
 
 /** 开始陌生人匹配。匹配成功后服务端会推信息，由 ackMatch 进房 */
-export const startStrangerMatch = (): Promise<unknown> =>
+const MATCH_POLL_MS = 3000;
+
+let matchTimer: ReturnType<typeof setInterval> | null = null;
+
+const stopMatchPoll = (): void => {
+  if (matchTimer) clearInterval(matchTimer);
+  matchTimer = null;
+};
+
+/**
+ * 官方靠推送把匹配结果送到客户端，我们没有推送通道；
+ * 实测 startMatch 可重复调用，匹配到房间时返回 existedRoomId，所以用轮询代替
+ */
+const pollMatch = async (userId: string): Promise<void> => {
+  try {
+    const result = await window.api.togetherMulti.startMatch();
+    if (!result.roomId) return;
+    stopMatchPoll();
+    toast.success("已找到听友");
+    await ackStrangerMatch(result.roomId, userId);
+  } catch {
+    stopMatchPoll();
+  }
+};
+
+export const startStrangerMatch = (userId: string): Promise<unknown> =>
   withBusy(async () => {
     const result = await window.api.togetherMulti.startMatch();
     toast.info("正在为你寻找听友…");
+    if (result.roomId) {
+      await ackStrangerMatch(result.roomId, userId);
+      return result;
+    }
+    stopMatchPoll();
+    matchTimer = setInterval(() => void pollMatch(userId), MATCH_POLL_MS);
     return result;
   });
 
 export const cancelStrangerMatch = (): Promise<void> =>
   withBusy(async () => {
+    stopMatchPoll();
     await window.api.togetherMulti.cancelMatch();
   }).then(() => undefined);
 
