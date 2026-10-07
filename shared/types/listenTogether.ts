@@ -59,6 +59,7 @@ export interface TogetherMultiApi {
   restore: (userId: string) => Promise<TogetherMultiRoom | null>;
   leave: () => Promise<void>;
   inviteFriends: (uids: string[]) => Promise<void>;
+  createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;
   roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;
@@ -177,6 +178,7 @@ export interface TogetherApi {
   rejectInvitation: (roomId: string) => Promise<void>;
   leave: () => Promise<void>;
   inviteFriends: (uids: string[]) => Promise<void>;
+  createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;
   roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;

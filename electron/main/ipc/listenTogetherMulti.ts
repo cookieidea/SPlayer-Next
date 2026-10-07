@@ -30,6 +30,13 @@ export const registerTogetherMultiIpc = (): void => {
 
   ipcMain.handle("togetherMulti:leave", () => multi.exitMultiRoom());
 
+  ipcMain.handle("togetherMulti:create", async (_event, songId: string, userId: string) => {
+    const room = await multi.createMultiRoom(songId, userId);
+    const session = multi.getMultiSession();
+    if (session) send({ type: "session", session, room });
+    return room;
+  });
+
   ipcMain.handle("togetherMulti:invite", (_event, uids: string[]) =>
     multi.inviteToMultiRoom(uids ?? []),
   );

@@ -10,6 +10,7 @@ import {
   onMultiError,
   cancelMultiMatch,
   cancelStrangerMatch,
+  createMultiRoom,
   inviteToMultiRoom,
   onMultiRoom,
   roomSongsList,
@@ -405,5 +406,24 @@ describe("多人一起听", () => {
     });
 
     await expect(inviteToMultiRoom(["88"])).rejects.toThrow("房间信息不存在");
+  });
+
+  it("建房走 multi/room/create，type 为整数 1 且带真实歌曲", async () => {
+    mocks.call.mockResolvedValue(multiBody());
+    const room = await createMultiRoom("1345872140", "88");
+    // type 必须是数字：字符串会被服务端当成"此类型暂不支持"
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_room_create", {
+      type: 1,
+      songId: "1345872140",
+    });
+    expect(room).toMatchObject({ roomId: "R_1" });
+  });
+
+  it("建房失败时透出服务端文案", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { success: false, failedMessage: "歌曲条件不满足" } },
+    });
+    await expect(createMultiRoom("0", "88")).rejects.toThrow("歌曲条件不满足");
   });
 });

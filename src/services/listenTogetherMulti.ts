@@ -222,6 +222,41 @@ export const cancelStrangerMatch = (): Promise<void> =>
     await window.api.togetherMulti.cancelMatch();
   }).then(() => undefined);
 
+/** 建房后最多把当前队列的这么多首带进房间：服务端待播窗口有限，加多也留不住 */
+const ROOM_SEED_LIMIT = 30;
+
+/**
+ * 创建多人房。接口只接受一个"起播歌"，队列不会被带进去
+ * （实测 nextSongIds / playlistIds 都被忽略），因此建完房再把当前队列逐首加进去
+ */
+export const createMultiRoom = (userId: string): Promise<unknown> =>
+  withBusy(async () => {
+    const songId = String(useStatusStore().currentTrack?.id ?? "");
+    if (!songId) throw new Error("请先播放一首歌再创建多人房");
+    const room = await window.api.togetherMulti.createRoom(songId, userId);
+    roomQueueKey = "";
+    await followRoom(room);
+    await seedRoomQueue(songId);
+    await syncRoomQueue(room);
+    return room;
+  });
+
+/** 把当前队列带进新房。起播歌已在房间里，跳过它避免重复推荐 */
+const seedRoomQueue = async (startSongId: string): Promise<void> => {
+  const entries = queue.originalQueue.value ?? queue.queue.value;
+  const ids = entries
+    .map((entry) => entry.track?.id)
+    .filter((id): id is string => Boolean(id) && id !== startSongId)
+    .slice(0, ROOM_SEED_LIMIT);
+  for (const id of ids) {
+    try {
+      await window.api.togetherMulti.addSong(id, 0);
+    } catch {
+      void 0;
+    }
+  }
+};
+
 /** 多人房站内邀请好友 */
 export const inviteMultiFriends = (uids: readonly string[]): Promise<boolean> =>
   withBusy(async () => {

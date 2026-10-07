@@ -234,6 +234,12 @@ const needLogin = (): boolean => {
   return true;
 };
 
+const onCreateMulti = async (): Promise<void> => {
+  if (needLogin()) return;
+  await togetherMulti.createMultiRoom(userId.value);
+  emit("update:open", false);
+};
+
 const onStartMatch = async (): Promise<void> => {
   if (needLogin()) return;
   matching.value = "duo";
@@ -514,6 +520,14 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
         </p>
         <SButton type="primary" :loading="store.busy" :disabled="!userId" @click="onCreate">
           {{ t("player.together.create") }}
+        </SButton>
+        <SButton
+          variant="secondary"
+          :loading="multiStore.busy"
+          :disabled="!userId"
+          @click="onCreateMulti"
+        >
+          {{ t("player.together.createMulti") }}
         </SButton>
         <template v-if="!matching">
           <SButton

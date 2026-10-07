@@ -455,6 +455,8 @@ const api = {
     restore: (userId: string) => ipcRenderer.invoke("togetherMulti:restore", userId),
     leave: () => ipcRenderer.invoke("togetherMulti:leave"),
     inviteFriends: (uids: string[]) => ipcRenderer.invoke("togetherMulti:invite", uids),
+    createRoom: (songId: string, userId: string) =>
+      ipcRenderer.invoke("togetherMulti:create", songId, userId),
     roomSongs: () => ipcRenderer.invoke("togetherMulti:roomSongs"),
     startMatch: () => ipcRenderer.invoke("togetherMulti:startMatch"),
     cancelMatch: () => ipcRenderer.invoke("togetherMulti:cancelMatch"),

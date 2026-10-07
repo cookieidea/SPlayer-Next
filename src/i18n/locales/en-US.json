@@ -543,6 +543,7 @@
       "reject": "Decline",
       "strangerMatch": "Match (2 people)",
       "matchDuo": "Match with a stranger",
+      "createMulti": "Create multi room",
       "matchMulti": "Multi match",
       "me": "Me",
       "recommended": "Recommended",

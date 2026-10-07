@@ -158,6 +158,29 @@ export interface StrangerMatchResult {
 }
 
 /**
+ * 创建多人房。实测只要 { type: 1, songId }，且 songId 必须是真实可播的歌曲；
+ * 传 songId=0 会返回 failedType=MULTI_SONG_NOT_SATISFIED
+ */
+export const createMultiRoom = async (
+  songId: string,
+  userId: string,
+): Promise<TogetherMultiRoom> => {
+  if (session) stop("left");
+  const issuing = generation + 1;
+  generation = issuing;
+  const response = await callNetease("listen_together_multi_room_create", {
+    type: 1,
+    songId,
+  });
+  const next = roomFromResponse(response);
+  if (!next) throw new Error(failWith(response, "创建多人房失败"));
+  session = { roomId: next.roomId, userId, generation: issuing };
+  publish(next, issuing);
+  startMultiTick();
+  return next;
+};
+
+/**
  * 开始（或查询）陌生人匹配。实测该接口可重复调用：
  * 未匹配到时返回 success=true；已匹配到房间时返回 failedType=ALREADY_IN_ROOM
  * 并带上 existedRoomId，因此轮询它即可代替官方推送
