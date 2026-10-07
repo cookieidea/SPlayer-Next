@@ -335,6 +335,32 @@ describe("解析健壮性", () => {
   });
 });
 
+describe("加载期间的切歌检测", () => {
+  it("transitioning 不吞掉歌曲变化", () => {
+    const before = baselineOf(state({ songId: "1" }));
+    const loading = state({ songId: "2", transitioning: true });
+    const frozen = {
+      ...baselineOf(loading),
+      songId: before.songId,
+      queueSignature: before.queueSignature,
+    };
+    const delta = detectLocalChanges(state({ songId: "2", transitioning: false }), frozen);
+    expect(delta.changes).toContain("track");
+  });
+
+  it("加载期间的进度变化仍被忽略", () => {
+    const before = baselineOf(state({ songId: "1", seekRevision: 0 }));
+    const loading = state({ songId: "1", transitioning: true, seekRevision: 5, positionMs: 9000 });
+    const frozen = {
+      ...baselineOf(loading),
+      songId: before.songId,
+      queueSignature: before.queueSignature,
+    };
+    const delta = detectLocalChanges(state({ songId: "1", seekRevision: 5 }), frozen);
+    expect(delta.changes).not.toContain("progress");
+  });
+});
+
 describe("共享队列判定不依赖本地上报", () => {
   it("对端队列与本地不同即需替换", () => {
     const list = snapshot({ songIds: ["a", "b", "c"] });

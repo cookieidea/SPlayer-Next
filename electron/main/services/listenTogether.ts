@@ -375,8 +375,13 @@ const tick = async (): Promise<void> => {
       tickCount += 1;
       return;
     } else if (lastState.transitioning) {
-      baseline = baselineOf(lastState);
-      previousSongId = lastState.songId;
+      // 加载期间只冻结进度与播放态：歌曲切换是用户的既成操作，必须保留下来，
+      // 否则加载结束时基线已等于新歌，切歌永远检测不到。
+      baseline = {
+        ...baselineOf(lastState),
+        songId: baseline?.songId ?? lastState.songId,
+        queueSignature: baseline?.queueSignature ?? baselineOf(lastState).queueSignature,
+      };
     } else {
       const delta = detectLocalChanges(lastState, baseline ?? baselineOf(lastState));
       baseline = delta.baseline;
