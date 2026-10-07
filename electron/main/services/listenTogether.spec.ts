@@ -500,6 +500,43 @@ describe("一起听房间状态机", () => {
     expect(statusCalls).toBeGreaterThan(before);
   });
 
+  it("队列对齐不会冻结本地上报（切歌能同步出去）", async () => {
+    const service = await load();
+    const reports: Record<string, unknown>[] = [];
+    let statusChecks = 0;
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") {
+        statusChecks += 1;
+        return statusBody(true, "R1", [7]);
+      }
+      if (name === "listen_together_sync_list_report") {
+        reports.push(params);
+        return { status: 200, body: { code: 200 } };
+      }
+      if (name === "listen_together_play_command_report") {
+        reports.push(params);
+        return { status: 200, body: { code: 200 } };
+      }
+      // 服务端队列始终与本地不同，制造持续的队列失衡
+      return snapshotBody(["999", "998"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100" }));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 模拟用户在列表里跳到另一首
+    service.updateLocal(localState({ songId: "200", currentIndex: 1 }));
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+
+    const gotoTargets = reports.filter((r) => r.type === "GOTO").map((r) => r.targetSongId);
+    expect(gotoTargets).toContain("200");
+    expect(statusChecks).toBeGreaterThan(0);
+  });
+
   it("状态查询失败时保留邀请卡片", async () => {
     const service = await load();
     const inboxBody = {

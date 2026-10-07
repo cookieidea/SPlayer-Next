@@ -297,7 +297,9 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
       initial,
     });
   }
-  return true;
+  // 只有采纳了对端命令才需要压制本地回传；单纯队列对齐不该冻结本地上报，
+  // 否则队列稍有出入就会让 awaitAdoption 每轮重置，本地切歌永远上报不出去
+  return fresh;
 };
 
 const beat = async (): Promise<void> => {
