@@ -15,7 +15,6 @@ import {
   inviteToMultiRoom,
   setStrangerVisible,
   onMultiRoom,
-  roomSongsList,
   startMultiMatch,
   startStrangerMatch,
   removeMultiSong,
@@ -309,38 +308,6 @@ describe("多人一起听", () => {
     mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
     await cancelStrangerMatch();
     expect(mocks.call).toHaveBeenCalledWith("listen_together_song_match_cancel", {});
-  });
-
-  it("房间歌曲列表解析 songIds 与 followers", async () => {
-    mocks.call.mockResolvedValue(multiBody());
-    await joinMultiRoom("R_1", "77", "88", "d");
-    mocks.call.mockResolvedValue({
-      status: 200,
-      body: {
-        code: 200,
-        data: {
-          songIds: ["1345872140", 22],
-          followers: [
-            { userId: 88, nickname: "B", avatarUrl: "http://b.jpg" },
-            { userId: 77, nickname: "A", avatar: "http://a.jpg" },
-          ],
-        },
-      },
-    });
-
-    const list = await roomSongsList();
-
-    expect(mocks.call).toHaveBeenCalledWith("listen_together_room_songs_list", { roomId: "R_1" });
-    // songIds 数字要转字符串；followers 兼容 avatar 字段名
-    expect(list.songIds).toEqual(["1345872140", "22"]);
-    expect(list.followers).toEqual([
-      { userId: "88", nickname: "B", avatarUrl: "http://b.jpg" },
-      { userId: "77", nickname: "A", avatarUrl: "http://a.jpg" },
-    ]);
-  });
-
-  it("不在房间时房间歌曲列表返回空", async () => {
-    await expect(roomSongsList()).resolves.toEqual({ songIds: [], followers: [] });
   });
 
   it("多人匹配带 songId 与 checkToken=null 字符串", async () => {

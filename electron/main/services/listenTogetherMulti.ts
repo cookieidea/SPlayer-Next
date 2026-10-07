@@ -5,7 +5,6 @@ import type {
   TogetherMultiRoom,
   TogetherMultiSession,
   TogetherRoomOperateResult,
-  TogetherRoomSongList,
 } from "@shared/types/listenTogether";
 
 // 多人群房的心跳是「拉取」：房间当前歌曲与队列来自响应，不像双人那样靠心跳上报。
@@ -282,31 +281,6 @@ export const restoreMultiRoom = async (userId: string): Promise<TogetherMultiRoo
   publish(next, issuing);
   startMultiTick();
   return next;
-};
-
-/**
- * 房间完整歌曲列表。比 heartbeat 的 playSong+nextSongs（短窗口）权威：
- * 后者只给当前曲与接下来几首。追随者字段可看出每首歌是谁加的
- */
-export const roomSongsList = async (): Promise<TogetherRoomSongList> => {
-  if (!session) return { songIds: [], followers: [] };
-  const response = await callNetease("listen_together_room_songs_list", {
-    roomId: session.roomId,
-  });
-  const body = obj(obj(response)?.body) ?? {};
-  const data = obj(body.data) ?? {};
-  const songIds = Array.isArray(data.songIds) ? data.songIds.map((id) => str(id)) : [];
-  const followers = (Array.isArray(data.followers) ? data.followers : [])
-    .map((item) => {
-      const raw = obj(item) ?? {};
-      return {
-        userId: str(raw.userId ?? raw.uid),
-        nickname: str(raw.nickname),
-        avatarUrl: str(raw.avatarUrl || raw.avatar),
-      };
-    })
-    .filter((member) => member.userId);
-  return { songIds, followers };
 };
 
 /**

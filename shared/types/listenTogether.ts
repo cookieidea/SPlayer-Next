@@ -12,11 +12,6 @@ export interface TogetherRoom {
   members: TogetherMember[];
 }
 
-export interface TogetherRoomSongList {
-  songIds: string[];
-  followers: TogetherMember[];
-}
-
 export interface TogetherRoomSong {
   songId: string;
   songBizId: number;
@@ -62,7 +57,6 @@ export interface TogetherMultiApi {
   getStrangerVisible: () => Promise<boolean>;
   setStrangerVisible: (visible: boolean) => Promise<void>;
   createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;
-  roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;
   startMultiMatch: (songId: string) => Promise<{
@@ -183,7 +177,6 @@ export interface TogetherApi {
   getStrangerVisible: () => Promise<boolean>;
   setStrangerVisible: (visible: boolean) => Promise<void>;
   createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;
-  roomSongs: () => Promise<TogetherRoomSongList>;
   startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
   cancelMatch: () => Promise<void>;
   startMultiMatch: (songId: string) => Promise<{

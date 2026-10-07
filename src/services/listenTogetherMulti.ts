@@ -31,20 +31,16 @@ const resolveTracks = async (ids: string[]): Promise<Track[]> => {
 };
 
 /**
- * 房间队列。优先用 room/songs/list 的完整歌单（实测返回全部歌曲 + 各自是谁加的），
- * 失败时退回心跳里的 playSong+nextSongs 短窗口。按签名去重，避免心跳反复拉曲目详情
+ * 房间队列取「当前曲 + 待播」这个窗口。
+ * 曾经试过 room/songs/list，但它属于 VIP 礼物那套，songIds 实测恒为 null，
+ * 而全量历史还会让"播完可重新加入"的判定卡死，因此不再使用。
+ * 按签名去重，避免 8 秒心跳反复拉曲目详情
  */
 const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
-  let ids = [
+  const ids = [
     ...(room.playSong ? [room.playSong.songId] : []),
     ...room.nextSongs.map((song) => song.songId),
   ].filter(Boolean);
-  try {
-    const full = await window.api.togetherMulti.roomSongs();
-    if (full.songIds.length > 0) ids = full.songIds;
-  } catch {
-    void 0;
-  }
   const signature = ids.join(",");
   if (signature === roomQueueKey) return;
   roomQueueKey = signature;

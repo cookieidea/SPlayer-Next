@@ -460,7 +460,6 @@ const api = {
       ipcRenderer.invoke("togetherMulti:setStrangerVisible", visible),
     createRoom: (songId: string, userId: string) =>
       ipcRenderer.invoke("togetherMulti:create", songId, userId),
-    roomSongs: () => ipcRenderer.invoke("togetherMulti:roomSongs"),
     startMatch: () => ipcRenderer.invoke("togetherMulti:startMatch"),
     cancelMatch: () => ipcRenderer.invoke("togetherMulti:cancelMatch"),
     startMultiMatch: (songId: string) =>

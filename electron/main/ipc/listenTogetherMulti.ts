@@ -47,8 +47,6 @@ export const registerTogetherMultiIpc = (): void => {
     multi.inviteToMultiRoom(uids ?? []),
   );
 
-  ipcMain.handle("togetherMulti:roomSongs", () => multi.roomSongsList());
-
   ipcMain.handle("togetherMulti:startMatch", () => multi.startStrangerMatch());
 
   ipcMain.handle("togetherMulti:cancelMatch", () => multi.cancelStrangerMatch());
