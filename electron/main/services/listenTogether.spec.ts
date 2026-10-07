@@ -907,4 +907,86 @@ describe("一起听房间状态机", () => {
     await expect(joinPromise).rejects.toThrow("已被后续操作取代");
     expect(service.getSession()).toBeNull();
   });
+  it("上报期间的新操作不会被旧 delta 覆盖", async () => {
+    const service = await load();
+    const modeReports: string[] = [];
+
+    let releaseReport!: () => void;
+    const heldReport = new Promise<void>((resolve) => {
+      releaseReport = resolve;
+    });
+    let holdMode = false;
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        if (params.type === "PLAYMODE_CHANGE") {
+          modeReports.push(String(params.playMode));
+          if (holdMode) await heldReport;
+        }
+        return { status: 200, body: { code: 200 } };
+      }
+      return snapshotBody(["100", "200"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    modeReports.length = 0;
+
+    // 用户改成 RANDOM，上报挂起
+    holdMode = true;
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    vi.advanceTimersByTime(1000);
+    await Promise.resolve();
+
+    // 上报还在飞时，用户又改成 SINGLE_LOOP
+    holdMode = false;
+    service.updateLocal(localState({ songId: "100", playMode: "SINGLE_LOOP" }));
+
+    // 放行 RANDOM 上报，让这一轮继续走完
+    releaseReport();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 这一轮已经提交了过期的 RANDOM 基线，若继续跑会再上报一次 RANDOM
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // RANDOM 是用户真实操作，发一次正常；此后不得再出现重复上报
+    expect(modeReports).toEqual(["RANDOM", "SINGLE_LOOP"]);
+  });
+
+  it("改回服务端当前模式仍会上报", async () => {
+    const service = await load();
+    const modes: string[] = [];
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "listen_together_play_command_report") {
+        if (params.type === "PLAYMODE_CHANGE") modes.push(String(params.playMode));
+        return { status: 200, body: { code: 200 } };
+      }
+      // 服务端始终停在 ORDER_LOOP
+      return snapshotBody(["100"], "", -1, "ORDER_LOOP");
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    modes.length = 0;
+
+    // 用户改成 RANDOM
+    service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(modes).toEqual(["RANDOM"]);
+
+    // 用户又改回 ORDER_LOOP（与服务端当前值相同）：这不是回声，必须上报
+    service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(modes).toEqual(["RANDOM", "ORDER_LOOP"]);
+  });
 });

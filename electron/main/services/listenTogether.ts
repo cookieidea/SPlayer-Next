@@ -79,6 +79,9 @@ let rateLimitUntil = 0;
 let rateLimitFailures = 0;
 // 房间操作代号：后发的 create/join/restore 使先发操作的最终提交失效
 let roomOperation = 0;
+// 一次性回执：向渲染端下发过模式后，消费掉紧随其后的那一次同值上报。
+// 不能用持久比对（那样用户改回服务端当前模式会被误判成回声而丢失）
+let pendingModeAck = "";
 
 let lastState: TogetherLocalState = {
   songId: "",
@@ -304,7 +307,10 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
     if (baseline) baseline.queueSignature = songIdsSignature(snapshot.songIds);
   }
   const restored = mode === "restore" && initial;
-  if (modeChanged) lastRemotePlayMode = snapshot.playMode;
+  if (modeChanged) {
+    lastRemotePlayMode = snapshot.playMode;
+    pendingModeAck = snapshot.playMode;
+  }
   for (const listener of commandListeners) {
     listener({
       command: fresh && command ? (restored ? { ...command, playing: false } : command) : null,
@@ -434,18 +440,37 @@ const tick = async (): Promise<void> => {
     } else {
       const delta = detectLocalChanges(lastState, baseline ?? baselineOf(lastState));
       const next = delta.baseline;
-      // 本地模式恰好等于最近从服务端采纳的那个：这是 applyPlayMode 的结果而非用户操作，
-      // 不该再报回服务端（用户随后改别的模式时仍会正常上报）
-      const modeIsEcho = delta.changes.includes("playMode") && next.playMode === lastRemotePlayMode;
+      // 刚下发过的模式又原样回来：这是渲染端 applyPlayMode 的回执，不是用户操作。
+      // 只在待确认时吞一次，之后同样的值仍可正常上报
+      const modeIsEcho =
+        pendingModeAck !== "" &&
+        delta.changes.includes("playMode") &&
+        next.playMode === pendingModeAck;
       if (modeIsEcho) {
         delta.changes = delta.changes.filter((c) => c !== "playMode");
+        pendingModeAck = "";
+      } else if (delta.changes.includes("playMode")) {
+        pendingModeAck = "";
       }
       const prev = baseline ?? baselineOf(lastState);
       // 基线按维度提交：某项上报成功后只推进该维度，失败的下轮还能被检出。
       // 一次性提交整个 delta 会让失败的变化永久丢失。
+      // 上报是异步的：期间本地可能又变了。只有当该维度仍是当前值时才提交基线，
+      // 否则留下的是过期基线，会把用户的后续操作当成"已上报过"而漏掉
+      const fresh = (dimension: string): boolean => {
+        if (dimension === "queue") {
+          return songIdsSignature(lastState.queueSongIds) === next.queueSignature;
+        }
+        if (dimension === "songId") return lastState.songId === next.songId;
+        if (dimension === "playing") return lastState.playing === next.playing;
+        if (dimension === "seek") return lastState.seekRevision === next.seekRevision;
+        if (dimension === "end") return lastState.endRevision === next.endRevision;
+        return lastState.playMode === next.playMode;
+      };
       const commit = (
         dimension: "queue" | "songId" | "playing" | "seek" | "end" | "mode",
       ): void => {
+        if (!fresh(dimension)) return;
         baseline = {
           ...(baseline ?? prev),
           ...(dimension === "queue" ? { queueSignature: next.queueSignature } : {}),
@@ -558,6 +583,7 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   lastRemoteSignature = "";
   lastRemoteSeq = -1;
   lastRemotePlayMode = "";
+  pendingModeAck = "";
   awaitAdoption = 0;
   pendingInitial = null;
   pendingAdvanceAt = 0;
@@ -578,8 +604,10 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   clientSeq = 0;
   lastRemoteSignature = "";
   lastRemoteSeq = -1;
-  // 跨房间不能残留：新房间若恰好是同名模式，残留值会让首次快照判为"未变化"而不下发
+  // 跨房间不能残留：新房间若恰好是同名模式，残留值会让首次快照判为"未变化"而不下发；
+  // 未消费的回执同样会吞掉新房间的第一次同值上报
   lastRemotePlayMode = "";
+  pendingModeAck = "";
   awaitAdoption = 0;
   pendingAdvanceAt = 0;
   tickCount = 0;
