@@ -8,7 +8,7 @@ import * as queue from "@/stores/queue";
 import * as player from "@/core/player";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
-import { buildMultiInvitation, parseInvitation } from "@shared/utils/togetherInvitation";
+import { buildMultiInvitation } from "@shared/utils/togetherInvitation";
 import { isTogetherShareable } from "@shared/utils/togetherRoom";
 import type { TogetherMultiRoom, TogetherRoomSong } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
@@ -170,19 +170,6 @@ export const joinMultiRoomById = (
 ): Promise<unknown> =>
   withBusy(async () => {
     const room = await window.api.togetherMulti.join(roomId, inviterUid, userId);
-    return enterMultiRoom(room);
-  });
-
-/** 按邀请链接加入多人房（用户从剪贴板粘贴进来的那条路径） */
-export const joinTogetherMulti = (input: string, userId: string): Promise<unknown> =>
-  withBusy(async () => {
-    const parsed = parseInvitation(input);
-    if (!parsed.invitation) throw new Error(parsed.error || "邀请链接无效");
-    const room = await window.api.togetherMulti.join(
-      parsed.invitation.roomId,
-      parsed.invitation.inviterId,
-      userId,
-    );
     return enterMultiRoom(room);
   });
 

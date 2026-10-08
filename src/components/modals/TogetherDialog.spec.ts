@@ -23,6 +23,11 @@ const mocks = vi.hoisted(() => ({
   },
   services: {
     joinRoom: vi.fn(() => Promise.resolve(true)),
+    joinRoomById: vi.fn(() => Promise.resolve(true)),
+    // 分流要用展开后的地址，这里直接回原值即可（短链展开另有单测覆盖）
+    resolveInvitation: vi.fn((input: string) =>
+      Promise.resolve({ roomId: "R1", inviterId: "88", link: input }),
+    ),
     createRoom: vi.fn(() => Promise.resolve(true)),
     leaveRoom: vi.fn(() => Promise.resolve()),
     inviteFriend: vi.fn(() => Promise.resolve(true)),
@@ -33,7 +38,7 @@ const mocks = vi.hoisted(() => ({
     invitationOf: vi.fn(() => ""),
   },
   multi: {
-    joinTogetherMulti: vi.fn(() => Promise.resolve(true)),
+    joinMultiRoomById: vi.fn(() => Promise.resolve(true)),
     createMultiRoom: vi.fn(() => Promise.resolve({})),
     leaveTogetherMulti: vi.fn(() => Promise.resolve()),
     inviteMultiFriends: vi.fn(() => Promise.resolve(true)),
@@ -122,7 +127,7 @@ describe("一起听对话框", () => {
 
     await clickButton(wrapper, "加入");
 
-    expect(mocks.multi.joinTogetherMulti).toHaveBeenCalledWith(MULTI_LINK, "88");
+    expect(mocks.multi.joinMultiRoomById).toHaveBeenCalledWith("R1", "88", "88");
     // 关掉会让人以为没进去
     expect(wrapper.emitted("update:open")).toBeUndefined();
   });
@@ -133,7 +138,7 @@ describe("一起听对话框", () => {
 
     await clickButton(wrapper, "加入");
 
-    expect(mocks.services.joinRoom).toHaveBeenCalled();
+    expect(mocks.services.joinRoomById).toHaveBeenCalled();
     expect(wrapper.emitted("update:open")).toBeUndefined();
   });
 
@@ -147,6 +152,6 @@ describe("一起听对话框", () => {
     const button = wrapper.findAll("button").find((item) => item.text().includes("加入"));
     expect(input.disabled).toBe(true);
     expect((button?.element as HTMLButtonElement).disabled).toBe(true);
-    expect(mocks.multi.joinTogetherMulti).not.toHaveBeenCalled();
+    expect(mocks.multi.joinMultiRoomById).not.toHaveBeenCalled();
   });
 });

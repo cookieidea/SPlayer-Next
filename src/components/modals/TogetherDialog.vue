@@ -273,17 +273,35 @@ const onJoin = async (): Promise<void> => {
 
 /** 加入的实际流程：按链接形态分流到双人或多人的协议 */
 const runJoin = async (): Promise<void> => {
-  const value = invitationInput.value.trim();
-  if (!value) return;
-  // 多人房分享链接与双人共用这一个输入框，靠链接路径分流
-  if (isMultiInvitation(value)) {
-    if (!(await togetherMulti.joinTogetherMulti(value, userId.value))) return;
+  const raw = invitationInput.value.trim();
+  if (!raw) return;
+  // 先展开再分流：网易的分享短链（如 163cn.tv）跟随跳转后才知道落在双人还是
+  // 多人页面，拿原始输入判断会把多人链接当成双人，走错协议必然加入失败
+  let resolved: Awaited<ReturnType<typeof together.resolveInvitation>> = null;
+  try {
+    resolved = await together.resolveInvitation(raw);
+  } catch {
+    toast.error("邀请链接无法打开，请检查网络后重试");
+    return;
+  }
+  if (!resolved) {
+    toast.error("邀请链接里没有房间信息");
+    return;
+  }
+  // 多人房分享链接与双人共用这一个输入框，只能靠路径区分
+  if (isMultiInvitation(resolved.link)) {
+    const ok = await togetherMulti.joinMultiRoomById(
+      resolved.roomId,
+      resolved.inviterId,
+      userId.value,
+    );
+    if (!ok) return;
     invitationInput.value = "";
     // 与建房一致：不关对话框。多人房视图由 multiStore.room 驱动，
     // 关掉会让人以为没进去，还得重新点一起听才看得到房间
     return;
   }
-  if (!(await together.joinRoom(value, userId.value))) return;
+  if (!(await together.joinRoomById(resolved.roomId, resolved.inviterId, userId.value))) return;
   invitationInput.value = "";
   roomView.value = true;
 };

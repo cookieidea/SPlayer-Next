@@ -400,23 +400,39 @@ export const createRoom = async (userId: string): Promise<boolean> => {
   }
 };
 
-export const joinRoom = async (input: string, userId: string): Promise<boolean> => {
+/**
+ * 展开并解析邀请链接。
+ *
+ * 网易的分享短链（如 163cn.tv）要跟随跳转才知道最终落在双人还是多人页面，
+ * 所以"判断房型"和"取房间号"都必须用展开后的地址
+ */
+export interface ResolvedInvitation {
+  roomId: string;
+  inviterId: string;
+  /** 展开后的地址：判断是双人还是多人房必须用它，短链的原始形态看不出来 */
+  link: string;
+}
+
+export const resolveInvitation = async (input: string): Promise<ResolvedInvitation | null> => {
   let parsed = parseInvitation(input);
+  let link = input;
   if (!parsed.invitation && parsed.link) {
-    try {
-      parsed = parseInvitation(await window.api.together.resolveLink(parsed.link));
-    } catch {
-      toast.error("邀请链接无法打开，请检查网络后重试");
-      return false;
-    }
+    link = await window.api.together.resolveLink(parsed.link);
+    parsed = parseInvitation(link);
   }
-  if (!parsed.invitation) {
-    toast.error(parsed.error || "邀请链接里没有房间信息");
-    return false;
-  }
+  if (!parsed.invitation) return null;
+  return { ...parsed.invitation, link };
+};
+
+/** 按房间号加入双人房。链接已经解析过时用它，避免再走一次网络展开 */
+export const joinRoomById = async (
+  roomId: string,
+  inviterId: string,
+  userId: string,
+): Promise<boolean> => {
   beginBusy();
   try {
-    await window.api.together.join(parsed.invitation.roomId, parsed.invitation.inviterId, userId);
+    await window.api.together.join(roomId, inviterId, userId);
     return true;
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
@@ -424,6 +440,21 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
   } finally {
     endBusy();
   }
+};
+
+export const joinRoom = async (input: string, userId: string): Promise<boolean> => {
+  let resolved: ResolvedInvitation | null = null;
+  try {
+    resolved = await resolveInvitation(input);
+  } catch {
+    toast.error("邀请链接无法打开，请检查网络后重试");
+    return false;
+  }
+  if (!resolved) {
+    toast.error("邀请链接里没有房间信息");
+    return false;
+  }
+  return joinRoomById(resolved.roomId, resolved.inviterId, userId);
 };
 
 /**
