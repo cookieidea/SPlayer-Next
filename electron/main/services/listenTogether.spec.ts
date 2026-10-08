@@ -189,6 +189,35 @@ describe("一起听房间状态机", () => {
     expect(reasons).toContain("server");
   });
 
+  it("status 响应不完整时不退房，只等下一轮", async () => {
+    const service = await load();
+    const reasons: string[] = [];
+    service.onSessionEnd((reason: string) => reasons.push(reason));
+
+    let broken = false;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") {
+        // 限流或服务端降级时会回一个没有 data 的响应
+        if (broken) return { status: 200, body: { code: 200 } };
+        return statusBody(true, "R1", [7]);
+      }
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    await cycle();
+    broken = true;
+    for (let i = 0; i < 6; i++) {
+      await cycle();
+    }
+
+    // 把"响应缺 data"当成退房信号的话，一次网络抖动就会把人踢出房间
+    expect(reasons).toEqual([]);
+    expect(service.getSession()).not.toBeNull();
+  });
+
   it("会话结束后迟到的房间更新不会复活 room", async () => {
     const service = await load();
     const rooms: unknown[] = [];

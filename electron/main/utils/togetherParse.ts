@@ -167,10 +167,21 @@ export const snapshotFromBody = (value: unknown): TogetherSnapshot => {
   };
 };
 
-export const statusFromBody = (value: unknown): { inRoom: boolean; room: TogetherRoom | null } => {
+/**
+ * status/get 的解析结果。
+ * unknown 表示响应不完整（缺 data），必须与"服务端明确说不在房间"区分开：
+ * 把异常响应当成退房信号会让一次网络抖动直接把人踢出房间
+ */
+export const statusFromBody = (
+  value: unknown,
+): {
+  inRoom: boolean;
+  room: TogetherRoom | null;
+  unknown: boolean;
+} => {
   const data = obj(obj(unwrap(value))?.data);
-  if (!data) return { inRoom: false, room: null };
-  return { inRoom: Boolean(data.inRoom), room: toRoom(data.roomInfo) };
+  if (!data) return { inRoom: false, room: null, unknown: true };
+  return { inRoom: Boolean(data.inRoom), room: toRoom(data.roomInfo), unknown: false };
 };
 
 /**

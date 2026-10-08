@@ -475,6 +475,12 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
   try {
     const status = statusFromBody(await callNetease("listen_together_status", {}));
     if (!session || session.roomId !== roomId || generation !== issuingBeat) return healthy;
+    if (status.unknown) {
+      // 响应不完整（缺 data）不能当成退房信号：一次限流或网络抖动就会把人踢出去。
+      // 只记不健康、下轮继续探测，真正的房间结束会由服务端在后续轮次明确回答
+      healthy = false;
+      return healthy;
+    }
     if (!status.inRoom) {
       endSession("server", issuingBeat);
       return true;
