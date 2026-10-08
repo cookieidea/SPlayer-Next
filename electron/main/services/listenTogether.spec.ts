@@ -189,6 +189,34 @@ describe("一起听房间状态机", () => {
     expect(reasons).toContain("server");
   });
 
+  it("单次不在房间不退房，连续两次才认", async () => {
+    const service = await load();
+    const reasons: string[] = [];
+    service.onSessionEnd((reason: string) => reasons.push(reason));
+
+    let statusCalls = 0;
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") {
+        statusCalls += 1;
+        // 只有第一次探测返回"不在房间"：进房瞬间可能撞上尚未反映新房间的应答
+        if (statusCalls === 1) return statusBody(true, "R1", [7]);
+        if (statusCalls === 2) return statusBody(false);
+        return statusBody(true, "R1", [7]);
+      }
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    for (let i = 0; i < 4; i++) {
+      await cycle();
+    }
+
+    expect(reasons).toEqual([]);
+    expect(service.getSession()).not.toBeNull();
+  });
+
   it("status 响应不完整时不退房，只等下一轮", async () => {
     const service = await load();
     const reasons: string[] = [];

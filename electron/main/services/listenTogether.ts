@@ -84,6 +84,8 @@ let pendingAdvanceAt = 0;
 /** 已下发但渲染端尚未跟上的目标队列签名；重试若干次仍跟不上才放弃 */
 let pendingQueueSignature: string | null = null;
 let pendingQueueRetries = 0;
+/** 连续观察到"不在房间"的次数：进房瞬间可能撞上一次过期应答，要连续确认才退房 */
+let notInRoomStreak = 0;
 // 上一次见到的房间成员 id：有人进来时要把当前进度重报一次，
 // 否则新进来的人会按服务端存的旧进度对齐
 let knownMemberIds: string[] = [];
@@ -453,7 +455,7 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
   try {
     // 没有歌就不发心跳：参考实现同样跳过，避免空放时白刷请求
     if (doHeartbeat && lastState.songId) {
-      await callNetease("listen_together_heartbeat", {
+      const response = await callNetease("listen_together_heartbeat", {
         roomId,
         songId: lastState.songId,
         playing: lastState.playing,
@@ -461,6 +463,17 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
         // 官方心跳带队列版本，用于服务端判断本地队列是否过期
         playlistVersion,
       });
+      // 官方只看心跳里明确的失效标记（HeartBeatResult.type == ERROR_ROOM_INVALID）才退房；
+      // 正常响应里没有 type，data.result 也是 true。这里同样只在明确失败时判定，
+      // 不把"响应缺字段"当成房间没了
+      const beatBody = (response as { body?: { data?: Record<string, unknown> } })?.body;
+      const beatData = beatBody?.data;
+      const invalid = beatData?.type === "ERROR_ROOM_INVALID" || beatData?.result === false;
+      if (invalid) {
+        neteaseLog.info("[一起听] 心跳返回房间无效，结束会话");
+        endSession("server", issuingBeat);
+        return true;
+      }
     }
   } catch (error) {
     if (isRoomGone(error)) {
@@ -482,9 +495,17 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
       return healthy;
     }
     if (!status.inRoom) {
-      endSession("server", issuingBeat);
-      return true;
+      // 进房/切换瞬间可能撞上一次尚未反映新房间的应答，连续两次才认。
+      // 官方同样只在明确拿到失效标记时才退房，单次否定不足以判定
+      notInRoomStreak += 1;
+      if (notInRoomStreak >= 2) {
+        endSession("server", issuingBeat);
+        return true;
+      }
+      healthy = false;
+      return healthy;
     }
+    notInRoomStreak = 0;
     if (status.room) {
       const ids = status.room.members.map((member) => member.userId).filter(Boolean);
       const arrived = ids.some((id) => !knownMemberIds.includes(id));
@@ -857,6 +878,7 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   pendingAdvanceAt = 0;
   pendingQueueSignature = null;
   pendingQueueRetries = 0;
+  notInRoomStreak = 0;
   knownMemberIds = [];
   tickCount = 0;
   previousSongId = "";
@@ -886,6 +908,7 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   pendingAdvanceAt = 0;
   pendingQueueSignature = null;
   pendingQueueRetries = 0;
+  notInRoomStreak = 0;
   knownMemberIds = [];
   tickCount = 0;
   baseline = null;
