@@ -300,4 +300,26 @@ describe("多人一起听渲染端服务", () => {
     expect(together.restore).toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it("有人进房时提示，首次观察不提示", async () => {
+    const one = room("room1", []);
+    const two: TogetherMultiRoom = {
+      ...one,
+      members: [
+        { userId: "77", nickname: "A", avatarUrl: "" },
+        { userId: "99", nickname: "新来的", avatarUrl: "" },
+      ],
+    };
+    queue.setQueue([track("room1")]);
+    mods.initTogetherMulti();
+
+    // 首次观察：这些人本来就在房里，不该弹提示
+    emit?.(roomEvent(one));
+    expect(mocks.toast.info).not.toHaveBeenCalled();
+
+    emit?.(roomEvent(two));
+
+    // 多人房不像双人房那样一次只进一个人，靠比对成员集合才能认出新来的
+    expect(mocks.toast.info).toHaveBeenCalledWith(expect.stringContaining("新来的"));
+  });
 });

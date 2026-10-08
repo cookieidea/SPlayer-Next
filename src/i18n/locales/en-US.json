@@ -551,6 +551,8 @@
       "localPlayDisabled": "Added to the room queue",
       "batchPlayDisabled": "Batch play is disabled in a multi room; add songs one by one",
       "localQueueDisabled": "Use Add to room; local queueing has no effect",
+      "likeInRoom": "Like this song",
+      "heartInRoom": "Heart this song",
       "matchMulti": "Multi match",
       "me": "Me",
       "recommended": "Recommended",

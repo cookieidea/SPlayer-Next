@@ -70,6 +70,21 @@ export const registerTogetherMultiIpc = (): void => {
     async (_event, songId: string, songBizId: number) =>
       await multi.topMultiSong(songId, songBizId),
   );
+  ipcMain.handle(
+    "togetherMulti:likeSong",
+    async (_event, songId: string, songBizId: number) =>
+      await multi.likeMultiSong(songId, songBizId),
+  );
+  ipcMain.handle(
+    "togetherMulti:heartSong",
+    async (_event, songId: string, songBizId: number) =>
+      await multi.heartMultiSong(songId, songBizId),
+  );
+  ipcMain.handle(
+    "togetherMulti:collectSong",
+    async (_event, songId: string, songBizId: number) =>
+      await multi.collectMultiSong(songId, songBizId),
+  );
 
   ipcMain.handle(
     "togetherMulti:removeSong",

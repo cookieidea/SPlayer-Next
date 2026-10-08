@@ -10,7 +10,7 @@ import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { buildMultiInvitation, parseInvitation } from "@shared/utils/togetherInvitation";
 import { isTogetherShareable } from "@shared/utils/togetherRoom";
-import type { TogetherMultiRoom } from "@shared/types/listenTogether";
+import type { TogetherMultiRoom, TogetherRoomOperateResult } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
 
 const MULTI_CONTEXT = { originId: "listen-together-multi", originType: "page" as const };
@@ -98,6 +98,7 @@ const handleEvent = (): void => {
       if (event.type === "room") {
         void followRoom(event.room);
         void syncRoomQueue(event.room);
+        notifyNewMembers(event.room);
       }
       if (event.type === "session-end" && event.reason !== "left") {
         // 自己退出不用提示；房间被服务端结束（过期/被移出）必须说一声，
@@ -107,6 +108,28 @@ const handleEvent = (): void => {
       if (event.type === "error") toast.error(event.message);
     });
   }
+};
+
+/** 已见过的成员，用于识别"新加入的人" */
+let knownMemberIds: string[] = [];
+
+/**
+ * 有人进房时提示一次。
+ * 多人房不像双人房那样一次只有一个人，得比对上一次的成员集合才能知道谁是新来的
+ */
+const notifyNewMembers = (room: TogetherMultiRoom): void => {
+  const ids = room.members.map((member) => member.userId).filter(Boolean);
+  // 首次观察（刚进房）不提示：那些人在我进来之前就在了
+  if (knownMemberIds.length > 0) {
+    const arrived = room.members.filter(
+      (member) => member.userId && !knownMemberIds.includes(member.userId),
+    );
+    if (arrived.length > 0) {
+      const names = arrived.map((member) => member.nickname || member.userId).join("、");
+      toast.info(`一起听：${names} 加入了`);
+    }
+  }
+  knownMemberIds = ids;
 };
 
 export const initTogetherMulti = (): void => {
@@ -128,6 +151,7 @@ const withBusy = async <T>(run: () => Promise<T>): Promise<T | null> => {
 
 export const joinTogetherMulti = (input: string, userId: string): Promise<unknown> =>
   withBusy(async () => {
+    knownMemberIds = [];
     const parsed = parseInvitation(input);
     if (!parsed.invitation) throw new Error(parsed.error || "邀请链接无效");
     const room = await window.api.togetherMulti.join(
@@ -354,6 +378,30 @@ const seedRoomQueue = async (startSongId: string): Promise<void> => {
   }
 };
 
+/**
+ * 对房间里的歌表态。实测三个操作都可用：
+ * operate=3 点赞（"你觉得这首歌很好听！"）、5 红心、6 收藏
+ */
+const reactToSong = async (
+  songId: string,
+  songBizId: number,
+  call: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>,
+  rejectFallback: string,
+): Promise<void> =>
+  withBusy(async () => {
+    const { message, rejected } = await call(songId, songBizId);
+    reportOperate(message, rejected, rejectFallback);
+  }).then(() => undefined);
+
+export const likeMultiSong = (songId: string, songBizId = 0): Promise<void> =>
+  reactToSong(songId, songBizId, window.api.togetherMulti.likeSong, "点赞失败");
+
+export const heartMultiSong = (songId: string, songBizId = 0): Promise<void> =>
+  reactToSong(songId, songBizId, window.api.togetherMulti.heartSong, "红心失败");
+
+export const collectMultiSong = (songId: string, songBizId = 0): Promise<void> =>
+  reactToSong(songId, songBizId, window.api.togetherMulti.collectSong, "收藏失败");
+
 /** 多人房站内邀请好友 */
 export const inviteMultiFriends = (uids: readonly string[]): Promise<boolean> =>
   withBusy(async () => {
@@ -371,6 +419,7 @@ export const inviteMultiFriends = (uids: readonly string[]): Promise<boolean> =>
 export const leaveTogetherMulti = (): Promise<void> =>
   withBusy(async () => {
     roomQueueKey = "";
+    knownMemberIds = [];
     await window.api.togetherMulti.leave();
   }).then(() => undefined);
 

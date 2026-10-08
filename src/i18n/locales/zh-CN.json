@@ -539,6 +539,8 @@
       "localPlayDisabled": "已加入房间队列（多人一起听中由房间决定播放）",
       "batchPlayDisabled": "多人一起听中不能批量播放，请逐首加入房间队列",
       "localQueueDisabled": "请用「加入一起听房间」，本地排队不会生效",
+      "likeInRoom": "点赞这首歌",
+      "heartInRoom": "红心这首歌",
       "matchMulti": "多人匹配",
       "me": "我",
       "recommended": "推荐",
