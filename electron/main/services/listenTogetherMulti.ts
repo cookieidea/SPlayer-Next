@@ -32,10 +32,6 @@ const OPERATE_DELETE = 7;
 
 // 实测：对当前曲投「不想听」，人够就切走。返回 "有足够多的人不想听，切歌成功！"
 const OPERATE_VOTE_SKIP = 4;
-/** 对房间里的歌表态：点赞 / 红心 / 收藏，服务端会把它算进房间互动 */
-const OPERATE_LIKE = 3;
-const OPERATE_HEART = 5;
-const OPERATE_COLLECT = 6;
 
 type RoomListener = (room: TogetherMultiRoom, generation: number) => void;
 
@@ -446,14 +442,3 @@ export const removeMultiSong = (
 
 export const topMultiSong = (songId: string, songBizId = 0): Promise<TogetherRoomOperateResult> =>
   operate(songId, songBizId, OPERATE_TOP);
-
-export const likeMultiSong = (songId: string, songBizId = 0): Promise<TogetherRoomOperateResult> =>
-  operate(songId, songBizId, OPERATE_LIKE);
-
-export const heartMultiSong = (songId: string, songBizId = 0): Promise<TogetherRoomOperateResult> =>
-  operate(songId, songBizId, OPERATE_HEART);
-
-export const collectMultiSong = (
-  songId: string,
-  songBizId = 0,
-): Promise<TogetherRoomOperateResult> => operate(songId, songBizId, OPERATE_COLLECT);

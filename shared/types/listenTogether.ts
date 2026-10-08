@@ -75,9 +75,6 @@ export interface TogetherMultiApi {
   cancelMultiMatch: () => Promise<void>;
   addSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
   topSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
-  likeSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
-  heartSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
-  collectSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
   removeSong: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
   voteSkip: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>;
   onEvent: (callback: (event: TogetherMultiEvent) => void) => () => void;

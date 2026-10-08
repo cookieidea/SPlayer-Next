@@ -481,12 +481,6 @@ const api = {
       ipcRenderer.invoke("togetherMulti:addSong", songId, songBizId),
     topSong: (songId: string, songBizId: number) =>
       ipcRenderer.invoke("togetherMulti:topSong", songId, songBizId),
-    likeSong: (songId: string, songBizId: number) =>
-      ipcRenderer.invoke("togetherMulti:likeSong", songId, songBizId),
-    heartSong: (songId: string, songBizId: number) =>
-      ipcRenderer.invoke("togetherMulti:heartSong", songId, songBizId),
-    collectSong: (songId: string, songBizId: number) =>
-      ipcRenderer.invoke("togetherMulti:collectSong", songId, songBizId),
     removeSong: (songId: string, songBizId: number) =>
       ipcRenderer.invoke("togetherMulti:removeSong", songId, songBizId),
     voteSkip: (songId: string, songBizId: number) =>

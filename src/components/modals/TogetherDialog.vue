@@ -106,15 +106,6 @@ const loadMultiFriends = async (): Promise<void> => {
   multiFriends.value = await together.loadFriends(userId.value);
 };
 
-const onLikeMultiSong = async (songId: string): Promise<void> => {
-  await togetherMulti.likeMultiSong(songId);
-};
-
-/** 红心/收藏都要带 songBizId：服务端按它定位房间里的那一条记录 */
-const onHeartMultiSong = async (song: TogetherRoomSong): Promise<void> => {
-  await togetherMulti.heartMultiSong(song.songId, song.songBizId);
-};
-
 const onInviteMulti = async (friend: TogetherFriend): Promise<void> => {
   await togetherMulti.inviteMultiFriends([friend.userId]);
 };
@@ -420,24 +411,6 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
                   >
                     {{ recommenderOf(song.songRcmdUid) }}
                   </span>
-                  <SButton
-                    variant="ghost"
-                    circle
-                    size="small"
-                    :title="t('player.together.likeInRoom')"
-                    @click="onLikeMultiSong(song.songId)"
-                  >
-                    <template #icon><IconLucideThumbsUp /></template>
-                  </SButton>
-                  <SButton
-                    variant="ghost"
-                    circle
-                    size="small"
-                    :title="t('player.together.heartInRoom')"
-                    @click="onHeartMultiSong(song)"
-                  >
-                    <template #icon><IconLucideHeart /></template>
-                  </SButton>
                   <SButton
                     v-if="roomActionOf(song) === 'pending'"
                     variant="ghost"

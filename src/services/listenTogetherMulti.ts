@@ -10,7 +10,7 @@ import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { buildMultiInvitation, parseInvitation } from "@shared/utils/togetherInvitation";
 import { isTogetherShareable } from "@shared/utils/togetherRoom";
-import type { TogetherMultiRoom, TogetherRoomOperateResult } from "@shared/types/listenTogether";
+import type { TogetherMultiRoom } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
 
 const MULTI_CONTEXT = { originId: "listen-together-multi", originType: "page" as const };
@@ -377,30 +377,6 @@ const seedRoomQueue = async (startSongId: string): Promise<void> => {
     }
   }
 };
-
-/**
- * 对房间里的歌表态。实测三个操作都可用：
- * operate=3 点赞（"你觉得这首歌很好听！"）、5 红心、6 收藏
- */
-const reactToSong = async (
-  songId: string,
-  songBizId: number,
-  call: (songId: string, songBizId: number) => Promise<TogetherRoomOperateResult>,
-  rejectFallback: string,
-): Promise<void> =>
-  withBusy(async () => {
-    const { message, rejected } = await call(songId, songBizId);
-    reportOperate(message, rejected, rejectFallback);
-  }).then(() => undefined);
-
-export const likeMultiSong = (songId: string, songBizId = 0): Promise<void> =>
-  reactToSong(songId, songBizId, window.api.togetherMulti.likeSong, "点赞失败");
-
-export const heartMultiSong = (songId: string, songBizId = 0): Promise<void> =>
-  reactToSong(songId, songBizId, window.api.togetherMulti.heartSong, "红心失败");
-
-export const collectMultiSong = (songId: string, songBizId = 0): Promise<void> =>
-  reactToSong(songId, songBizId, window.api.togetherMulti.collectSong, "收藏失败");
 
 /** 多人房站内邀请好友 */
 export const inviteMultiFriends = (uids: readonly string[]): Promise<boolean> =>

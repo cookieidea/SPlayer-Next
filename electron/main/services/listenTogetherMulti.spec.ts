@@ -12,13 +12,10 @@ import {
   cancelStrangerMatch,
   createMultiRoom,
   getStrangerVisible,
-  collectMultiSong,
-  heartMultiSong,
   inviteToMultiRoom,
-  likeMultiSong,
-  refreshMultiRoom,
   setStrangerVisible,
   onMultiRoom,
+  refreshMultiRoom,
   restoreMultiRoom,
   startMultiMatch,
   startStrangerMatch,
@@ -603,26 +600,5 @@ describe("多人一起听", () => {
 
     await expect(pending).rejects.toThrow("已被后续操作取代");
     expect(getMultiSession()).toBeNull();
-  });
-
-  it("点赞/红心/收藏走 operate 3/5/6", async () => {
-    mocks.call.mockResolvedValue(multiBody());
-    await joinMultiRoom("R_1", "77", "88", "d");
-
-    const calls: number[] = [];
-    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
-      if (name === "listen_together_multi_song_operate") {
-        calls.push(Number(params.operate));
-        return { status: 200, body: { code: 200, data: { result: true, failedMsg: "" } } };
-      }
-      return multiBody();
-    });
-
-    await likeMultiSong("1", 2);
-    await heartMultiSong("1", 2);
-    await collectMultiSong("1", 2);
-
-    // 实测对应"你觉得这首歌很好听！""你红心了歌曲 X""你收藏了歌曲 X"
-    expect(calls).toEqual([3, 5, 6]);
   });
 });
