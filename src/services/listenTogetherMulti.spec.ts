@@ -267,21 +267,20 @@ describe("多人一起听渲染端服务", () => {
     const api = (window as unknown as { api: Record<string, unknown> }).api;
     const together = api.together as Record<string, ReturnType<typeof vi.fn>>;
     const multi = api.togetherMulti as Record<string, ReturnType<typeof vi.fn>>;
-    // 配到人才会去取房间：不带 roomId 时轮询只记日志就返回
-    multi.startMultiMatch = vi.fn(() =>
-      Promise.resolve({ success: true, roomId: "R_M", waiting: false }),
-    );
+    // 发起匹配要成功，否则轮询根本不会开始
+    multi.startMultiMatch = vi.fn(() => Promise.resolve({ success: true, waiting: true }));
+    // 轮询只查"有没有被放进房间"：restore 返回非 null 即视为配到
     multi.cancelMultiMatch = vi.fn(() => Promise.resolve());
     multi.ackMultiMatch = vi.fn(() => Promise.resolve());
-    multi.restore = vi.fn(() => Promise.resolve(null));
+    multi.restore = vi.fn(() => Promise.resolve(room("R_M", [])));
 
     mods.initTogetherMulti();
     await mods.startMultiMatch("123");
     await vi.advanceTimersByTimeAsync(3100);
 
-    // 配对成功后先确认，再取房间。together.restore 是双人侧的，
+    // 多人必须走多人通道：together.restore 是双人侧的，
     // 它发的事件在 together:event 上，而多人的监听器只听 togetherMulti:event
-    expect(multi.ackMultiMatch).toHaveBeenCalledWith("R_M");
+    expect(multi.ackMultiMatch).toHaveBeenCalledWith("R_1");
     expect(multi.restore).toHaveBeenCalled();
     expect(together.restore).not.toHaveBeenCalled();
     vi.useRealTimers();
@@ -341,10 +340,9 @@ describe("多人一起听渲染端服务", () => {
     mods.initTogetherMulti();
     await mods.startStrangerMatch("88");
 
-    // 第一次失败：网络抖动是常态，不该放弃
-    (api.togetherMulti as Record<string, unknown>).startMatch = vi.fn(() =>
-      Promise.reject(new Error("网络错误")),
-    );
+    // 第一次失败：网络抖动是常态，不该放弃。
+    // 轮询现在只查 restore（不再重复发起匹配），失败要落在它身上
+    api.together = { restore: vi.fn(() => Promise.reject(new Error("网络错误"))) };
     await vi.advanceTimersByTimeAsync(3100);
     expect(store.matching).toBe("duo");
 
@@ -434,5 +432,25 @@ describe("多人一起听渲染端服务", () => {
 
     // 卡片本身就带这两个值，绕成"拼链接再解析"会让这条路径依赖链接格式
     expect(join).toHaveBeenCalledWith("R_X", "88", "77");
+  });
+
+  it("轮询不得重复发起匹配：那会不断重置匹配窗口", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    const multi = api.togetherMulti as Record<string, unknown>;
+    const startMatch = vi.fn(() => Promise.resolve({ success: true, waiting: true }));
+    multi.startMatch = startMatch;
+    multi.cancelMatch = vi.fn(() => Promise.resolve());
+    multi.restore = vi.fn(() => Promise.resolve(null));
+    api.together = { restore: vi.fn(() => Promise.resolve(null)) };
+
+    mods.initTogetherMulti();
+    await mods.startStrangerMatch("88");
+    const afterStart = startMatch.mock.calls.length;
+
+    // 轮询 5 轮：startMatch 一次都不该再被调用
+    await vi.advanceTimersByTimeAsync(3100 * 5);
+    expect(startMatch.mock.calls.length).toBe(afterStart);
+    vi.useRealTimers();
   });
 });

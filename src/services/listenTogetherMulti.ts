@@ -218,26 +218,19 @@ const pollMatch = async (userId: string): Promise<void> => {
       toast.warning("没有找到合适的听友，请稍后重试");
       return;
     }
-    // 重新查一次匹配结果：配对成功时 start 接口会带回 existedRoomId，
-    // 官方靠 IM 推送拿这个值，我们没接 IM，重复查询即可替代（作者已实测）
-    const state = await window.api.togetherMulti.startMatch();
-    let roomId = state.roomId;
-    if (roomId) {
-      // 配对成功后必须回一次 ack 才算真正进房。
-      // 少了它服务端会按 ACK 等待超时把账号踢出去——表现就是"匹配到了，过一会自己退出"
-      await window.api.togetherMulti.ackMatch(roomId);
-    } else {
-      // 兜底：服务端也可能直接把账号放进房间，此时 status/get 能看出来。
-      // entering=true：这是"刚匹配进来"而不是"重启恢复"，要跟随房间的播放态与进度
-      const room = await window.api.together.restore(userId, true);
-      if (!room) {
-        if (matchPollCount === 1 || matchPollCount === 30) {
-          console.info(`[一起听] 匹配中（第 ${matchPollCount} 轮）`);
-        }
-        return;
+    // 只看自己有没有被放进房间。绝不能在轮询里再调 startMatch：
+    // 那是"发起匹配"接口，每调一次就重置 60 秒窗口，窗口走不完就永远配不到人。
+    // entering=true：这是"刚匹配进来"而不是"重启恢复"，要跟随房间的播放态与进度
+    const room = await window.api.together.restore(userId, true);
+    if (!room) {
+      if (matchPollCount === 1 || matchPollCount === 30) {
+        console.info(`[一起听] 匹配中（第 ${matchPollCount} 轮）`);
       }
-      roomId = room.roomId;
+      return;
     }
+    // 配对成功后必须回一次 ack 才算真正进房。
+    // 少了它服务端会按 ACK 等待超时把账号踢出去——表现就是"匹配到了，过一会自己退出"
+    await window.api.togetherMulti.ackMatch(room.roomId);
     // 匹配到就必须通知服务端结束匹配，否则账号会一直挂在匹配队列里
     finishMatch();
     toast.success("已找到听友");
@@ -312,11 +305,9 @@ const pollMultiMatch = async (): Promise<void> => {
     // 用双人通道检测的话，匹配成功也不会更新 multiStore.room，界面不切视图
     const userId = String(useUserStore().profile?.userId ?? "");
     if (!userId) return;
-    // 同双人：重复查匹配接口，配对成功时带回 existedRoomId
-    const state = await window.api.togetherMulti.startMultiMatch(
-      String(useStatusStore().currentTrack?.id ?? "0"),
-    );
-    if (!state.roomId) {
+    // 同双人：只看自己有没有被放进房间，绝不在轮询里再调 startMultiMatch
+    const room = await window.api.togetherMulti.restore(userId);
+    if (!room) {
       // 还没配到：只记日志，不打扰用户，也不终结匹配
       if (matchPollCount === 1 || matchPollCount === 30) {
         console.info(`[一起听] 多人匹配中（第 ${matchPollCount} 轮）`);
@@ -325,9 +316,7 @@ const pollMultiMatch = async (): Promise<void> => {
     }
     // 必须回 ack 才算真正进房（MULTI_MATCH_WAIT_ACK_TIMEOUT 就是这条等待的超时）。
     // 多人要用多人自己的 ack 端点，双人那条加入不了多人房
-    await window.api.togetherMulti.ackMultiMatch(state.roomId);
-    const room = await window.api.togetherMulti.restore(userId);
-    if (!room) return;
+    await window.api.togetherMulti.ackMultiMatch(room.roomId);
     finishMatch();
     toast.success("已找到听友");
     try {
