@@ -1876,4 +1876,32 @@ describe("一起听房间状态机", () => {
     // 但重试必须有上限：上千首的曲目请求不能每轮都重发一遍
     expect(events.length).toBe(first);
   });
+
+  it("新听友进来时补发一次队列", async () => {
+    const service = await load();
+    const queues: string[][] = [];
+    let members = [7];
+
+    mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", members);
+      if (name === "listen_together_sync_list_report") {
+        queues.push([...(params.songIds as string[])]);
+        return { status: 200, body: { code: 200, data: { result: true } } };
+      }
+      return snapshotBody(["100", "200"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100", "200"] }));
+    await cycle();
+    const before = queues.length;
+
+    // 第 8 个人进来
+    members = [7, 8];
+    await cycle();
+
+    // 单人房服务端不存共享歌单，只发 GOTO 的话对方拿不到队列
+    expect(queues.length).toBeGreaterThan(before);
+  });
 });

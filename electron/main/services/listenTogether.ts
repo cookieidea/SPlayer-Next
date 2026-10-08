@@ -305,7 +305,7 @@ const reportQueue = async (songIds: readonly string[]): Promise<void> => {
   if (issuing !== generation) return;
   clientSeq += 1;
   neteaseLog.info(`[一起听] 上报队列 ${songIds.length}首`);
-  await callNetease("listen_together_sync_list_report", {
+  const response = await callNetease("listen_together_sync_list_report", {
     roomId,
     userId,
     version,
@@ -315,6 +315,13 @@ const reportQueue = async (songIds: readonly string[]): Promise<void> => {
     // 才接受 playMode，数组形态会静默丢弃它（对端就同步不了当前歌曲）
     playMode: lastState.playMode,
   });
+  // 服务端用 result 表示是否真的收下了。单人房没有共享歌单，这里恒为 false，
+  // 所以只在"房里已有别人"时才当成异常——否则每次建房都会报一条假失败
+  const body = obj((response as { body?: unknown })?.body);
+  const data = obj(body?.data);
+  if (data?.result === false && (room?.members.length ?? 0) > 1) {
+    neteaseLog.warn(`[一起听] 队列上报被拒：${str(body?.message) || "无说明"}`);
+  }
 };
 
 const applySnapshot = async (initial: boolean): Promise<boolean> => {
@@ -512,6 +519,14 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
       // 首次观察不报：那可能正是自己刚进来，此时还没采纳房间状态，
       // 报上去会把房间已有的歌曲/进度覆盖掉
       if (knownMemberIds.length > 0 && arrived && pendingInitial === null && lastState.songId) {
+        // 新听友进来时服务端那边还没有本房的共享歌单（单人房不存），
+        // 只发 GOTO 的话对方能看到当前曲却拿不到队列，所以整表补一次
+        if (lastState.queueSongIds.length > 0) {
+          const queue = [...lastState.queueSongIds];
+          if (await guarded(() => reportQueue(queue), issuingBeat)) {
+            localQueueIds = queue;
+          }
+        }
         // 必须发 GOTO 而不是 PROGRESS：对端（尤其官方客户端）入场时
         // 需要一条真正的歌曲指令才会切歌，PROGRESS 只调整进度
         await guarded(() => reportCommand("GOTO", "", lastState.playing, lastState), issuingBeat);
