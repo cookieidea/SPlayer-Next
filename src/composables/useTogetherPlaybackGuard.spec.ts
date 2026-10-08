@@ -51,7 +51,8 @@ describe("一起听播放守卫", () => {
       members: [],
       playSong: { songId: "s1", songBizId: 0, songRcmdUid: "" },
       nextSongs: [],
-      playStartTime: 0,
+      playProgress: 0,
+      sampledAt: 0,
       playDuration: 0,
     };
     const guard = mountGuard();

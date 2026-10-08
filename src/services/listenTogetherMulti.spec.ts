@@ -68,7 +68,8 @@ const room = (playSong: string | null, nextSongs: string[]): TogetherMultiRoom =
   members: [{ userId: "77", nickname: "A", avatarUrl: "" }],
   playSong: playSong ? { songId: playSong, songBizId: 0, songRcmdUid: "" } : null,
   nextSongs: nextSongs.map((id) => ({ songId: id, songBizId: 0, songRcmdUid: "" })),
-  playStartTime: 0,
+  playProgress: 0,
+  sampledAt: 0,
   playDuration: 0,
 });
 
@@ -209,25 +210,45 @@ describe("多人一起听渲染端服务", () => {
     }
   });
 
-  it("不做进度对齐：服务端不再下发起播时刻", async () => {
+  it("多人房落后房间进度时会追上", async () => {
     queue.setQueue([track("room1")]);
     mediaMock.state.track = track("room1");
-    // 即便房间带着 playStartTime 过来也不该 seek：实测服务端根本不下发这个字段，
-    // 对齐只会把本地拖回开头。多人房只同步「播哪首」
-    const roomWithProgress: TogetherMultiRoom = {
+    // 房间已播 30 秒，本地才 0.5 秒：应当 seek 到房间位置。
+    // 进度由 playedTime（已播毫秒）+ 采样后经过时间推算，服务端确实下发这个字段
+    const roomAhead: TogetherMultiRoom = {
       ...room("room1", []),
-      playStartTime: Date.now() - 30000,
+      playProgress: 30000,
+      sampledAt: Date.now(),
       playDuration: 200000,
     };
     mocks.getCurrentTime.mockReturnValue(500);
     mods.initTogetherMulti();
 
-    emit?.(roomEvent(roomWithProgress));
-    // 曲目相同，followRoom 不会切歌；等一轮微任务确认没有 seek 发生
+    emit?.(roomEvent(roomAhead));
+    await vi.waitFor(() => expect(mocks.seek).toHaveBeenCalled());
+
+    const target = (mocks.seek.mock.calls[0] as unknown[])[0] as number;
+    expect(target).toBeGreaterThanOrEqual(30000);
+    expect(target).toBeLessThan(31000);
+  });
+
+  it("多人房不会因为旧采样把本地倒带", async () => {
+    queue.setQueue([track("room1")]);
+    mediaMock.state.track = track("room1");
+    // 本地已播 60 秒，房间采样的 5 秒是旧值：只向前对齐，不倒带
+    const roomBehind: TogetherMultiRoom = {
+      ...room("room1", []),
+      playProgress: 5000,
+      sampledAt: Date.now(),
+      playDuration: 200000,
+    };
+    mocks.getCurrentTime.mockReturnValue(60000);
+    mods.initTogetherMulti();
+
+    emit?.(roomEvent(roomBehind));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(mocks.playFrom).not.toHaveBeenCalled();
     expect(mocks.seek).not.toHaveBeenCalled();
   });
 
@@ -237,7 +258,7 @@ describe("多人一起听渲染端服务", () => {
     mocks.getCurrentTime.mockReturnValue(29800);
     mods.initTogetherMulti();
 
-    emit?.(roomEvent({ ...room("room1", []), playStartTime: Date.now() - 30000 }));
+    emit?.(roomEvent({ ...room("room1", []), playProgress: 30000, sampledAt: Date.now() }));
     await Promise.resolve();
 
     expect(mocks.seek).not.toHaveBeenCalled();

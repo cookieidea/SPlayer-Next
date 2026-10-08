@@ -133,7 +133,10 @@ export const invitesFromInbox = (value: unknown): TogetherInviteCard[] => {
     const params = new URLSearchParams(query);
     const roomId = str(params.get("roomId"));
     if (!roomId) continue;
+    // 收件箱会把"我发出去的会话"也列进来，带上发送者让上层把自发的过滤掉
+    const fromUserId = str(user?.fromUserId);
     cards.push({
+      fromUserId,
       roomId,
       // 多人大厅链接的键是 inviterUid，只认 inviterId 会让邀请人退化成私信发送者
       inviterId: str(params.get("inviterId") || params.get("inviterUid") || user?.fromUserId),
@@ -246,7 +249,10 @@ export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
     nextSongs: list(songInfo?.nextSongs)
       .map(toRoomSong)
       .filter((song) => song.songId),
-    playStartTime: num(songInfo?.startTime),
+    // 官方字段是 playedTime（已播毫秒），不是 startTime。
+    // 记下采样时刻，心跳之间用 playProgress + (now - sampledAt) 推算真实位置
+    playProgress: num(songInfo?.playedTime),
+    sampledAt: Date.now(),
     playDuration: num(songInfo?.songDuration),
   };
 };

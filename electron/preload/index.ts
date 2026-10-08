@@ -458,6 +458,9 @@ const api = {
     rejectInvitation: (roomId: string) => ipcRenderer.invoke("together:rejectInvitation", roomId),
     leave: () => ipcRenderer.invoke("together:leave"),
     detach: () => ipcRenderer.invoke("together:detach"),
+    fetchReconnectInfo: () => ipcRenderer.invoke("together:fetchReconnectInfo"),
+    notifyDeviceReconnect: (roomId: string) =>
+      ipcRenderer.invoke("together:notifyDeviceReconnect", roomId),
     sync: (state: TogetherLocalState) => ipcRenderer.send("together:sync", state),
     onEvent: (callback: (event: TogetherSyncEvent) => void) =>
       subscribeExclusive<TogetherSyncEvent>("together:event", callback),

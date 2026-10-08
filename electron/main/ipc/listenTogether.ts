@@ -63,6 +63,12 @@ export const registerTogetherIpc = (): void => {
 
   ipcMain.handle("together:detach", () => together.detach());
 
+  ipcMain.handle("together:fetchReconnectInfo", () => together.fetchReconnectInfo());
+
+  ipcMain.handle("together:notifyDeviceReconnect", (_event, roomId: string) =>
+    together.notifyDeviceReconnect(roomId),
+  );
+
   ipcMain.on("together:sync", (_event, state: TogetherLocalState) => {
     together.updateLocal(state);
   });

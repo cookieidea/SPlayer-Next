@@ -1,6 +1,15 @@
 import { createOption } from "../core/option";
 import type { NeteaseModule } from "../core/types";
 
+/**
+ * 上报房间共享队列（整表替换）。
+ *
+ * 两个实测要点：
+ * - displayList/randomList 必须是**纯数组**。对象形态（{changed,result,rcmdSongIds}）
+ *   会被服务端整条拒收（result=false，队列不落地），表现为"进房后什么都不同步"。
+ *   服务端返回时给的是对象形态，但上报必须用数组——两边不对称。
+ * - playMode 必须随列表一起上报，否则对端拿不到当前播放模式
+ */
 const listenTogetherSyncListReport: NeteaseModule = (query, request) => {
   const songIds: string[] = Array.isArray(query.songIds)
     ? query.songIds.map((id) => String(id))
@@ -8,24 +17,18 @@ const listenTogetherSyncListReport: NeteaseModule = (query, request) => {
   const randomIds: string[] = Array.isArray(query.randomSongIds)
     ? query.randomSongIds.map((id) => String(id))
     : [];
-  const asList = (ids: string[]) => ({ changed: true, result: ids, rcmdSongIds: [] });
   const playlist = {
     commandType: "REPLACE",
     version: [{ userId: Number(query.userId) || 0, version: Number(query.version) || 0 }],
-    displayList: asList(songIds),
-    randomList: randomIds.length ? asList(randomIds) : null,
+    displayList: songIds,
+    randomList: randomIds.length ? randomIds : songIds,
     playMode: typeof query.playMode === "string" ? query.playMode : "",
-    listMode: "",
-    listModeParam: null,
-    replace: true,
   };
   return request(
     "/api/listen/together/sync/list/command/report",
     {
       roomId: query.roomId,
       playlistParam: JSON.stringify(playlist),
-      // 官方载荷带 clientSeq：服务端据此判定队列更新的先后，
-      // 缺了它就没法比较两次上报谁更新，可能把旧队列广播出去
       clientSeq: Number(query.clientSeq) || 0,
     },
     createOption(query, "eapi"),

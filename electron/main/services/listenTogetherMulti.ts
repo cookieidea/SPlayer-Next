@@ -465,7 +465,8 @@ const applyOperateResult = (response: unknown): TogetherMultiRoom | null => {
     ...room,
     playSong: playSong ? toRoomSong(playSong) : null,
     nextSongs: list(songInfo.nextSongs).map(toRoomSong),
-    playStartTime: Number(songInfo.startTime) || room.playStartTime,
+    playProgress: Number(songInfo.playedTime) || room.playProgress,
+    sampledAt: Date.now(),
     playDuration: Number(songInfo.songDuration) || room.playDuration,
   };
 };

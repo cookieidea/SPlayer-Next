@@ -5,7 +5,7 @@ import { useSettingsStore } from "@/stores/settings";
 import { useUserStore } from "@/stores/user";
 import { useOrpheusProtocol } from "@/composables/useOrpheusProtocol";
 import { useExternalFileHandler } from "@/composables/useExternalFileHandler";
-import { initTogether, restoreRoom } from "@/services/listenTogether";
+import { checkDeviceReconnect, initTogether, restoreRoom } from "@/services/listenTogether";
 import { initTogetherMulti, restoreTogetherMulti } from "@/services/listenTogetherMulti";
 
 const route = useRoute();
@@ -23,6 +23,8 @@ onMounted(() => {
   const id = user.profile?.userId;
   if (id) void restoreRoom(String(id));
   if (id) void restoreTogetherMulti(String(id));
+  // 同一账号可能在另一台设备进房（手机先开了房），启动时问一次是否接管
+  if (id) void checkDeviceReconnect();
 });
 
 watch(

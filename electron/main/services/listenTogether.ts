@@ -1132,6 +1132,41 @@ export const detach = (): void => {
   endSession("left");
 };
 
+export interface TogetherReconnectInfo {
+  roomId: string;
+  /** 是否值得提示用户接管 */
+  canReconnect: boolean;
+  /** 需要用户确认才接管（多设备开关打开时） */
+  needConfirm: boolean;
+  /** 另一台设备的名字，用于文案 */
+  deviceName: string;
+}
+
+/**
+ * 查是否需要"多设备接管"。
+ *
+ * 同一账号在另一台设备进房时，服务端在 restore/reconnect/info 里给出 LTReconnectInfo；
+ * 没有重连需求时它是空对象。字段全缺时按"不需要接管"处理，避免误提示
+ */
+export const fetchReconnectInfo = async (): Promise<TogetherReconnectInfo | null> => {
+  const response = await callNetease("listen_together_reconnect_info", {});
+  const info = obj(obj((response as { body?: unknown })?.body)?.data);
+  const roomId = str(info?.roomId);
+  if (!roomId) return null;
+  return {
+    roomId,
+    canReconnect: info?.canReconnect === true,
+    needConfirm: info?.needDeviceReconnectConfirm === true,
+    deviceName: str(info?.reconnectDeviceName),
+  };
+};
+
+/** 接管房间：告知服务端本设备已接手 */
+export const notifyDeviceReconnect = async (roomId: string): Promise<void> => {
+  if (!roomId) return;
+  await callNetease("listen_together_device_reconnect_notice", { roomId });
+};
+
 /**
  * 恢复一起听会话
  * @param userId - 当前账号

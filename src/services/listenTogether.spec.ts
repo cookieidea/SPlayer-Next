@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   setShuffleMode: vi.fn(),
   restoreTogetherMulti: vi.fn(() => Promise.resolve(null)),
   setRepeatMode: vi.fn(),
+  currentTime: 0,
 }));
 
 vi.mock("@/core/player", () => ({
@@ -38,6 +39,11 @@ vi.mock("@/core/player", () => ({
 }));
 
 vi.mock("@/apis/song/netease", () => ({ songsByIds: mocks.songsByIds }));
+// 其它导出照旧透传，避免测试里用到时是 undefined
+vi.mock("@/services/playback", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getCurrentTime: () => mocks.currentTime,
+}));
 vi.mock("@/composables/useToast", () => ({ toast: mocks.toast }));
 vi.mock("@/services/listenTogetherMulti", () => ({
   restoreTogetherMulti: mocks.restoreTogetherMulti,
@@ -321,6 +327,7 @@ describe("一起听渲染端服务", () => {
     const store = useTogetherStore();
     const ok = await mods.acceptInvite(
       {
+        fromUserId: "8",
         roomId: "R9",
         inviterId: "8",
         inviterName: "乙",
@@ -343,6 +350,7 @@ describe("一起听渲染端服务", () => {
     api.together.join.mockRejectedValueOnce(new Error("房间已失效或无法加入"));
     const ok = await mods.acceptInvite(
       {
+        fromUserId: "8",
         roomId: "R9",
         inviterId: "8",
         inviterName: "",
@@ -538,6 +546,69 @@ describe("一起听渲染端服务", () => {
     expect((mocks.playFrom.mock.calls[0] as unknown[])[3]).toBe(false);
     expect((mocks.seek.mock.calls[0] as unknown[])[0]).toBe(45000);
     expect(mocks.play).toHaveBeenCalled();
+  });
+
+  it("远端进度比本地靠后时不回退", async () => {
+    queue.setQueue([track("100")]);
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+    mocks.seek.mockClear();
+
+    // 本地已经播到 60 秒，远端发来一条 10 秒前的旧指令
+    mocks.currentTime = 60000;
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "GOTO",
+        formerSongId: "0",
+        targetSongId: "100",
+        progressMs: 10000,
+        playing: true,
+        serverSeq: 10,
+      },
+      // songIds 为空才会走到 respondCommand；非空会先做队列替换
+      songIds: [],
+      playMode: "",
+      initial: false,
+      autoPlay: false,
+    });
+
+    await vi.waitFor(() => expect(mocks.play).toHaveBeenCalled());
+    // 只向前对齐：落后才追，超前一律不动，否则会把正在播的歌倒带
+    expect(mocks.seek).not.toHaveBeenCalled();
+  });
+
+  it("远端进度明显靠前时会追上", async () => {
+    queue.setQueue([track("100")]);
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+    mocks.seek.mockClear();
+
+    mocks.currentTime = 10000;
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "GOTO",
+        formerSongId: "0",
+        targetSongId: "100",
+        progressMs: 60000,
+        playing: true,
+        serverSeq: 11,
+      },
+      songIds: [],
+      playMode: "",
+      initial: false,
+      autoPlay: false,
+    });
+
+    await vi.waitFor(() => expect(mocks.seek).toHaveBeenCalled());
+    expect((mocks.seek.mock.calls[0] as unknown[])[0]).toBe(60000);
   });
 
   it("入场时 PROGRESS 命令也会起播", async () => {
@@ -748,6 +819,7 @@ describe("一起听渲染端服务", () => {
     ).api;
     api.together.pendingInvites.mockResolvedValue([
       {
+        fromUserId: "8",
         roomId: "FROM_INBOX",
         inviterId: "8",
         inviterName: "乙",
@@ -780,6 +852,7 @@ describe("一起听渲染端服务", () => {
     ).api;
     api.together.pendingInvites.mockResolvedValue([
       {
+        fromUserId: "8",
         roomId: "SAME",
         inviterId: "8",
         inviterName: "乙",
@@ -799,5 +872,43 @@ describe("一起听渲染端服务", () => {
     });
 
     expect(await mods.loadInvites()).toHaveLength(1);
+  });
+
+  it("自己发出去的邀请不出现在待处理列表里", async () => {
+    const api = (
+      window as unknown as { api: { together: Record<string, ReturnType<typeof vi.fn>> } }
+    ).api;
+    // 收件箱是会话列表，自发的那条也会在里面（fromUserId 就是自己）
+    api.together.pendingInvites.mockResolvedValue([
+      {
+        fromUserId: "88",
+        roomId: "MINE",
+        inviterId: "88",
+        inviterName: "我",
+        inviterAvatarUrl: "",
+        title: "",
+        receivedAt: 2,
+        multi: false,
+      },
+      {
+        fromUserId: "8",
+        roomId: "THEIRS",
+        inviterId: "8",
+        inviterName: "乙",
+        inviterAvatarUrl: "",
+        title: "",
+        receivedAt: 1,
+        multi: false,
+      },
+    ]);
+    api.together.fetchInvitation.mockResolvedValue(null);
+    // loadInvites 靠用户 store 拿到自己 id 才能认出"自发的那条"
+    const { useUserStore } = await import("@/stores/user");
+    useUserStore().profile = { userId: 88 } as never;
+
+    const cards = await mods.loadInvites();
+
+    // 只留别人发来的那条
+    expect(cards.map((c) => c.roomId)).toEqual(["THEIRS"]);
   });
 });

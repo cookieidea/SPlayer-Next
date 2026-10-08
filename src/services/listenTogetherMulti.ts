@@ -1,4 +1,5 @@
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { getCurrentTime } from "@/services/playback";
 import { useTogetherStore } from "@/stores/together";
 import { useUserStore } from "@/stores/user";
 import { restoreRoom } from "@/services/listenTogether";
@@ -56,6 +57,18 @@ const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
  * 拿它替换本地歌单会把用户的列表顶掉，所以只处理房间那一首：
  * 本地已有就地播放（不动列表顺序），没有才插进去
  */
+/** 落后房间这么多才追：太小会频繁 seek 抖动，太大则明显不同步 */
+const PROGRESS_AHEAD_TOLERANCE_MS = 3000;
+
+/** 房间当前曲应处的进度：采样值 + 从采样到现在经过的时间 */
+const roomPositionMs = (room: TogetherMultiRoom): number => {
+  if (!room.playProgress && !room.sampledAt) return -1;
+  const elapsed = Math.max(0, Date.now() - room.sampledAt);
+  const target = room.playProgress + elapsed;
+  // 别越过曲尾：留 100ms 余量，避免刚好撞上结束事件
+  return room.playDuration > 0 ? Math.min(target, Math.max(0, room.playDuration - 100)) : target;
+};
+
 const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   const roomSongId = room.playSong?.songId ?? "";
   if (!roomSongId) return;
@@ -72,8 +85,13 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
       await player.playAtIndex(at);
     }
   }
-  // 不做进度对齐：实测服务端不再下发起播时刻（心跳与 status/get 都没有
-  // startTime），硬对齐只会把本地拖回开头。多人房只同步「播哪首」，进度各听各的
+  // 进度对齐：服务端在 roomPlaySongInfo 里给了 playedTime（已播毫秒）与
+  // 采样时刻，心跳之间按「playedTime + 经过时间」推算真实位置。
+  // 只向前对齐：房间进度靠后说明那是旧采样，硬拉回去会把正在播的歌倒带
+  const target = roomPositionMs(room);
+  if (target < 0) return;
+  const drift = target - getCurrentTime();
+  if (drift > PROGRESS_AHEAD_TOLERANCE_MS) await player.seek(target);
 };
 
 const handleEvent = (): void => {

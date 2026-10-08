@@ -673,7 +673,9 @@ describe("多人房响应解析", () => {
         },
       },
     };
-    expect(multiRoomFromBody(body)).toEqual({
+    const room = multiRoomFromBody(body);
+    // sampledAt 是本地采样时刻，不参与比对；其余字段逐个断言
+    expect(room && { ...room, sampledAt: undefined }).toEqual({
       roomId: "ABC_1791391074",
       creatorId: "77",
       chatRoomId: "chat1",
@@ -683,7 +685,8 @@ describe("多人房响应解析", () => {
       ],
       playSong: { songId: "123", songBizId: 5, songRcmdUid: "" },
       nextSongs: [{ songId: "456", songBizId: 6, songRcmdUid: "" }],
-      playStartTime: 0,
+      playProgress: 0,
+      sampledAt: undefined,
       playDuration: 0,
     });
   });
@@ -770,14 +773,16 @@ describe("多人房邀请链接", () => {
         },
       },
     };
-    expect(multiRoomFromBody(real)).toEqual({
+    const parsed = multiRoomFromBody(real);
+    expect(parsed && { ...parsed, sampledAt: undefined }).toEqual({
       roomId: "e1d615328bf6d687cdb754cab7672b36_1791398554437",
       creatorId: "6294223883",
       chatRoomId: "16416247939",
       members: [{ userId: "6294223883", nickname: "猫盒小可爱", avatarUrl: "http://a.jpg" }],
       playSong: { songId: "435592097", songBizId: 1251991280, songRcmdUid: "" },
       nextSongs: [{ songId: "27515069", songBizId: 1251991281, songRcmdUid: "" }],
-      playStartTime: 0,
+      playProgress: 0,
+      sampledAt: undefined,
       playDuration: 0,
     });
   });

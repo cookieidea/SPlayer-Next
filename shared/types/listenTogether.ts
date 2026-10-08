@@ -26,9 +26,10 @@ export interface TogetherMultiRoom {
   members: TogetherMember[];
   playSong: TogetherRoomSong | null;
   nextSongs: TogetherRoomSong[];
-  /** 当前曲的起播时刻（毫秒时间戳）。进度 = Date.now() - startTime，
-   *  用它可以推算准确位置，不受心跳间隔影响 */
-  playStartTime: number;
+  /** 采样瞬间已播的毫秒数（服务端下发）。当前进度 = playProgress + (now - sampledAt) */
+  playProgress: number;
+  /** 该进度值的采样时刻（本地收到响应的时刻），用来推算心跳之间的真实位置 */
+  sampledAt: number;
   /** 当前曲总时长（毫秒） */
   playDuration: number;
 }
@@ -171,6 +172,8 @@ export interface TogetherFriend {
 }
 
 export interface TogetherInviteCard {
+  /** 发这条私信的人：与自己相同说明是"我发出去的邀请"，不该出现在待处理里 */
+  fromUserId: string;
   roomId: string;
   inviterId: string;
   inviterName: string;
@@ -203,6 +206,15 @@ export interface TogetherApi {
   leave: () => Promise<void>;
   /** 本地脱离房间，不通知服务端（房型升级时给多人侧让位） */
   detach: () => Promise<void>;
+  /** 查是否需要多设备接管（同一账号在另一台设备进房） */
+  fetchReconnectInfo: () => Promise<{
+    roomId: string;
+    canReconnect: boolean;
+    needConfirm: boolean;
+    deviceName: string;
+  } | null>;
+  /** 告知服务端本设备已接管房间 */
+  notifyDeviceReconnect: (roomId: string) => Promise<void>;
   sync: (state: TogetherLocalState) => void;
   onEvent: (callback: (event: TogetherSyncEvent) => void) => () => void;
 }

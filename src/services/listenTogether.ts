@@ -1,10 +1,12 @@
 import { useTogetherStore } from "@/stores/together";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { useStatusStore } from "@/stores/status";
+import { useUserStore } from "@/stores/user";
 import * as queue from "@/stores/queue";
 import { restoreTogetherMulti } from "@/services/listenTogetherMulti";
 import { isMultiRoomType, isTogetherShareable } from "@shared/utils/togetherRoom";
 import * as player from "@/core/player";
+import { getCurrentTime } from "@/services/playback";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { readTogetherCounters, setTogetherCounting } from "@/services/togetherCounter";
@@ -123,6 +125,11 @@ const tracksForIds = async (songIds: readonly string[]): Promise<Track[]> => {
   return songIds.map((id) => known.get(id)).filter((track): track is Track => track !== undefined);
 };
 
+/** 只向前对齐的阈值：落后这么多才追，超前一律不动 */
+const FORWARD_SEEK_THRESHOLD_MS = 5000;
+/** 与房间进度相差超过这个毫秒数才纠正：太小会不停 seek，反而听感抖动 */
+const PROGRESS_TOLERANCE_MS = 3000;
+
 const respondCommand = async (
   command: TogetherCommand,
   index: number,
@@ -140,7 +147,15 @@ const respondCommand = async (
     await player.playFrom(list, index, status.currentPlaybackContext, autoPlay);
     reapplyLocalShuffle();
   }
-  await player.seek(command.progressMs);
+  // 进度只向前对齐：对方/房间的进度若比本地靠后，说明那是一条旧指令，
+  // 硬拉回去会把正在播放的歌曲倒带（听感上像"突然回到开头"）。
+  // 落后超过阈值才追，且仅在播放中追
+  const localMs = getCurrentTime();
+  const targetMs = command.progressMs;
+  const shouldSeek =
+    Math.abs(localMs - targetMs) > PROGRESS_TOLERANCE_MS &&
+    (seekOnly || targetMs - localMs > FORWARD_SEEK_THRESHOLD_MS);
+  if (shouldSeek) await player.seek(targetMs);
   if (seekOnly) return;
   if (command.playing) await player.play();
   else await player.pause();
@@ -493,7 +508,11 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
  * 私信扫描作为兜底——它能补出邀请人的昵称与头像，而那个端点只有 id
  */
 export const loadInvites = async (): Promise<TogetherInviteCard[]> => {
-  const fromInbox = await window.api.together.pendingInvites().catch(() => []);
+  const selfId = String(useUserStore().profile?.userId ?? "");
+  // 收件箱是"会话列表"，把用户自己发出去的邀请也算在里面。
+  // 不过滤掉的话，邀请完好友会在自己的待处理列表里看到自己那条
+  const all = await window.api.together.pendingInvites().catch(() => []);
+  const fromInbox = selfId ? all.filter((card) => card.fromUserId !== selfId) : all;
   // 官方端点是权威回答，但它只有邀请人 id；私信扫描能补出昵称与头像。
   // 两者合并而不是二选一：任一来源都可能先一步看到邀请
   const official = await window.api.together.fetchInvitation().catch(() => null);
@@ -501,6 +520,8 @@ export const loadInvites = async (): Promise<TogetherInviteCard[]> => {
   if (fromInbox.some((card) => card.roomId === official.roomId)) return fromInbox;
   return [
     {
+      // 来自官方端点，必然不是自己发的
+      fromUserId: "",
       roomId: official.roomId,
       inviterId: official.inviterId,
       inviterName: official.nickname,
@@ -584,6 +605,30 @@ export const restoreRoom = async (userId: string, entering = false): Promise<voi
   try {
     await window.api.together.restore(userId, entering);
   } catch {}
+};
+
+/**
+ * 多设备接管。
+ *
+ * 同一账号在另一台设备进房时，服务端会在 restore/reconnect/info 里给出房间与设备名；
+ * 此时提示用户接管（确认后告知服务端），把房间接回当前设备。
+ * 没有重连需求时服务端返回空对象，这里静默返回
+ */
+export const checkDeviceReconnect = async (): Promise<void> => {
+  try {
+    const info = await window.api.together.fetchReconnectInfo();
+    if (!info?.roomId || !info.canReconnect) return;
+    if (!info.needConfirm) {
+      // 服务端说不用确认就直接接管：用户开着多设备自动接管
+      await window.api.together.notifyDeviceReconnect(info.roomId);
+      return;
+    }
+    const who = info.deviceName || "另一台设备";
+    const ok = window.confirm(`你的账号在${who}上正在一起听，是否接管到本设备？`);
+    if (ok) await window.api.together.notifyDeviceReconnect(info.roomId);
+  } catch {
+    void 0;
+  }
 };
 
 export const invitationOf = (): string => {
