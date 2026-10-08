@@ -55,13 +55,13 @@ const hasTrack = computed(() => !!displayTrack.value);
 const guard = useTogetherPlaybackGuard();
 
 const onPrev = async (): Promise<void> => {
-  if (guard.blockLocalPlay()) return;
+  // 房内换歌走投票，和播放器底部的按钮保持一致
+  if (guard.blockTrackSwitch()) return;
   await player.prevTrack();
 };
 
 const onNext = async (): Promise<void> => {
-  // 上/下一首没有具体曲目可加入队列，只提示
-  if (guard.blockLocalPlay()) return;
+  if (guard.blockTrackSwitch()) return;
   await player.nextTrack();
 };
 

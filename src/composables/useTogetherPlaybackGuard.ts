@@ -1,6 +1,6 @@
 import type { Track } from "@shared/types/player";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
-import { addMultiSong } from "@/services/listenTogetherMulti";
+import { addMultiSong, voteSkipMultiSong } from "@/services/listenTogetherMulti";
 import { toast } from "@/composables/useToast";
 
 /**
@@ -55,8 +55,21 @@ export const useTogetherPlaybackGuard = () => {
     return true;
   };
 
+  /**
+   * 上/下一首入口用这个。
+   *
+   * 多人房里换歌只能靠投票（服务端决定），本地 nextTrack/prevTrack 会被心跳拉回。
+   * 返回 true 表示已接管（调用方应直接 return）
+   */
+  const blockTrackSwitch = (): boolean => {
+    if (!multiStore.inRoom) return false;
+    void voteSkipMultiSong();
+    return true;
+  };
+
   return {
     inMultiRoom: computed(() => multiStore.inRoom),
+    blockTrackSwitch,
     blockPause,
     blockLocalPlay,
     blockBatchPlay,
