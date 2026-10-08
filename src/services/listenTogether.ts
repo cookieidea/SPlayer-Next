@@ -321,11 +321,6 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     await player.nextTrack();
     return;
   }
-  if (next.type === "arrive") {
-    // 主进程已经比对过成员集合，这里只提示真正新进来的人
-    if (next.names) toast.info(`一起听：${next.names} 加入了`);
-    return;
-  }
   if (next.type === "room") {
     // 服务端在第二个人加入时会把双人房自动转成多人房。
     // 房型一变就得换成多人那套协议（心跳是拉取、歌曲来自响应），

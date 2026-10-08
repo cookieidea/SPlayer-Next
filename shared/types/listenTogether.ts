@@ -159,11 +159,6 @@ export type TogetherSyncEvent =
       session: TogetherSession;
     }
   | {
-      /** 有新听友进房，names 是他们的昵称 */
-      type: "arrive";
-      names: string;
-    }
-  | {
       type: "error";
       message: string;
     };

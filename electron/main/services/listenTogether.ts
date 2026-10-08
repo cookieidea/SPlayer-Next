@@ -89,22 +89,6 @@ let notInRoomStreak = 0;
 // 上一次见到的房间成员 id：有人进来时要把当前进度重报一次，
 // 否则新进来的人会按服务端存的旧进度对齐
 let knownMemberIds: string[] = [];
-
-/** 有人进房时的回调（带上新来的人名），供渲染端提示 */
-type ArriveListener = (names: string) => void;
-const arriveListeners = new Set<ArriveListener>();
-let arriveListener: ArriveListener | null = null;
-
-export const onTogetherArrive = (listener: ArriveListener): (() => void) => {
-  arriveListeners.add(listener);
-  arriveListener = (names) => {
-    for (const item of arriveListeners) item(names);
-  };
-  return () => {
-    arriveListeners.delete(listener);
-    if (arriveListeners.size === 0) arriveListener = null;
-  };
-};
 let previousSongId = "";
 let rateLimitUntil = 0;
 let rateLimitFailures = 0;
@@ -532,16 +516,6 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
     if (status.room) {
       const ids = status.room.members.map((member) => member.userId).filter(Boolean);
       const arrived = ids.some((id) => !knownMemberIds.includes(id));
-      // 有人进来时说一声。首次观察不报：那可能正是自己刚进来，
-      // 此时把房里已有的人全提示一遍会很吵
-      if (knownMemberIds.length > 0 && arrived) {
-        const names = status.room.members
-          .filter((member) => member.userId && !knownMemberIds.includes(member.userId))
-          .map((member) => member.nickname || member.userId)
-          .join("、");
-        if (names) neteaseLog.info(`[一起听] 新听友进房：${names}`);
-        arriveListener?.(names);
-      }
       // 首次观察不报：那可能正是自己刚进来，此时还没采纳房间状态，
       // 报上去会把房间已有的歌曲/进度覆盖掉
       if (knownMemberIds.length > 0 && arrived && pendingInitial === null && lastState.songId) {

@@ -92,10 +92,6 @@ export const registerTogetherIpc = (): void => {
     send({ type: "session-end", reason, generation });
   });
 
-  together.onTogetherArrive((names) => {
-    send({ type: "arrive", names });
-  });
-
   together.onError((message) => {
     send({ type: "error", message });
   });
