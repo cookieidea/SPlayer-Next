@@ -1122,6 +1122,17 @@ export const abandon = (): void => {
 };
 
 /**
+ * 本地脱离房间，不通知服务端。
+ *
+ * 房型被服务端升级成多人后，多人侧会接管同一个房间；此时双人侧必须让位。
+ * 不能走 leave()：它发的 end/v2 会把整个房间作废（实测之后多人心跳立刻 400），
+ * 用户刚被升级进的新房当场失效
+ */
+export const detach = (): void => {
+  endSession("left");
+};
+
+/**
  * 恢复一起听会话
  * @param userId - 当前账号
  * @param entering - true 表示"用户刚匹配进房"而不是"重启后恢复"。

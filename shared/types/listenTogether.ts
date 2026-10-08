@@ -60,6 +60,8 @@ export interface TogetherMultiApi {
   join: (roomId: string, inviterUid: string, userId: string) => Promise<TogetherMultiRoom>;
   restore: (userId: string) => Promise<TogetherMultiRoom | null>;
   leave: () => Promise<void>;
+  /** 本地脱离房间，不通知服务端（房型升级时给多人侧让位） */
+  detach: () => Promise<void>;
   inviteFriends: (uids: string[]) => Promise<void>;
   refresh: () => Promise<void>;
   getStrangerVisible: () => Promise<boolean>;
@@ -199,6 +201,8 @@ export interface TogetherApi {
   invite: (acceptorId: string) => Promise<void>;
   rejectInvitation: (roomId: string) => Promise<void>;
   leave: () => Promise<void>;
+  /** 本地脱离房间，不通知服务端（房型升级时给多人侧让位） */
+  detach: () => Promise<void>;
   sync: (state: TogetherLocalState) => void;
   onEvent: (callback: (event: TogetherSyncEvent) => void) => () => void;
 }

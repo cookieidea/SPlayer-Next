@@ -61,6 +61,8 @@ export const registerTogetherIpc = (): void => {
 
   ipcMain.handle("together:leave", () => together.leave());
 
+  ipcMain.handle("together:detach", () => together.detach());
+
   ipcMain.on("together:sync", (_event, state: TogetherLocalState) => {
     together.updateLocal(state);
   });

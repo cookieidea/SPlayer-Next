@@ -1954,4 +1954,27 @@ describe("一起听房间状态机", () => {
     // 播放模式（含列表循环这类）同样跟随对方
     expect(entry?.playMode).toBe("SINGLE_LOOP");
   });
+
+  it("脱离房间不该发 end/v2：那会把刚升级的房间作废", async () => {
+    const service = await load();
+    const ended: string[] = [];
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_end") {
+        ended.push("end");
+        return { status: 200, body: { code: 200 } };
+      }
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.create("7");
+    // 房型被服务端升级为多人后，双人侧要让位给多人侧。
+    // 实测 end/v2 会把整个房间作废（之后多人心跳立刻 400），
+    // 所以这条路径只能本地脱离，不能通知服务端
+    service.detach();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(ended).toHaveLength(0);
+    expect(service.getSession()).toBeNull();
+  });
 });

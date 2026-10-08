@@ -345,7 +345,9 @@ const switchToMultiProtocol = async (): Promise<void> => {
   // 直接让多人侧接管同一个房间，再把双人侧停掉
   const userId = String(useTogetherStore().session?.userId ?? "");
   await restoreTogetherMulti(userId);
-  await window.api.together.leave();
+  // 只能本地脱离：leave() 会发 end/v2 把整个房间作废，
+  // 用户刚被升级进来的新房会当场失效（实测之后多人心跳立刻 400）
+  await window.api.together.detach();
 };
 
 const startReporting = (): void => {

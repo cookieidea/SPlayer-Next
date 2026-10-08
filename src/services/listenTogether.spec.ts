@@ -98,6 +98,7 @@ describe("一起听渲染端服务", () => {
         join: vi.fn(() => Promise.resolve({})),
         restore: vi.fn(() => Promise.resolve(null)),
         leave: vi.fn(() => Promise.resolve()),
+        detach: vi.fn(() => Promise.resolve()),
         sync: vi.fn(),
         invite: vi.fn(() => Promise.resolve()),
         friends: vi.fn(() => Promise.resolve([])),
