@@ -262,6 +262,26 @@ describe("多人一起听渲染端服务", () => {
     vi.useRealTimers();
   });
 
+  it("多人匹配轮询走多人通道，否则界面收不到房间", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    const together = api.together as Record<string, ReturnType<typeof vi.fn>>;
+    const multi = api.togetherMulti as Record<string, ReturnType<typeof vi.fn>>;
+    multi.startMultiMatch = vi.fn(() => Promise.resolve({ success: true }));
+    multi.cancelMultiMatch = vi.fn(() => Promise.resolve());
+    multi.restore = vi.fn(() => Promise.resolve(null));
+
+    mods.initTogetherMulti();
+    await mods.startMultiMatch("123");
+    await vi.advanceTimersByTimeAsync(3100);
+
+    // together.restore 是双人侧的，它发的事件在 together:event 上，
+    // 而多人的监听器只听 togetherMulti:event——用错通道就永远不进房
+    expect(multi.restore).toHaveBeenCalled();
+    expect(together.restore).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("匹配轮询直接问服务端，而不是读主进程内存", async () => {
     vi.useFakeTimers();
     const api = (window as unknown as { api: Record<string, unknown> }).api;

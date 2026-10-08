@@ -243,11 +243,12 @@ const pollMultiMatch = async (): Promise<void> => {
       toast.warning("没有找到合适的听友，请稍后重试");
       return;
     }
-    // 同上：直接问服务端，不能读主进程内存。
-    // 多人的会话要进房后才有，这里只能取当前登录账号
+    // 必须走多人的通道：together.restore 是双人侧的，它发的 session 事件在
+    // together:event 上，而多人的监听器只听 togetherMulti:event——
+    // 用双人通道检测的话，匹配成功也不会更新 multiStore.room，界面不切视图
     const userId = String(useUserStore().profile?.userId ?? "");
     if (!userId) return;
-    const room = await window.api.together.restore(userId);
+    const room = await window.api.togetherMulti.restore(userId);
     if (!room) return;
     finishMatch();
     toast.success("已找到听友");
@@ -256,7 +257,12 @@ const pollMultiMatch = async (): Promise<void> => {
     } catch {
       void 0;
     }
-    await restoreTogetherMulti(userId);
+    // 会话刚由上面那次 restore 建立，这里只补跟随动作。
+    // 不能再调 restoreTogetherMulti：它会再查一次，主进程那边 session 已存在，
+    // enterMultiRoom 会先 stop("left") 发一条 session-end，界面白闪一下
+    roomQueueKey = "";
+    await followRoom(room);
+    await syncRoomQueue(room);
   } catch {
     finishMatch();
   }
