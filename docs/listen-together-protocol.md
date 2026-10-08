@@ -267,17 +267,128 @@ t0.W(...);   // 否则照常重置状态，什么都不做
 心跳只在 `type === "ERROR_ROOM_INVALID"` 或 `result === false` 时退房；
 `status/get` 响应缺 `data` 时只记不健康，且"不在房间"要连续两次才认。
 
-### 匹配结果靠推送，但走云信长连
+### 匹配：一条 HTTP 请求，两种结果通道
+
+发起匹配是一次普通的 HTTP 请求（`song/match/start`），结果有两条来源：
 
 ```
-LTMatchSuccessNoticeReceiver   ← "match_success_push"
+Lzc0/d2（AsyncTask）  realOnPostExecute → e() → sendBroadcast(...)
+                      ↑ 请求本身的回调，走进程内广播，不是网络推送
+
+LTMatchSuccessNoticeReceiver    ← "match_success_push"（IM）
   data → matchPlayType / MASKED_REVEAL
-LTMatchResultAckNoticeReceiver ← 匹配确认
+LTMatchResultAckNoticeReceiver  ← 匹配确认（IM）
   data.roomInfo.roomId
 ```
 
-推送经由**云信 IM**（`yunxin/token/get`），本项目未接 IM SDK，因此用轮询
-（`status/get` 或 `multi/match/status/get`）替代 —— 效果等价，延迟上限一个轮询周期。
+**两条都可能到达**：请求回调用于"发起后立刻知道有没有立刻配上人"，
+IM 推送用于"等了一会儿之后服务端才配上"。
+
+**服务端明确拒绝了也没关系** —— 后续 `status/get` 会反映进房结果，
+所以本项目用轮询 `status/get` 即可覆盖两种情况（延迟上限一个轮询周期）。
+
+### IM 层：两套长连通道
+
+一起听的实时同步**不靠 HTTP 轮询**，而是两条长连：
+
+| 通道                              | 用途                           | 证据                                                                       |
+| --------------------------------- | ------------------------------ | -------------------------------------------------------------------------- |
+| **云信 IM**（`yunxin/token/get`） | 房间事件、邀请、匹配结果、聊天 | `e0.e` 日志「一起听主进程IM进房」+ `c$c.a`「收到一起听 nim mini 通知消息」 |
+| **音乐 WebSocket**                | 播放指令与跟听同步             | `e$d.fromIMMessage` 里的 `musicWebsocketConnect`                           |
+
+**邀请走的就是云信 IM**（不是 HTTP 单次通知）：
+
+```
+Lnd0/c$c.a  「收到一起听 nim mini 通知消息：」
+   字段: msgId / uuid / msgType / bizType / sendTime / type / ext / serverExt / json
+```
+
+`msgType` 的取值里能读到 **`APPLY` / `AGREE` / `NOTIFY`** —— 即邀请的「申请 / 同意 / 通知」三步。
+
+`r0$f.j` 里有一句很关键：
+
+```
+"30005 非跟听消息，屏蔽该消息"     ← 消息类型 30005 才是一起听相关
+```
+
+### IM 消息的公共结构（`AbsListenTogetherMsg`）
+
+```java
+AbsListenTogetherMsg
+  ├─ roomId
+  ├─ serverSeq          // 定序，客户端据此丢弃乱序消息
+  ├─ ignoreUserIds      // 要忽略的用户（多设备同账号时用）
+  ├─ parseFromJson(content, raw, serverSeq, ignoreUserIds)
+  └─ parseShowingContent(context)
+```
+
+**消息体是 JSON**（`parseFromJson`），不是 protobuf。
+
+### 全部 45 个 IM 消息类
+
+**双人侧**
+
+```
+PlayCommandMsg          播放指令（GOTO/PLAY/PAUSE/PROGRESS…）
+PlaylistCommandMsg      队列指令（REPLACE）
+HeartBeatMsg            心跳
+HeartBeatPlaylistMsg    心跳带队列
+RemoteStateMsg          对端状态
+RemoteStateUnableMsg    对端状态不可用
+EndListenTogetherMsg    结束
+DigitalChangeMsg / DigitalGiveMsg      亲密度变化/赠送
+DistanceChangeMsg       距离变化
+LightInteractionMsg     轻互动（拍一拍之类）
+DoubleRelationInviteTipMsg / DoubleRelationAcceptTipMsg   互关邀请/接受
+LTChangeStrangerMsg     陌生人变更（带 roomId）
+LTFollowTipMsg          跟听提示
+UserJoinInMsg           用户加入
+PlayFreqControlMsg      播放频控
+```
+
+**多人侧**
+
+```
+LTMultiRoomOptMsg           房间操作
+LTMultiRoomSingleMsg        单人事件
+LTMultiUserChangeMsg        成员变化
+LTMultiRoomLoopNotifyMsg    循环通知
+LTMultiRoomSuspendNotifyMsg 暂停通知
+LTMultiRoomTagListMsg       标签列表
+```
+
+**通用/运营**
+
+```
+LightInteractionMsg / LTCelebrateGuideMsg / LTPlayCelebrateEggMsg
+LtAskedForVipMsg / LTReceiveVipCardMsg / VipChangeMsg / VipGiveMsg
+LTMarketEventMsg / LTRecommendNotifyMsg / ReportNotifyMsg / StatisticsChangeMsg
+PendantChangeMsg / PrivilegeChangeMsg / LTCoPLCreatePlayListMsg
+LTTextMsg（含 parseMultiTextMsg / parseMultiInteractMsg）
+LTCommonStarSongMsg / LtMatchLockApplyMsg / TSMsg / UserNoticeInfoMsg
+```
+
+### 客户端广播（进程内，非网络）
+
+`LTModeControllerDelegate` 注册了这些 action，用于主进程与界面进程通信：
+
+```
+LISTEN_TOGETHER_STRANGER_MATCH_RESULT   匹配结果
+LISTEN_TOGETHER_USER_NOTICE_ARRIVE      用户通知到达
+LISTEN_TOGETHER_REINVITE                重新邀请
+LISTEN_TOGETHER_ASK_FOR_VIP_MSG_ARRIVE  求会员消息
+LISTEN_TOGETHER                         通用事件
+MINI_CASHIER_FINISHED_NOTIFY            支付完成
+```
+
+**匹配结果的产生方式**：`Lzc0/d2` 是 AsyncTask，`realOnPostExecute` 里发本地广播 ——
+**匹配本身是一次 HTTP 请求的回调**，不是等 IM 推送（与邀请不同）。
+
+### 本项目未接 IM 的后果
+
+用轮询替代核心同步（`status/get`、`heartbeat`、`multi/match/heartbeat`），效果等价，
+延迟上限一个轮询周期。**拿不到的是**：邀请的实时到达、房间内聊天、表情/轻互动、
+亲密度与距离变化 —— 这些只存在于 IM 通道。
 
 ### 其他场景字符串
 
