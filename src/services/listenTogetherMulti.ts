@@ -183,6 +183,10 @@ const stopMatchPoll = (): void => {
  */
 const finishMatch = (): void => {
   stopMatchPoll();
+  // 计数一并复位：否则下一次匹配会带着上一轮的失败次数，
+  // 第一次抖动就直接触发"匹配暂时不可用"
+  matchPollCount = 0;
+  matchFailureStreak = 0;
   useTogetherMultiStore().matching = "";
 };
 
@@ -192,8 +196,11 @@ const finishMatch = (): void => {
  * 所以这里用双人的 restore，而不是多人那套
  */
 const MATCH_POLL_MAX = 60;
+/** 连续失败到这个次数就收尾：单次抖动不放弃，持续失败也没必要继续轮 */
+const MATCH_FAILURE_LIMIT = 5;
 
 let matchPollCount = 0;
+let matchFailureStreak = 0;
 
 const pollMatch = async (userId: string): Promise<void> => {
   try {
@@ -233,18 +240,25 @@ const pollMatch = async (userId: string): Promise<void> => {
     }
     await restoreRoom(userId);
   } catch (error) {
-    // 单次失败不该终结匹配：网络抖动是常态，交给轮询上限收尾
+    // 网络抖动是常态，单次失败不该终结匹配；但连续失败说明服务端在持续拒绝，
+    // 再轮下去只是白刷请求，这时收尾并告诉用户
+    matchFailureStreak += 1;
     console.info("[一起听] 匹配轮询失败", error);
+    if (matchFailureStreak >= MATCH_FAILURE_LIMIT) {
+      finishMatch();
+      toast.warning("匹配暂时不可用，请稍后重试");
+    }
   }
 };
 
 export const startStrangerMatch = (userId: string): Promise<unknown> =>
   withBusy(async () => {
+    finishMatch();
     useTogetherMultiStore().matching = "duo";
     const result = await window.api.togetherMulti.startMatch();
     toast.info("正在为你寻找听友…");
+    // 计数复位统一交给 finishMatch：两处都写会让"是否复位"无法被测试锁定
     stopMatchPoll();
-    matchPollCount = 0;
     matchTimer = setInterval(() => void pollMatch(userId), MATCH_POLL_MS);
     return result;
   }).then((value) => {
@@ -259,11 +273,12 @@ export const startStrangerMatch = (userId: string): Promise<unknown> =>
  */
 export const startMultiMatch = (songId: string): Promise<unknown> =>
   withBusy(async () => {
+    finishMatch();
     useTogetherMultiStore().matching = "multi";
     const result = await window.api.togetherMulti.startMultiMatch(songId);
     toast.info("正在为你寻找听友…");
+    // 同上：计数复位只在 finishMatch 里做
     stopMatchPoll();
-    matchPollCount = 0;
     matchTimer = setInterval(() => void pollMultiMatch(), MATCH_POLL_MS);
     return result;
   }).then((value) => {
@@ -293,11 +308,16 @@ const pollMultiMatch = async (): Promise<void> => {
     const state = await window.api.togetherMulti.startMultiMatch(
       String(useStatusStore().currentTrack?.id ?? "0"),
     );
-    if (state.roomId) {
-      // 必须回 ack 才算真正进房（MULTI_MATCH_WAIT_ACK_TIMEOUT 就是这条等待的超时）。
-      // 多人要用多人自己的 ack 端点，双人那条加入不了多人房
-      await window.api.togetherMulti.ackMultiMatch(state.roomId);
+    if (!state.roomId) {
+      // 还没配到：只记日志，不打扰用户，也不终结匹配
+      if (matchPollCount === 1 || matchPollCount === 30) {
+        console.info(`[一起听] 多人匹配中（第 ${matchPollCount} 轮）`);
+      }
+      return;
     }
+    // 必须回 ack 才算真正进房（MULTI_MATCH_WAIT_ACK_TIMEOUT 就是这条等待的超时）。
+    // 多人要用多人自己的 ack 端点，双人那条加入不了多人房
+    await window.api.togetherMulti.ackMultiMatch(state.roomId);
     const room = await window.api.togetherMulti.restore(userId);
     if (!room) return;
     finishMatch();
@@ -313,8 +333,14 @@ const pollMultiMatch = async (): Promise<void> => {
     roomQueueKey = "";
     await followRoom(room);
     await syncRoomQueue(room);
-  } catch {
-    finishMatch();
+  } catch (error) {
+    // 与双人一致：网络抖动是常态；连续失败才收尾
+    matchFailureStreak += 1;
+    console.info("[一起听] 多人匹配轮询失败", error);
+    if (matchFailureStreak >= MATCH_FAILURE_LIMIT) {
+      finishMatch();
+      toast.warning("匹配暂时不可用，请稍后重试");
+    }
   }
 };
 

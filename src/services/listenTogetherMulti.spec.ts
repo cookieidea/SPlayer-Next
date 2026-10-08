@@ -267,16 +267,21 @@ describe("多人一起听渲染端服务", () => {
     const api = (window as unknown as { api: Record<string, unknown> }).api;
     const together = api.together as Record<string, ReturnType<typeof vi.fn>>;
     const multi = api.togetherMulti as Record<string, ReturnType<typeof vi.fn>>;
-    multi.startMultiMatch = vi.fn(() => Promise.resolve({ success: true }));
+    // 配到人才会去取房间：不带 roomId 时轮询只记日志就返回
+    multi.startMultiMatch = vi.fn(() =>
+      Promise.resolve({ success: true, roomId: "R_M", waiting: false }),
+    );
     multi.cancelMultiMatch = vi.fn(() => Promise.resolve());
+    multi.ackMultiMatch = vi.fn(() => Promise.resolve());
     multi.restore = vi.fn(() => Promise.resolve(null));
 
     mods.initTogetherMulti();
     await mods.startMultiMatch("123");
     await vi.advanceTimersByTimeAsync(3100);
 
-    // together.restore 是双人侧的，它发的事件在 together:event 上，
-    // 而多人的监听器只听 togetherMulti:event——用错通道就永远不进房
+    // 配对成功后先确认，再取房间。together.restore 是双人侧的，
+    // 它发的事件在 together:event 上，而多人的监听器只听 togetherMulti:event
+    expect(multi.ackMultiMatch).toHaveBeenCalledWith("R_M");
     expect(multi.restore).toHaveBeenCalled();
     expect(together.restore).not.toHaveBeenCalled();
     vi.useRealTimers();
@@ -321,5 +326,62 @@ describe("多人一起听渲染端服务", () => {
 
     // 多人房不像双人房那样一次只进一个人，靠比对成员集合才能认出新来的
     expect(mocks.toast.info).toHaveBeenCalledWith(expect.stringContaining("新来的"));
+  });
+
+  it("匹配轮询单次失败不终结，连续失败才收尾", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    (api.togetherMulti as Record<string, unknown>).startMatch = vi.fn(() =>
+      Promise.resolve({ success: true, roomId: "" }),
+    );
+    (api.togetherMulti as Record<string, unknown>).cancelMatch = vi.fn(() => Promise.resolve());
+    api.together = { restore: vi.fn(() => Promise.resolve(null)) };
+    const { useTogetherMultiStore } = await import("@/stores/togetherMulti");
+    const store = useTogetherMultiStore();
+    mods.initTogetherMulti();
+    await mods.startStrangerMatch("88");
+
+    // 第一次失败：网络抖动是常态，不该放弃
+    (api.togetherMulti as Record<string, unknown>).startMatch = vi.fn(() =>
+      Promise.reject(new Error("网络错误")),
+    );
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(store.matching).toBe("duo");
+
+    // 连续失败到上限才收尾
+    await vi.advanceTimersByTimeAsync(3100 * 6);
+    expect(store.matching).toBe("");
+    vi.useRealTimers();
+  });
+
+  it("失败计数在收尾时复位，不会累积到下一轮", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    const multi = api.togetherMulti as Record<string, unknown>;
+    const { useTogetherMultiStore } = await import("@/stores/togetherMulti");
+    const store = useTogetherMultiStore();
+    mods.initTogetherMulti();
+    api.together = { restore: vi.fn(() => Promise.resolve(null)) };
+    multi.cancelMatch = vi.fn(() => Promise.resolve());
+
+    // 第一轮：发起成功，但每次轮询都失败 —— 失败 4 次（未到上限 5）
+    multi.startMatch = vi.fn(() => Promise.resolve({ success: true, roomId: "" }));
+    await mods.startStrangerMatch("88");
+    multi.startMatch = vi.fn(() => Promise.reject(new Error("网络错误")));
+    await vi.advanceTimersByTimeAsync(3100 * 4);
+    await mods.cancelStrangerMatch();
+
+    // 第二轮：发起成功，轮询失败 1 次仍应继续等。
+    // 计数若没随收尾复位，这里会是 4+1=5 直接触发上限而收尾
+    multi.startMatch = vi.fn(() => Promise.resolve({ success: true, roomId: "" }));
+    await mods.startStrangerMatch("88");
+    multi.startMatch = vi.fn(() => Promise.reject(new Error("网络错误")));
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(store.matching).toBe("duo");
+
+    // 累计 4 次仍不该收尾
+    await vi.advanceTimersByTimeAsync(3100 * 3);
+    expect(store.matching).toBe("duo");
+    vi.useRealTimers();
   });
 });
