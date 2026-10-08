@@ -16,8 +16,6 @@ interface OrpheusPayload {
  * @param url - orpheus:// 链接
  * @returns 解析结果，任一步失败或缺字段返回 null
  */
-const guard = useTogetherPlaybackGuard();
-
 export const parseOrpheus = (url: string): OrpheusPayload | null => {
   const prefix = "orpheus://";
   if (!url.startsWith(prefix)) return null;
@@ -52,7 +50,10 @@ export const handleOrpheus = async (url: string): Promise<void> => {
     case "song": {
       if (data.cmd !== "play") return;
       const [track] = await songsByIds([data.id]);
-      // 多人房里播放态由房间决定，外部唤起也改成加进房间
+      // 多人房里播放态由房间决定，外部唤起也改成加进房间。
+      // 必须在这里才取 guard：本模块被 main.ts 在挂载前 import，
+      // 顶层调用 useI18n 会因为没有 app 实例而让整个渲染端起不来
+      const guard = useTogetherPlaybackGuard();
       if (track && !guard.blockLocalPlay(track)) await player.playNow(track);
       break;
     }
