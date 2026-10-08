@@ -471,4 +471,26 @@ describe("多人一起听渲染端服务", () => {
     expect(addSong).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it("发起匹配前先退出残留房间，否则匹配成功也进不去", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    const detach = vi.fn(() => Promise.resolve());
+    api.together = { restore: vi.fn(() => Promise.resolve(null)), detach };
+    (api.togetherMulti as Record<string, unknown>).startMatch = vi.fn(() =>
+      Promise.resolve({ success: true, waiting: true }),
+    );
+    (api.togetherMulti as Record<string, unknown>).leave = vi.fn(() => Promise.resolve());
+
+    // 残留的双人房会话：restore 会因 if (session) return room 直接返回旧房
+    // inRoom 是 computed，要造残留会话必须直接给 session 赋值
+    const { useTogetherStore } = await import("@/stores/together");
+    useTogetherStore().session = { roomId: "OLD", userId: "88", generation: 1 };
+
+    mods.initTogetherMulti();
+    await mods.startStrangerMatch("88");
+
+    expect(detach).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
 });

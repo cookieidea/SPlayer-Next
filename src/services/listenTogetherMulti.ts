@@ -1,4 +1,5 @@
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { useTogetherStore } from "@/stores/together";
 import { useUserStore } from "@/stores/user";
 import { restoreRoom } from "@/services/listenTogether";
 import { useStatusStore } from "@/stores/status";
@@ -173,6 +174,25 @@ export const joinMultiRoomById = (
     return enterMultiRoom(room);
   });
 
+/**
+ * 发起匹配前清掉残留房间。
+ *
+ * 双人侧：有会话就本地脱离（不发 end/v2，那是别人的房也不该由我们结束）
+ * 多人侧：有会话就正常退出
+ */
+const leaveStaleRooms = async (): Promise<void> => {
+  try {
+    if (useTogetherStore().inRoom) await window.api.together.detach();
+  } catch {
+    void 0;
+  }
+  try {
+    if (useTogetherMultiStore().inRoom) await window.api.togetherMulti.leave();
+  } catch {
+    void 0;
+  }
+};
+
 /** 开始陌生人匹配。匹配成功后轮询 status/get 进房 */
 const MATCH_POLL_MS = 3000;
 
@@ -255,6 +275,9 @@ const pollMatch = async (userId: string): Promise<void> => {
 export const startStrangerMatch = (userId: string): Promise<unknown> =>
   withBusy(async () => {
     finishMatch();
+    // 残留会话会让 restore 直接返回旧房（if (session) return room），
+    // 匹配成功后根本进不了新房——表现为"匹配到了但进不去"
+    await leaveStaleRooms();
     useTogetherMultiStore().matching = "duo";
     const result = await window.api.togetherMulti.startMatch();
     toast.info("正在为你寻找听友…");
@@ -275,6 +298,8 @@ export const startStrangerMatch = (userId: string): Promise<unknown> =>
 export const startMultiMatch = (songId: string): Promise<unknown> =>
   withBusy(async () => {
     finishMatch();
+    // 同上：残留房间会让多人侧的 restore 返回旧房，匹配成功也进不去
+    await leaveStaleRooms();
     useTogetherMultiStore().matching = "multi";
     const result = await window.api.togetherMulti.startMultiMatch(songId);
     toast.info("正在为你寻找听友…");
