@@ -384,4 +384,43 @@ describe("多人一起听渲染端服务", () => {
     expect(store.matching).toBe("duo");
     vi.useRealTimers();
   });
+
+  it("置顶带房间里的 songBizId，不是 0", async () => {
+    const { useTogetherMultiStore } = await import("@/stores/togetherMulti");
+    // 直接写 store：走事件的话会被 generation 校验挡掉（那套校验另有测试覆盖）
+    useTogetherMultiStore().room = {
+      ...room("room1", []),
+      nextSongs: [{ songId: "room2", songBizId: 777, songRcmdUid: "88" }],
+    };
+    queue.setQueue([track("room1")]);
+    mods.initTogetherMulti();
+
+    const calls: Array<[string, number]> = [];
+    (window.api.togetherMulti as unknown as Record<string, unknown>).topSong = vi.fn(
+      (songId: string, songBizId: number) => {
+        calls.push([songId, songBizId]);
+        return Promise.resolve({ room: null, message: "", rejected: false });
+      },
+    );
+
+    await mods.topMultiSong(track("room2"));
+
+    // 实测传 0 会被拒（"歌曲已经不在待播列表中啦"），必须带队列里那一条的 bizId
+    expect(calls[0]).toEqual(["room2", 777]);
+  });
+
+  it("歌不在房间队列时不发请求", async () => {
+    const { useTogetherMultiStore } = await import("@/stores/togetherMulti");
+    useTogetherMultiStore().room = { ...room("room1", []), nextSongs: [] };
+    queue.setQueue([track("room1")]);
+    mods.initTogetherMulti();
+
+    const topSong = vi.fn(() => Promise.resolve({ room: null, message: "", rejected: false }));
+    (window.api.togetherMulti as unknown as Record<string, unknown>).topSong = topSong;
+
+    await mods.topMultiSong(track("not-in-room"));
+
+    // 服务端对缺失 bizId 的回应是"只能删除自己添加的歌曲"，会把原因指错方向
+    expect(topSong).not.toHaveBeenCalled();
+  });
 });

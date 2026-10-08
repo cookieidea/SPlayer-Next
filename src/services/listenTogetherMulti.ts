@@ -10,7 +10,7 @@ import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { buildMultiInvitation, parseInvitation } from "@shared/utils/togetherInvitation";
 import { isTogetherShareable } from "@shared/utils/togetherRoom";
-import type { TogetherMultiRoom } from "@shared/types/listenTogether";
+import type { TogetherMultiRoom, TogetherRoomSong } from "@shared/types/listenTogether";
 import type { Track } from "@shared/types/player";
 
 const MULTI_CONTEXT = { originId: "listen-together-multi", originType: "page" as const };
@@ -492,23 +492,40 @@ export const voteSkipMultiSong = (): Promise<void> =>
     else if (message) toast.info(message);
   }).then(() => undefined);
 
+/** 在房间队列里按 songId 找那一条：置顶与删除都需要它的 songBizId */
+const findRoomSong = (songId: string): TogetherRoomSong | undefined => {
+  const room = useTogetherMultiStore().room;
+  const songs = [...(room?.playSong ? [room.playSong] : []), ...(room?.nextSongs ?? [])];
+  return songs.find((item) => item.songId === songId);
+};
+
 export const removeMultiSong = (songId: string): Promise<void> =>
   withBusy(async () => {
     // 删除要带房间里的 songBizId：实测它是服务端定位歌曲的凭据，
     // 曲目菜单只拿得到 songId，所以在这里从房间歌曲里查
-    const room = useTogetherMultiStore().room;
-    const songs = [...(room?.playSong ? [room.playSong] : []), ...(room?.nextSongs ?? [])];
-    const song = songs.find((item) => item.songId === songId);
-    const { message, rejected } = await window.api.togetherMulti.removeSong(
-      songId,
-      song?.songBizId ?? 0,
-    );
+    const song = findRoomSong(songId);
+    // 查不到就不能发请求：服务端在 bizId 缺失时回的是"只能删除自己添加的歌曲"，
+    // 而歌明明是用户自己加的——那句文案会把原因指错方向
+    if (!song) {
+      toast.warning("这首歌已不在房间队列里");
+      return;
+    }
+    const { message, rejected } = await window.api.togetherMulti.removeSong(songId, song.songBizId);
     reportOperate(message, rejected, "这首歌删不掉");
   }).then(() => undefined);
 
 export const topMultiSong = (track: Track): Promise<void> =>
   withBusy(async () => {
-    const { message, rejected } = await window.api.togetherMulti.topSong(track.id, 0);
+    // 置顶同样要房间里的 songBizId：实测传 0 会被服务端拒（它靠这个定位队列里的那一条）
+    const song = findRoomSong(track.id);
+    if (!song) {
+      toast.warning("这首歌已不在房间队列里");
+      return;
+    }
+    const { message, rejected } = await window.api.togetherMulti.topSong(
+      song.songId,
+      song.songBizId,
+    );
     reportOperate(message, rejected, "置顶失败");
   }).then(() => undefined);
 
