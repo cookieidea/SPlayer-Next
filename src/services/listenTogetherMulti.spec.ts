@@ -453,4 +453,22 @@ describe("多人一起听渲染端服务", () => {
     expect(startMatch.mock.calls.length).toBe(afterStart);
     vi.useRealTimers();
   });
+
+  it("加入多人房不把自己的歌带进房间", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    const multi = api.togetherMulti as Record<string, unknown>;
+    const addSong = vi.fn(() => Promise.resolve({ room: null, message: "", rejected: false }));
+    multi.addSong = addSong;
+    multi.join = vi.fn(() => Promise.resolve(room("R_1", [])));
+    api.together = { restore: vi.fn(() => Promise.resolve(null)) };
+
+    mods.initTogetherMulti();
+    await mods.joinMultiRoomById("R_1", "8", "77");
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // 加入只该跟随房间，不该往房间里塞自己的歌
+    expect(addSong).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
 });
