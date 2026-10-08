@@ -120,10 +120,7 @@ const onNext = async (): Promise<void> => {
       :title="multiStore.inRoom ? t('player.together.voteSkip') : undefined"
       @click="onNext"
     >
-      <template #icon>
-        <IconLucideVote v-if="multiStore.inRoom" />
-        <IconLucideSkipForward v-else />
-      </template>
+      <template #icon><IconLucideSkipForward /></template>
     </SButton>
     <SButton
       class="will-change-transform"
