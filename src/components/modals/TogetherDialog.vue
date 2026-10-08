@@ -7,7 +7,7 @@ import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
 import * as together from "@/services/listenTogether";
 import * as togetherMulti from "@/services/listenTogetherMulti";
-import { buildMultiInvitation, isMultiInvitation } from "@shared/utils/togetherInvitation";
+import { isMultiInvitation } from "@shared/utils/togetherInvitation";
 import { togetherSongAction } from "@/utils/togetherRoom";
 import type { TogetherSongAction } from "@/utils/togetherRoom";
 import type {
@@ -327,8 +327,11 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
 const runAccept = async (card: TogetherInviteCard): Promise<void> => {
   // 多人大厅的邀请必须走多人协议：双人的 ack 接口加入不了多人房
   if (card.multi) {
-    const link = buildMultiInvitation(card.roomId, card.inviterId);
-    if (!(await togetherMulti.joinTogetherMulti(link, userId.value))) return;
+    // 卡片本身就有房间号与邀请人，直接用它加入：
+    // 绕成"拼链接再解析"会让这条路径依赖链接格式
+    if (!(await togetherMulti.joinMultiRoomById(card.roomId, card.inviterId, userId.value))) {
+      return;
+    }
     invites.value = [];
     return;
   }

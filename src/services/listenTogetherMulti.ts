@@ -149,9 +149,33 @@ const withBusy = async <T>(run: () => Promise<T>): Promise<T | null> => {
   }
 };
 
+/** 加入多人房后的共同收尾：清缓存、跟随房间、同步队列 */
+const enterMultiRoom = async (room: TogetherMultiRoom): Promise<TogetherMultiRoom> => {
+  knownMemberIds = [];
+  roomQueueKey = "";
+  await followRoom(room);
+  await syncRoomQueue(room);
+  return room;
+};
+
+/**
+ * 按房间号加入多人房。
+ * 邀请卡片本身就带 roomId 与邀请人，直接用它即可——绕成"拼链接再解析"
+ * 会让加入流程依赖链接格式，改一处容易漏另一处
+ */
+export const joinMultiRoomById = (
+  roomId: string,
+  inviterUid: string,
+  userId: string,
+): Promise<unknown> =>
+  withBusy(async () => {
+    const room = await window.api.togetherMulti.join(roomId, inviterUid, userId);
+    return enterMultiRoom(room);
+  });
+
+/** 按邀请链接加入多人房（用户从剪贴板粘贴进来的那条路径） */
 export const joinTogetherMulti = (input: string, userId: string): Promise<unknown> =>
   withBusy(async () => {
-    knownMemberIds = [];
     const parsed = parseInvitation(input);
     if (!parsed.invitation) throw new Error(parsed.error || "邀请链接无效");
     const room = await window.api.togetherMulti.join(
@@ -159,10 +183,7 @@ export const joinTogetherMulti = (input: string, userId: string): Promise<unknow
       parsed.invitation.inviterId,
       userId,
     );
-    roomQueueKey = "";
-    await followRoom(room);
-    await syncRoomQueue(room);
-    return room;
+    return enterMultiRoom(room);
   });
 
 /** 开始陌生人匹配。匹配成功后轮询 status/get 进房 */

@@ -423,4 +423,16 @@ describe("多人一起听渲染端服务", () => {
     // 服务端对缺失 bizId 的回应是"只能删除自己添加的歌曲"，会把原因指错方向
     expect(topSong).not.toHaveBeenCalled();
   });
+
+  it("按房间号加入时直接传参数，不绕链接", async () => {
+    const join = vi.fn(() => Promise.resolve(room("room1", [])));
+    (window.api.togetherMulti as unknown as Record<string, unknown>).join = join;
+    queue.setQueue([track("room1")]);
+    mods.initTogetherMulti();
+
+    await mods.joinMultiRoomById("R_X", "88", "77");
+
+    // 卡片本身就带这两个值，绕成"拼链接再解析"会让这条路径依赖链接格式
+    expect(join).toHaveBeenCalledWith("R_X", "88", "77");
+  });
 });
