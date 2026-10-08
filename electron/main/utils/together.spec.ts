@@ -210,8 +210,13 @@ describe("一起听接口响应解析", () => {
     ).toEqual({
       inRoom: true,
       room: expect.objectContaining({ roomId: "R" }),
+      unknown: false,
     });
-    expect(statusFromBody({ code: 200, data: {} })).toEqual({ inRoom: false, room: null });
+    expect(statusFromBody({ code: 200, data: {} })).toEqual({
+      inRoom: false,
+      room: null,
+      unknown: false,
+    });
     expect(joinableFromBody({ code: 200, data: { joinable: true } })).toBe(true);
     expect(joinableFromBody({ code: 200, data: {} })).toBe(false);
   });
@@ -227,6 +232,7 @@ describe("callNetease 包装层", () => {
     expect(statusFromBody({ status: 200, body: { code: 200, data: { inRoom: true } } })).toEqual({
       inRoom: true,
       room: null,
+      unknown: false,
     });
     expect(joinableFromBody({ status: 200, body: { code: 200, data: { joinable: true } } })).toBe(
       true,
