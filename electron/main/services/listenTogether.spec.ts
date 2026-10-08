@@ -1904,4 +1904,54 @@ describe("一起听房间状态机", () => {
     // 单人房服务端不存共享歌单，只发 GOTO 的话对方拿不到队列
     expect(queues.length).toBeGreaterThan(before);
   });
+
+  it("加入别人的房间后采纳对方的队列与播放模式", async () => {
+    const service = await load();
+    const pushes: Array<{ songIds: string[]; playMode: string; initial: boolean }> = [];
+    service.onRemoteCommand((payload) => {
+      pushes.push({
+        songIds: payload.songIds,
+        playMode: payload.playMode,
+        initial: payload.initial,
+      });
+    });
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_status") return statusBody(false);
+      if (name === "listen_together_room_check") {
+        return { status: 200, body: { code: 200, data: { joinable: true } } };
+      }
+      if (name === "listen_together_invitation_accept") {
+        return {
+          status: 200,
+          body: {
+            code: 200,
+            data: { roomInfo: { roomId: "R1", creatorId: 8, roomUsers: [8, 7] } },
+          },
+        };
+      }
+      // 对方的房间：队列 900/901/902，单曲循环
+      return snapshotBody(["900", "901", "902"], "SINGLE_LOOP", {
+        type: "GOTO",
+        userId: 8,
+        targetSongId: "900",
+        serverSeq: 1,
+        playing: true,
+      });
+    });
+
+    // 我进房前有自己的队列与顺序循环，进房后应被对方覆盖
+    await service.join("R1", "8", "7");
+    service.updateLocal(
+      localState({ songId: "100", queueSongIds: ["100", "200"], playMode: "ORDER_LOOP" }),
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const entry = pushes.find((item) => item.initial);
+    expect(entry).toBeDefined();
+    // 入场即采纳：对方的队列整表下发，本地那两首不保留
+    expect(entry?.songIds).toEqual(["900", "901", "902"]);
+    // 播放模式（含列表循环这类）同样跟随对方
+    expect(entry?.playMode).toBe("SINGLE_LOOP");
+  });
 });
