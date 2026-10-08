@@ -544,11 +544,18 @@ export const leaveRoom = async (): Promise<void> => {
   }
 };
 
-export const restoreRoom = async (userId: string): Promise<void> => {
+/**
+ * 拉取并进入服务端仍在的房间。
+ *
+ * entering=true 表示"用户刚匹配/刚加入进来"，此时要跟随房间的播放态与进度；
+ * false 是"重启后恢复"，保持本地原状态、不抢播放。两者语义相反，
+ * 匹配进来必须传 true，否则进来后停在暂停、进度也不同步
+ */
+export const restoreRoom = async (userId: string, entering = false): Promise<void> => {
   const store = useTogetherStore();
   if (store.inRoom) return;
   try {
-    await window.api.together.restore(userId);
+    await window.api.together.restore(userId, entering);
   } catch {}
 };
 

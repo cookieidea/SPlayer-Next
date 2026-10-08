@@ -259,7 +259,7 @@ const pollMatch = async (userId: string): Promise<void> => {
     } catch {
       void 0;
     }
-    await restoreRoom(userId);
+    await restoreRoom(userId, true);
   } catch (error) {
     // 网络抖动是常态，单次失败不该终结匹配；但连续失败说明服务端在持续拒绝，
     // 再轮下去只是白刷请求，这时收尾并告诉用户

@@ -493,4 +493,24 @@ describe("多人一起听渲染端服务", () => {
     expect(detach).toHaveBeenCalled();
     vi.useRealTimers();
   });
+
+  it("匹配进房按加入语义：跟随对方的播放态与进度", async () => {
+    // 直接测 restoreRoom：它在 listenTogether 服务里独立导出。
+    // 轮询里的 restore 也传 true，所以必须从源头验证，否则测不出差异
+    const lt = await import("@/services/listenTogether");
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    const calls: unknown[][] = [];
+    api.together = {
+      restore: vi.fn((...args: unknown[]) => {
+        calls.push(args);
+        return Promise.resolve({ roomId: "NEW", userId: "88" });
+      }),
+    };
+    const { useTogetherStore } = await import("@/stores/together");
+    useTogetherStore().session = null;
+
+    await lt.restoreRoom("88", true);
+    // entering 必须透传：false 会走"重启恢复"，进来停在暂停、进度不跟
+    expect(calls[0]).toEqual(["88", true]);
+  });
 });
