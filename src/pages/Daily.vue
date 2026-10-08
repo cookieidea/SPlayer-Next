@@ -10,6 +10,9 @@ import SongList from "@/components/list/SongList.vue";
 import * as player from "@/core/player";
 import IconLucideRefreshCw from "~icons/lucide/refresh-cw";
 import IconLucideListChecks from "~icons/lucide/list-checks";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t, locale } = useI18n();
 const data = useDataStore();
@@ -65,6 +68,8 @@ const loading = ref(data.dailyRecommend.length === 0);
 
 /** 播放选中天的全部曲目 */
 const handlePlayAll = (): void => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   const tracks = selectedDay.value?.tracks ?? [];
   if (tracks.length > 0) player.playFrom(tracks, 0);
 };

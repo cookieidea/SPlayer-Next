@@ -1,6 +1,7 @@
 import * as player from "@/core/player";
 import { songsByIds } from "@/apis/song/netease";
 import { navigateToAlbum, navigateToPlaylist } from "@/utils/navigate";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 
 /** orpheus 解码后的载荷 */
 interface OrpheusPayload {
@@ -15,6 +16,8 @@ interface OrpheusPayload {
  * @param url - orpheus:// 链接
  * @returns 解析结果，任一步失败或缺字段返回 null
  */
+const guard = useTogetherPlaybackGuard();
+
 export const parseOrpheus = (url: string): OrpheusPayload | null => {
   const prefix = "orpheus://";
   if (!url.startsWith(prefix)) return null;
@@ -49,7 +52,8 @@ export const handleOrpheus = async (url: string): Promise<void> => {
     case "song": {
       if (data.cmd !== "play") return;
       const [track] = await songsByIds([data.id]);
-      if (track) await player.playNow(track);
+      // 多人房里播放态由房间决定，外部唤起也改成加进房间
+      if (track && !guard.blockLocalPlay(track)) await player.playNow(track);
       break;
     }
     case "album":

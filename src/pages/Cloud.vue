@@ -12,6 +12,9 @@ import IconLucideListChecks from "~icons/lucide/list-checks";
 import IconLucideCloud from "~icons/lucide/cloud";
 import IconLucideHardDrive from "~icons/lucide/hard-drive";
 import IconLucideCloudUpload from "~icons/lucide/cloud-upload";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t } = useI18n();
 const user = useUserStore();
@@ -42,6 +45,8 @@ const usageText = computed(() => {
 const trackCount = computed(() => user.cloudCount || user.cloudTracks.length);
 
 const handlePlayAll = (): void => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   if (user.cloudTracks.length === 0) return;
   player.playFrom(user.cloudTracks, 0, playbackContext.value);
 };

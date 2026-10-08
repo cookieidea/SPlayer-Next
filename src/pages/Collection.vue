@@ -19,6 +19,9 @@ import IconLucideCalendar from "~icons/lucide/calendar";
 import IconLucideUser from "~icons/lucide/user";
 import IconMoreHorizontal from "~icons/lucide/more-horizontal";
 import IconCopy from "~icons/lucide/copy";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t } = useI18n();
 const route = useRoute();
@@ -144,6 +147,8 @@ const playbackContext = computed<PlaybackContext | undefined>(() => {
 });
 
 const handlePlayAll = () => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   if (!collection.value?.tracks.length) return;
   player.playFrom(collection.value.tracks, 0, playbackContext.value);
 };

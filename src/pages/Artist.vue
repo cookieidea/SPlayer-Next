@@ -20,6 +20,9 @@ import type { DropdownMenuItem } from "@/components/ui/SDropdownMenu.vue";
 import IconLucideListChecks from "~icons/lucide/list-checks";
 import IconMaterialSymbolsFavoriteRounded from "~icons/material-symbols/favorite-rounded";
 import IconMaterialSymbolsFavoriteOutlineRounded from "~icons/material-symbols/favorite-outline-rounded";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t } = useI18n();
 const route = useRoute();
@@ -148,6 +151,8 @@ const playbackContext = computed<PlaybackContext>(() => ({
 }));
 
 const handlePlayAll = () => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   if (!artist.value?.tracks.length) return;
   player.playFrom(artist.value.tracks, 0, playbackContext.value);
 };

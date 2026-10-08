@@ -4,6 +4,9 @@ defineOptions({ name: "StreamingSongs" });
 import { useStreamingStore } from "@/stores/streaming";
 import SongList from "@/components/list/SongList.vue";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t } = useI18n();
 const streaming = useStreamingStore();
@@ -27,6 +30,8 @@ onMounted(() => {
 });
 
 const handlePlayAll = (): void => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   if (songs.value.length === 0) return;
   player.playFrom(songs.value, 0);
 };

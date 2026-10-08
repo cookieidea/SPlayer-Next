@@ -7,6 +7,9 @@ import { useHistoryStore } from "@/stores/history";
 import SongList from "@/components/list/SongList.vue";
 import * as player from "@/core/player";
 import IconLucideTrash2 from "~icons/lucide/trash-2";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t } = useI18n();
 const history = useHistoryStore();
@@ -20,6 +23,8 @@ const playbackContext = computed<PlaybackContext>(() => ({
 const searchQuery = ref("");
 
 const handlePlayAll = (): void => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   if (history.tracks.length === 0) return;
   player.playFrom(history.tracks, 0, playbackContext.value);
 };

@@ -17,6 +17,9 @@ import IconLucidePlay from "~icons/lucide/play";
 import IconLucideListChecks from "~icons/lucide/list-checks";
 import IconLucideListPlus from "~icons/lucide/list-plus";
 import IconLucideEllipsis from "~icons/lucide/ellipsis";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t } = useI18n();
 const router = useRouter();
@@ -91,6 +94,8 @@ const selectedTracks = computed<Track[]>(() => {
 });
 
 const handlePlayAll = (): void => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   if (selectedTracks.value.length === 0) return;
   player.playFrom(selectedTracks.value, 0);
 };

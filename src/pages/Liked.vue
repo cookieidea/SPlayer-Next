@@ -11,6 +11,9 @@ import SongList from "@/components/list/SongList.vue";
 import * as player from "@/core/player";
 import IconLucideListChecks from "~icons/lucide/list-checks";
 import IconLucideRefreshCw from "~icons/lucide/refresh-cw";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
 
 const { t } = useI18n();
 const library = useLibraryStore();
@@ -73,6 +76,8 @@ const playbackContext = computed<PlaybackContext | undefined>(() => {
 });
 
 const handlePlayAll = (): void => {
+  // 多人房里批量播放会和房间队列互相覆盖，一律拒绝
+  if (guard.blockBatchPlay()) return;
   if (currentTracks.value.length === 0) return;
   player.playFrom(currentTracks.value, 0, playbackContext.value);
 };

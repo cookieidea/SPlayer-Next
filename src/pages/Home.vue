@@ -11,6 +11,15 @@ import { useHomeDiscover } from "@/composables/home/useHomeDiscover";
 import { useFloatingPlayerBar } from "@/composables/useFloatingPlayerBar";
 import { navigateToPlaylist, navigateToArtist, navigateToAlbum } from "@/utils/navigate";
 import * as player from "@/core/player";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
+
+const guard = useTogetherPlaybackGuard();
+
+/** 继续听：多人房里改为加进房间，本地播会被心跳拉回 */
+const onPlayContinue = (track: Track): void => {
+  if (guard.blockLocalPlay(track)) return;
+  void player.playNow(track);
+};
 
 const { t } = useI18n();
 const { isFloatingBar } = useFloatingPlayerBar();
@@ -181,7 +190,7 @@ const openAlbum = (item: CoverItem): void => {
             size="small"
             hoverable
             class="group flex items-center gap-3"
-            @click="player.playNow(item.track)"
+            @click="onPlayContinue(item.track)"
           >
             <span
               class="w-5 shrink-0 text-center text-sm font-semibold tabular-nums text-on-surface-variant/30"
