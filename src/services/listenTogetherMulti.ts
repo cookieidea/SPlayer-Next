@@ -120,6 +120,27 @@ const notifyNewMembers = (room: TogetherMultiRoom): void => {
 
 export const initTogetherMulti = (): void => {
   handleEvent();
+  // 与双人房同理：断网后本地会话还在，网络恢复要自己重连一次
+  if (!multiOnlineBound) {
+    multiOnlineBound = true;
+    window.addEventListener("online", () => void reconnectTogetherMulti());
+  }
+};
+
+let multiOnlineBound = false;
+
+/** 网络恢复后重新接上多人房。房间没了就安静退出，不弹错误 */
+const reconnectTogetherMulti = async (): Promise<void> => {
+  const store = useTogetherMultiStore();
+  if (!store.session) return;
+  const userId = String(store.session.userId ?? "");
+  if (!userId) return;
+  try {
+    await window.api.togetherMulti.leave();
+    await window.api.togetherMulti.restore(userId);
+  } catch {
+    void 0;
+  }
 };
 
 const withBusy = async <T>(run: () => Promise<T>): Promise<T | null> => {

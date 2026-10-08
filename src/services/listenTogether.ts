@@ -321,9 +321,12 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     await player.nextTrack();
     return;
   }
+  if (next.type === "arrive") {
+    // 主进程已经比对过成员集合，这里只提示真正新进来的人
+    if (next.names) toast.info(`一起听：${next.names} 加入了`);
+    return;
+  }
   if (next.type === "room") {
-    const names = next.room.members.map((member) => member.nickname || member.userId).join("、");
-    if (names) toast.info(`一起听：${names}`);
     // 服务端在第二个人加入时会把双人房自动转成多人房。
     // 房型一变就得换成多人那套协议（心跳是拉取、歌曲来自响应），
     // 否则双人轮询会继续按旧协议跑，队列会被反复覆盖
@@ -387,6 +390,35 @@ export const initTogether = (): void => {
     setTogetherCounting(true);
     startReporting();
   });
+  // 断网期间心跳会一直失败，但本地会话还在；网络恢复后必须自己重连一次，
+  // 否则要等下一次心跳撞上服务端，期间队列与播放态都是旧的
+  if (!onlineBound) {
+    onlineBound = true;
+    window.addEventListener("online", () => void reconnectTogether());
+  }
+};
+
+let onlineBound = false;
+
+/**
+ * 网络恢复后重新接上房间。
+ *
+ * 先清掉本地残留会话再重新 restore，否则主进程的 `if (session) return room`
+ * 会让这次重连什么都不做。房间如果已经没了，服务端会说不在房里，
+ * 此时保持安静地退出即可，不必弹错误——那是断网的正常后果
+ */
+const reconnectTogether = async (): Promise<void> => {
+  const store = useTogetherStore();
+  if (!store.session) return;
+  const userId = String(store.session.userId ?? "");
+  if (!userId) return;
+  try {
+    // detach 只清本地会话、不通知服务端：房间还是同一个，不该被我们结束
+    await window.api.together.detach();
+    await window.api.together.restore(userId, true);
+  } catch {
+    void 0;
+  }
 };
 
 export const createRoom = async (userId: string): Promise<boolean> => {
