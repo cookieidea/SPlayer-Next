@@ -548,6 +548,7 @@
       "picked": "Picked",
       "allowStranger": "Allow strangers to join",
       "pauseDisabled": "Pause is disabled; playback is synced by the room",
+      "seekDisabled": "Seeking is disabled in group listening",
       "localPlayDisabled": "Added to the room queue",
       "batchPlayDisabled": "Batch play is disabled in a multi room; add songs one by one",
       "localQueueDisabled": "Use Add to room; local queueing has no effect",

@@ -67,8 +67,21 @@ export const useTogetherPlaybackGuard = () => {
     return true;
   };
 
+  /**
+   * 拖进度条入口用这个。
+   *
+   * 多人一起听的进度各听各的（服务端不再下发起播时刻），拖了也不会同步给别人，
+   * 反而让自己和房间越走越偏，所以房内直接拒绝
+   */
+  const blockSeek = (): boolean => {
+    if (!multiStore.inRoom) return false;
+    toast.warning(t("player.together.seekDisabled", "多人一起听里不能调整进度"));
+    return true;
+  };
+
   return {
     inMultiRoom: computed(() => multiStore.inRoom),
+    blockSeek,
     blockTrackSwitch,
     blockPause,
     blockLocalPlay,

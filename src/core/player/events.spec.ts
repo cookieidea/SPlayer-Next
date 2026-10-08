@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   onTrackEndedAutoClose: vi.fn(() => false),
   onTrackEndedStats: vi.fn(),
   isTogetherActive: vi.fn(() => false),
-  refreshTogetherMulti: vi.fn(() => Promise.resolve()),
+  waitForRoomAdvance: vi.fn(() => Promise.resolve(true)),
   countTogetherAction: vi.fn(),
   nextTrack: vi.fn(() => Promise.resolve()),
   seek: vi.fn(() => Promise.resolve()),
@@ -16,7 +16,7 @@ vi.mock("@/services/autoClose", () => ({ onTrackEnded: mocks.onTrackEndedAutoClo
 vi.mock("@/core/player/stats", () => ({ onTrackEnded: mocks.onTrackEndedStats }));
 vi.mock("@/services/listenTogether", () => ({ isTogetherActive: mocks.isTogetherActive }));
 vi.mock("@/services/listenTogetherMulti", () => ({
-  refreshTogetherMulti: mocks.refreshTogetherMulti,
+  waitForRoomAdvance: mocks.waitForRoomAdvance,
 }));
 vi.mock("@/services/togetherCounter", () => ({ countTogetherAction: mocks.countTogetherAction }));
 vi.mock("@/i18n", () => ({ default: { global: { t: (key: string) => key } } }));
@@ -88,13 +88,13 @@ describe("播放器事件收尾", () => {
     await mods.handleEvent(endedEvent());
 
     expect(mocks.nextTrack).not.toHaveBeenCalled();
-    expect(mocks.refreshTogetherMulti).toHaveBeenCalled();
+    expect(mocks.waitForRoomAdvance).toHaveBeenCalled();
   });
 
   it("不在房间时正常推进下一首", async () => {
     await mods.handleEvent(endedEvent());
 
     expect(mocks.nextTrack).toHaveBeenCalled();
-    expect(mocks.refreshTogetherMulti).not.toHaveBeenCalled();
+    expect(mocks.waitForRoomAdvance).not.toHaveBeenCalled();
   });
 });

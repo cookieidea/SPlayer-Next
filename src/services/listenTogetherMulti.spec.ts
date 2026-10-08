@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from "pinia";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -115,6 +116,7 @@ describe("多人一起听渲染端服务", () => {
         addSong: vi.fn(() => Promise.resolve()),
         topSong: vi.fn(() => Promise.resolve()),
         switchSong: vi.fn(() => Promise.resolve()),
+        refresh: vi.fn(() => Promise.resolve()),
         onEvent: vi.fn((callback: (event: TogetherMultiEvent) => void) => {
           emit = callback;
           return () => {
@@ -207,10 +209,11 @@ describe("多人一起听渲染端服务", () => {
     }
   });
 
-  it("同一首歌但进度差得多时对齐房间进度", async () => {
+  it("不做进度对齐：服务端不再下发起播时刻", async () => {
     queue.setQueue([track("room1")]);
     mediaMock.state.track = track("room1");
-    // 房间在 3 秒前起播，本地才播了 0.5 秒
+    // 即便房间带着 playStartTime 过来也不该 seek：实测服务端根本不下发这个字段，
+    // 对齐只会把本地拖回开头。多人房只同步「播哪首」
     const roomWithProgress: TogetherMultiRoom = {
       ...room("room1", []),
       playStartTime: Date.now() - 30000,
@@ -220,12 +223,12 @@ describe("多人一起听渲染端服务", () => {
     mods.initTogetherMulti();
 
     emit?.(roomEvent(roomWithProgress));
+    // 曲目相同，followRoom 不会切歌；等一轮微任务确认没有 seek 发生
+    await Promise.resolve();
+    await Promise.resolve();
 
-    await vi.waitFor(() => expect(mocks.seek).toHaveBeenCalled());
-    // 目标是毫秒（约 30 秒），不是秒
-    const target = mocks.seek.mock.calls[0]?.[0] as number;
-    expect(target).toBeGreaterThan(29000);
-    expect(target).toBeLessThan(31000);
+    expect(mocks.playFrom).not.toHaveBeenCalled();
+    expect(mocks.seek).not.toHaveBeenCalled();
   });
 
   it("进度接近时不做 seek，避免反复抖动", async () => {
@@ -512,5 +515,54 @@ describe("多人一起听渲染端服务", () => {
     await lt.restoreRoom("88", true);
     // entering 必须透传：false 会走"重启恢复"，进来停在暂停、进度不跟
     expect(calls[0]).toEqual(["88", true]);
+  });
+
+  it("播完等房间推进时会重试，不是只拉一次", async () => {
+    vi.useFakeTimers();
+    const store = useTogetherMultiStore();
+    store.session = { roomId: "R1", userId: "77", generation: 1 };
+    store.room = { ...room("old", []), roomId: "R1" };
+
+    const multi = (window as unknown as { api: Record<string, unknown> }).api
+      .togetherMulti as Record<string, ReturnType<typeof vi.fn>>;
+    let calls = 0;
+    multi.refresh = vi.fn(() => {
+      calls += 1;
+      // 第二次才推进到新曲
+      if (calls >= 2) store.room = { ...room("new", []), roomId: "R1" };
+      return Promise.resolve();
+    });
+
+    const promise = mods.waitForRoomAdvance();
+    // 推进定时器的等待，让重试跑起来
+    await vi.advanceTimersByTimeAsync(6000);
+    const advanced = await promise;
+
+    expect(advanced).toBe(true);
+    expect(calls).toBeGreaterThan(1);
+    vi.useRealTimers();
+  });
+
+  it("播完立刻拉：第一次就换曲时不等待", async () => {
+    const store = useTogetherMultiStore();
+    store.session = { roomId: "R1", userId: "77", generation: 1 };
+    store.room = { ...room("old", []), roomId: "R1" };
+
+    const multi = (window as unknown as { api: Record<string, unknown> }).api
+      .togetherMulti as Record<string, ReturnType<typeof vi.fn>>;
+    // 第一次 refresh 就把曲换了
+    multi.refresh = vi.fn(() => {
+      store.room = { ...room("new", []), roomId: "R1" };
+      return Promise.resolve();
+    });
+
+    const started = Date.now();
+    const advanced = await mods.waitForRoomAdvance();
+    const elapsed = Date.now() - started;
+
+    expect(advanced).toBe(true);
+    // 立刻返回，不该先睡一个间隔
+    expect(elapsed).toBeLessThan(500);
+    expect(multi.refresh).toHaveBeenCalledTimes(1);
   });
 });

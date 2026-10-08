@@ -3,7 +3,6 @@ import { useTogetherStore } from "@/stores/together";
 import { useUserStore } from "@/stores/user";
 import { restoreRoom } from "@/services/listenTogether";
 import { useStatusStore } from "@/stores/status";
-import { getCurrentTime } from "@/services/playback";
 import { useMediaStore } from "@/stores/media";
 import * as queue from "@/stores/queue";
 import * as player from "@/core/player";
@@ -57,15 +56,6 @@ const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
  * 拿它替换本地歌单会把用户的列表顶掉，所以只处理房间那一首：
  * 本地已有就地播放（不动列表顺序），没有才插进去
  */
-/** 与房间进度相差超过这个毫秒数才纠正：太小会不停 seek，反而听感抖动 */
-const PROGRESS_TOLERANCE_MS = 3000;
-
-/** 房间当前曲应处的进度：起播时刻 + 已播时长 */
-const roomPositionMs = (room: TogetherMultiRoom): number => {
-  if (!room.playStartTime) return -1;
-  return Math.max(0, Date.now() - room.playStartTime);
-};
-
 const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   const roomSongId = room.playSong?.songId ?? "";
   if (!roomSongId) return;
@@ -82,13 +72,8 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
       await player.playAtIndex(at);
     }
   }
-  // 同一首歌也要对齐进度：房间的进度是权威的（多人一起听里暂停/播放是同步的）
-  const target = roomPositionMs(room);
-  if (target < 0) return;
-  const current = getCurrentTime();
-  if (Math.abs(current - target) > PROGRESS_TOLERANCE_MS) {
-    await player.seek(target);
-  }
+  // 不做进度对齐：实测服务端不再下发起播时刻（心跳与 status/get 都没有
+  // startTime），硬对齐只会把本地拖回开头。多人房只同步「播哪首」，进度各听各的
 };
 
 const handleEvent = (): void => {
@@ -383,6 +368,31 @@ export const refreshTogetherMulti = async (): Promise<void> => {
   } catch {
     void 0;
   }
+};
+
+/** 播完后重试的间隔与次数：心跳 8 秒太长，主动拉几次能明显缩短空档 */
+const ADVANCE_INTERVAL_MS = 700;
+const ADVANCE_RETRIES = 8;
+
+/**
+ * 播完一首后等房间的下一首。
+ *
+ * 心跳周期 8 秒，干等就是一段静音；这里短间隔主动拉几次，服务端一换曲就能立刻跟上。
+ * 返回 true 表示房间已经推进（或已不在房内），false 表示重试完仍是同一首
+ */
+export const waitForRoomAdvance = async (): Promise<boolean> => {
+  const store = useTogetherMultiStore();
+  const before = store.room?.playSong?.songId ?? "";
+  for (let i = 0; i < ADVANCE_RETRIES; i += 1) {
+    // 先立刻拉一次再判断：播完就问，服务端已换曲的话这一下就能接上，没有空等
+    await refreshTogetherMulti();
+    if (!store.inRoom) return true;
+    const now = store.room?.playSong?.songId ?? "";
+    if (now && now !== before) return true;
+    // 还没换就稍等再问
+    await new Promise((resolve) => setTimeout(resolve, ADVANCE_INTERVAL_MS));
+  }
+  return false;
 };
 
 /** 账号对陌生人的可见性：开着才会被陌生人匹配到 */

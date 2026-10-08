@@ -34,7 +34,8 @@ import {
 } from "./index";
 import { countTogetherAction } from "@/services/togetherCounter";
 import { isTogetherActive } from "@/services/listenTogether";
-import { refreshTogetherMulti } from "@/services/listenTogetherMulti";
+import { waitForRoomAdvance } from "@/services/listenTogetherMulti";
+import { useTogetherMultiStore } from "@/stores/togetherMulti";
 
 /** 防止 ended 事件重入 */
 let endedGuard = false;
@@ -54,8 +55,16 @@ const finishCurrentTrack = async (): Promise<void> => {
     // 一起听里下一首由房间决定，本地不推进；但上面这些与房间无关的收尾
     // （定时关闭、播放统计）必须照常执行，否则"播完这首就关"会失灵、听歌记录也会漏
     if (isTogetherActive()) {
-      // 多人房的下一首来自服务端，主动拉一次免得中间空等一个心跳周期
-      void refreshTogetherMulti();
+      // 多人房的曲目由房间决定。心跳 8 秒太长，这里短间隔重试几次主动拉，
+      // 服务端一换曲就立刻跟上；始终不本地推进——曲目必须由房间说了算
+      const advanced = await waitForRoomAdvance();
+      // 房间没动（比如房里就这一首）：单曲循环就重播，否则保持暂停，
+      // 绝不本地推进——曲目必须由房间决定
+      if (advanced || !useTogetherMultiStore().inRoom) return;
+      if (repeatOne) {
+        await seek(0);
+        await play();
+      }
       return;
     }
     // 定时关闭"等本曲结束"模式

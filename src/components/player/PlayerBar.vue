@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useStatusStore } from "@/stores/status";
+import { useTogetherPlaybackGuard } from "@/composables/useTogetherPlaybackGuard";
 import { useSettingsStore } from "@/stores/settings";
 import { useMediaStore } from "@/stores/media";
 import { useFavorite } from "@/composables/useFavorite";
@@ -22,9 +23,12 @@ const { formatTooltip, snapToNearestLyric } = useProgressLyric();
 /** 是否是浮动模式 */
 const isFloating = computed(() => settings.appearance.layoutMode === "floating");
 /** 是否显示进度条提示 */
+const guard = useTogetherPlaybackGuard();
+
 const showTooltip = computed(() => settings.player.showProgressTooltip);
 
 const onSeekDragEnd = (value: number): void => {
+  if (guard.blockSeek()) return;
   const snappedValue = snapToNearestLyric(value);
   player.seek(snappedValue);
 };

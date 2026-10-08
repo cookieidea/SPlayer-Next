@@ -136,6 +136,7 @@ const coverCentered = computed(() => {
 });
 
 const handleLyricSeek = async (timeMs: number): Promise<void> => {
+  if (guard.blockSeek()) return;
   await player.seek(timeMs);
   if (!isPlaying.value) await player.play();
 };
@@ -172,6 +173,7 @@ const collapse = (): void => {
 };
 
 const onSeekDragEnd = (value: number): void => {
+  if (guard.blockSeek()) return;
   player.seek(snapToNearestLyric(value));
 };
 
