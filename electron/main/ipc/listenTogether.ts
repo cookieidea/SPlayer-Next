@@ -40,6 +40,10 @@ export const registerTogetherIpc = (): void => {
 
   ipcMain.handle("together:pendingInvites", () => together.pendingInvites());
 
+  ipcMain.handle("together:fetchInvitation", () => together.fetchInvitation());
+
+  ipcMain.handle("together:resetInvitationVersion", () => together.resetInvitationVersion());
+
   ipcMain.handle("together:friends", (_event, userId: string) => together.friends(userId));
 
   ipcMain.handle("together:invite", (_event, acceptorId: string) => together.invite(acceptorId));

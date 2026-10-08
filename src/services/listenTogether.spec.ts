@@ -102,6 +102,7 @@ describe("一起听渲染端服务", () => {
         invite: vi.fn(() => Promise.resolve()),
         friends: vi.fn(() => Promise.resolve([])),
         pendingInvites: vi.fn(() => Promise.resolve([])),
+        fetchInvitation: vi.fn(() => Promise.resolve(null)),
         resolveLink: vi.fn((url: string) => Promise.resolve(url)),
         onEvent: vi.fn((cb: (event: TogetherSyncEvent) => void) => {
           emit = cb;
@@ -734,5 +735,68 @@ describe("一起听渲染端服务", () => {
     const payload = sync.mock.calls.at(-1)?.[0] as { songId: string; queueSongIds: string[] };
     expect(payload.songId).toBe("");
     expect(payload.queueSongIds).toEqual([]);
+  });
+
+  it("邀请取官方端点与私信扫描的并集", async () => {
+    const api = (
+      window as unknown as {
+        api: {
+          together: Record<string, ReturnType<typeof vi.fn>>;
+        };
+      }
+    ).api;
+    api.together.pendingInvites.mockResolvedValue([
+      {
+        roomId: "FROM_INBOX",
+        inviterId: "8",
+        inviterName: "乙",
+        inviterAvatarUrl: "",
+        title: "",
+        receivedAt: 1,
+        multi: false,
+      },
+    ]);
+    api.together.fetchInvitation.mockResolvedValue({
+      display: true,
+      roomId: "FROM_OFFICIAL",
+      inviterId: "9",
+      nickname: "丙",
+      avatarUrl: "http://c",
+      hadAutoChangeMulti: true,
+    });
+
+    const cards = await mods.loadInvites();
+
+    // 两个来源都可能先一步看到邀请，合并而不是二选一
+    expect(cards.map((c) => c.roomId).sort()).toEqual(["FROM_INBOX", "FROM_OFFICIAL"]);
+    // 官方标记的房型升级要带上，接收时才知道走多人协议
+    expect(cards.find((c) => c.roomId === "FROM_OFFICIAL")?.multi).toBe(true);
+  });
+
+  it("同一房间不重复列出", async () => {
+    const api = (
+      window as unknown as { api: { together: Record<string, ReturnType<typeof vi.fn>> } }
+    ).api;
+    api.together.pendingInvites.mockResolvedValue([
+      {
+        roomId: "SAME",
+        inviterId: "8",
+        inviterName: "乙",
+        inviterAvatarUrl: "",
+        title: "",
+        receivedAt: 1,
+        multi: false,
+      },
+    ]);
+    api.together.fetchInvitation.mockResolvedValue({
+      display: true,
+      roomId: "SAME",
+      inviterId: "8",
+      nickname: "乙",
+      avatarUrl: "",
+      hadAutoChangeMulti: false,
+    });
+
+    expect(await mods.loadInvites()).toHaveLength(1);
   });
 });

@@ -426,12 +426,32 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
   }
 };
 
+/**
+ * 取待处理邀请。
+ *
+ * 优先用官方的 invitation-info/get：它是服务端的权威回答（还会带房型自动升级标记），
+ * 私信扫描作为兜底——它能补出邀请人的昵称与头像，而那个端点只有 id
+ */
 export const loadInvites = async (): Promise<TogetherInviteCard[]> => {
-  try {
-    return await window.api.together.pendingInvites();
-  } catch {
-    return [];
-  }
+  const fromInbox = await window.api.together.pendingInvites().catch(() => []);
+  // 官方端点是权威回答，但它只有邀请人 id；私信扫描能补出昵称与头像。
+  // 两者合并而不是二选一：任一来源都可能先一步看到邀请
+  const official = await window.api.together.fetchInvitation().catch(() => null);
+  if (!official?.display || !official.roomId) return fromInbox;
+  if (fromInbox.some((card) => card.roomId === official.roomId)) return fromInbox;
+  return [
+    {
+      roomId: official.roomId,
+      inviterId: official.inviterId,
+      inviterName: official.nickname,
+      inviterAvatarUrl: official.avatarUrl,
+      title: "",
+      receivedAt: Date.now(),
+      // 官方标记"房型已被服务端自动升级"，接收时要按多人协议加入
+      multi: official.hadAutoChangeMulti,
+    },
+    ...fromInbox,
+  ];
 };
 
 const inviteJoin = async (roomId: string, inviterId: string, userId: string): Promise<boolean> => {

@@ -186,6 +186,15 @@ export interface TogetherApi {
   restore: (userId: string, entering?: boolean) => Promise<TogetherRoom | null>;
   resolveLink: (url: string) => Promise<string>;
   pendingInvites: () => Promise<TogetherInviteCard[]>;
+  fetchInvitation: () => Promise<{
+    display: boolean;
+    roomId: string;
+    inviterId: string;
+    nickname: string;
+    avatarUrl: string;
+    hadAutoChangeMulti: boolean;
+  } | null>;
+  resetInvitationVersion: () => Promise<void>;
   friends: (userId: string) => Promise<TogetherFriend[]>;
   invite: (acceptorId: string) => Promise<void>;
   rejectInvitation: (roomId: string) => Promise<void>;

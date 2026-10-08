@@ -1003,6 +1003,51 @@ export const resolveLink = async (url: string): Promise<string> => {
   return response.url || url;
 };
 
+/** 上一次拿到的邀请版本号：传给服务端即可增量拉取，没有新邀请时它只递增版本 */
+let invitationVersion = 0;
+
+export interface TogetherInvitationInfo {
+  /** 是否有待处理的邀请 */
+  display: boolean;
+  roomId: string;
+  inviterId: string;
+  nickname: string;
+  avatarUrl: string;
+  /** 房型自动升级标记：官方靠它判断"双人房已被服务端转成多人" */
+  hadAutoChangeMulti: boolean;
+}
+
+/**
+ * 拉取邀请。
+ *
+ * 官方靠云信 IM 推送获知邀请，我们没接 IM，改用这个 HTTP 端点轮询：
+ * 实测它是增量设计（传入已知版本，服务端每次 +1 返回），
+ * 有新邀请时带 display:true 与 roomId
+ */
+export const fetchInvitation = async (): Promise<TogetherInvitationInfo | null> => {
+  const response = await callNetease("listen_together_invitation_info", {
+    invitationVersion,
+  });
+  const body = obj((response as { body?: unknown })?.body);
+  const data = obj(body?.data);
+  if (!data) return null;
+  invitationVersion = Number(data.invitationVersion) || invitationVersion;
+  if (data.display !== true) return null;
+  return {
+    display: true,
+    roomId: str(data.roomId),
+    inviterId: str(data.inviterId),
+    nickname: str(data.nickname),
+    avatarUrl: str(data.avatarUrl),
+    hadAutoChangeMulti: data.hadAutoChangeMulti === true,
+  };
+};
+
+/** 退房/换房后重置，避免把上一个房间的版本号带过去 */
+export const resetInvitationVersion = (): void => {
+  invitationVersion = 0;
+};
+
 export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {
   const cards = invitesFromInbox(
     await callNetease("listen_together_inbox", { limit: INBOX_LIMIT }),
