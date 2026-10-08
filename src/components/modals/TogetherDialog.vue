@@ -476,7 +476,10 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
               <p v-if="multiQueueSongs.length === 0" class="text-xs text-on-surface-variant/70">
                 {{ t("player.together.emptyQueue") }}
               </p>
-              <div v-else class="flex flex-col gap-1 max-h-[160px] overflow-y-auto pr-1">
+              <div
+                v-else
+                class="flex flex-col gap-1 max-h-[280px] overflow-y-auto overscroll-contain pr-1"
+              >
                 <div
                   v-for="(song, index) in multiQueueSongs"
                   :key="song.songId"
@@ -512,7 +515,10 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
               <p v-if="multiFriends.length === 0" class="text-xs text-on-surface-variant/70">
                 {{ t("player.together.noFriends") }}
               </p>
-              <div v-else class="flex flex-col gap-1 max-h-[160px] overflow-y-auto pr-1">
+              <div
+                v-else
+                class="flex flex-col gap-1 max-h-[280px] overflow-y-auto overscroll-contain pr-1"
+              >
                 <div
                   v-for="friend in multiFriends"
                   :key="friend.userId"
@@ -693,7 +699,10 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <p v-if="createFriends.length === 0" class="text-xs text-on-surface-variant/70">
             {{ t("player.together.noFriends") }}
           </p>
-          <div v-else class="flex flex-col gap-1 max-h-[140px] overflow-y-auto pr-1">
+          <div
+            v-else
+            class="flex flex-col gap-1 max-h-[280px] overflow-y-auto overscroll-contain pr-1"
+          >
             <div
               v-for="friend in createFriends"
               :key="friend.userId"
