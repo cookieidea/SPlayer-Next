@@ -1,4 +1,5 @@
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
+import { useUserStore } from "@/stores/user";
 import { restoreRoom } from "@/services/listenTogether";
 import { useStatusStore } from "@/stores/status";
 import { getCurrentTime } from "@/services/playback";
@@ -178,8 +179,10 @@ const pollMatch = async (userId: string): Promise<void> => {
       toast.warning("没有找到合适的听友，请稍后重试");
       return;
     }
-    const session = await window.api.together.getSession();
-    if (!session) return;
+    // 必须真的去问服务端：getSession 读的是主进程内存里的会话，
+    // 而它只有渲染端调过 restore 才会有值——匹配成功也永远不会被发现
+    const room = await window.api.together.restore(userId);
+    if (!room) return;
     // 匹配到就必须通知服务端结束匹配，否则账号会一直挂在匹配队列里
     finishMatch();
     toast.success("已找到听友");
@@ -240,8 +243,12 @@ const pollMultiMatch = async (): Promise<void> => {
       toast.warning("没有找到合适的听友，请稍后重试");
       return;
     }
-    const session = await window.api.together.getSession();
-    if (!session) return;
+    // 同上：直接问服务端，不能读主进程内存。
+    // 多人的会话要进房后才有，这里只能取当前登录账号
+    const userId = String(useUserStore().profile?.userId ?? "");
+    if (!userId) return;
+    const room = await window.api.together.restore(userId);
+    if (!room) return;
     finishMatch();
     toast.success("已找到听友");
     try {
@@ -249,7 +256,7 @@ const pollMultiMatch = async (): Promise<void> => {
     } catch {
       void 0;
     }
-    await restoreTogetherMulti(String(session.userId));
+    await restoreTogetherMulti(userId);
   } catch {
     finishMatch();
   }

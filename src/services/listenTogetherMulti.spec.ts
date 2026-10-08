@@ -40,6 +40,7 @@ const mediaMock = vi.hoisted(() => {
 });
 
 vi.mock("@/stores/media", () => ({ useMediaStore: mediaMock.useMediaStore }));
+vi.mock("@/stores/user", () => ({ useUserStore: () => ({ profile: { userId: 88 } }) }));
 vi.mock("@/apis/song/netease", () => ({ songsByIds: mocks.songsByIds }));
 vi.mock("@/composables/useToast", () => ({ toast: mocks.toast }));
 vi.mock("@/services/playback", () => ({ getCurrentTime: mocks.getCurrentTime }));
@@ -101,6 +102,11 @@ describe("多人一起听渲染端服务", () => {
       if (typeof fn === "function" && "mockClear" in fn) fn.mockClear();
     }
     (window as unknown as { api: Record<string, unknown> }).api = {
+      together: {
+        restore: vi.fn(() => Promise.resolve(null)),
+        leave: vi.fn(() => Promise.resolve()),
+        sync: vi.fn(),
+      },
       togetherMulti: {
         getSession: vi.fn(() => Promise.resolve(null)),
         join: vi.fn(() => Promise.resolve({})),
@@ -253,6 +259,25 @@ describe("多人一起听渲染端服务", () => {
     await vi.advanceTimersByTimeAsync(3000 * 62);
 
     expect(useTogetherMultiStore().matching).toBe("");
+    vi.useRealTimers();
+  });
+
+  it("匹配轮询直接问服务端，而不是读主进程内存", async () => {
+    vi.useFakeTimers();
+    const api = (window as unknown as { api: Record<string, unknown> }).api;
+    const together = api.together as Record<string, ReturnType<typeof vi.fn>>;
+    (api.togetherMulti as Record<string, unknown>).startMatch = vi.fn(() =>
+      Promise.resolve({ success: true }),
+    );
+    (api.togetherMulti as Record<string, unknown>).cancelMatch = vi.fn(() => Promise.resolve());
+
+    mods.initTogetherMulti();
+    await mods.startStrangerMatch("88");
+    await vi.advanceTimersByTimeAsync(3100);
+
+    // getSession 读的是主进程内存里的会话，只有渲染端调过 restore 才会有值；
+    // 轮询它的话，匹配成功也永远发现不了
+    expect(together.restore).toHaveBeenCalled();
     vi.useRealTimers();
   });
 });
