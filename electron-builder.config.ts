@@ -63,7 +63,12 @@ const config: Configuration = {
   ],
   // 保留的语言
   electronLanguages: ["zh-CN", "en-US"],
-  asarUnpack: ["public/**"],
+  asarUnpack: [
+    "public/**",
+    // node-nim 的 .node 与配套 .so 必须落在真实文件系统上：
+    // 原生库在 asar 内无法被 dlopen 加载
+    "**/node_modules/node-nim/**",
+  ],
   extraResources: [
     {
       from: "native/audio-engine",
