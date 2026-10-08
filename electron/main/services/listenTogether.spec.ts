@@ -9,11 +9,20 @@ import type { TogetherLocalState } from "@shared/types/listenTogether";
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   warn: vi.fn(),
+  emit: vi.fn(),
+  connect: vi.fn(),
 }));
 
 vi.mock("@main/apis/netease", () => ({ callNetease: mocks.call }));
 vi.mock("@main/utils/logger", () => ({ neteaseLog: { warn: mocks.warn, info: mocks.warn } }));
 vi.mock("@main/utils/proxy", () => ({ fetchWithProxy: vi.fn() }));
+vi.mock("@main/services/nim/realtime", () => ({
+  connectNimRoom: mocks.connect,
+  disconnectNimRoom: vi.fn(),
+  setNimListener: (listener: (event: unknown) => void) => {
+    mocks.emit.mockImplementation((event: unknown) => listener(event));
+  },
+}));
 
 // 与实现常量联动，避免测试把节奏写死；一个周期足以触发心跳与一次列表拉取
 const cycle = async (): Promise<void> => {
@@ -31,6 +40,12 @@ const localState = (patch: Partial<TogetherLocalState> = {}): TogetherLocalState
   endRevision: 0,
   playMode: "ORDER_LOOP",
   ...patch,
+});
+
+/** 云信凭据响应：实时通道连接时取用 */
+const imTokenBody = () => ({
+  status: 200,
+  body: { code: 200, data: { accId: "7", token: "TOKEN" } },
 });
 
 const statusBody = (inRoom: boolean, roomId = "R1", users: number[] = [7]) => ({
@@ -95,7 +110,36 @@ describe("一起听房间状态机", () => {
     vi.resetModules();
     mocks.call.mockReset();
     mocks.warn.mockReset();
+    mocks.emit.mockReset();
+    mocks.connect.mockReset();
     vi.useFakeTimers();
+  });
+
+  /** 喂一条远端事件，模拟云信推送到达；多轮空转让在途微任务与定时器全部落地 */
+  const pulse = async (event: Record<string, unknown>): Promise<void> => {
+    mocks.emit(event);
+    await vi.advanceTimersByTimeAsync(SYNC_INTERVAL_MS);
+  };
+
+  /** 远端播放命令（GOTO）事件 */
+  const remoteCommand = (commandType = "GOTO"): Record<string, unknown> => ({
+    kind: "playback",
+    senderId: "88",
+    commandType,
+    targetSongId: "100",
+    formerSongId: "0",
+    progressMs: 30000,
+    playStatus: "PLAY",
+    serverSeq: 1,
+    clientSeq: 1,
+    hint: "对方切歌了",
+  });
+
+  /** 指定目标曲目与发送者的 GOTO 事件 */
+  const nimGoto = (senderId: string, targetSongId: string): Record<string, unknown> => ({
+    ...remoteCommand(),
+    senderId,
+    targetSongId,
   });
 
   const load = async () => {
@@ -501,18 +545,23 @@ describe("一起听房间状态机", () => {
         if (callCount > 1) throw new Error("429 Too Many Requests");
         return snapshotBody(["100"]);
       }
+      if (name === "middle_im_token_get") return imTokenBody();
       return { status: 200, body: { code: 200 } };
     });
 
     await service.create("7");
     service.updateLocal(localState());
+    // 把 create 期间在途的微任务（首次拉取、实时连接）全部跑完，
+    // 让监听器真正挂上后再喂事件
     await vi.advanceTimersByTimeAsync(1000);
     const afterFirst = callCount;
     for (let i = 0; i < 5; i++) {
-      await vi.advanceTimersByTimeAsync(1000);
+      await pulse(remoteCommand());
     }
     expect(errors.some((m) => m.includes("受限"))).toBe(true);
-    expect(callCount).toBeLessThanOrEqual(afterFirst + 1);
+    // 限流后不再发请求：5 次事件最多消耗「重试上限内的」拉取，
+    // 而不是每条事件都打一次服务端
+    expect(callCount).toBeLessThanOrEqual(afterFirst + 3);
   });
 
   it("切换房间会重置限流状态", async () => {
@@ -738,6 +787,7 @@ describe("一起听房间状态机", () => {
     mocks.call.mockImplementation(async (name: string) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
       if (name === "listen_together_sync_playlist_get") throw new Error("429 Too Many Requests");
       return { status: 200, body: { code: 200 } };
     });
@@ -745,7 +795,8 @@ describe("一起听房间状态机", () => {
     await service.create("7");
     service.updateLocal(localState());
     await vi.advanceTimersByTimeAsync(1000);
-    // 当前代次的限流应当给出提示
+    // 当前代次的限流应当给出提示：远端事件触发的拉取直接撞上 429
+    await pulse(remoteCommand());
     await vi.waitFor(() => expect(errors.some((m) => m.includes("受限"))).toBe(true));
   });
 
@@ -835,6 +886,7 @@ describe("一起听房间状态机", () => {
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
       if (name === "listen_together_play_command_report") {
         if (params.type === "PLAYMODE_CHANGE") modeReports.push(params);
         return { status: 200, body: { code: 200 } };
@@ -847,20 +899,21 @@ describe("一起听房间状态机", () => {
 
     await service.create("7");
     service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
-    await cycle();
+    // 远端事件驱动快照拉取：每轮 pulse 相当于旧的一轮周期拉取
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     // 创建时会上报一次初始模式，这里只关心后续的回声判定
     modeReports.length = 0;
 
     // 服务端把模式改成 RANDOM，本地跟随
     snapshotMode = "RANDOM";
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     expect(modeReports).toHaveLength(0);
 
     // 用户真的改到别的模式：应当上报
     service.updateLocal(localState({ songId: "100", playMode: "SINGLE_LOOP" }));
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     expect(modeReports).toHaveLength(1);
   });
   it("在途旧快照不会向新会话派发同步事件", async () => {
@@ -1180,6 +1233,7 @@ describe("一起听房间状态机", () => {
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
       if (name === "listen_together_play_command_report" && params.type === "PLAYMODE_CHANGE") {
         if (failMode) throw new Error("网络错误");
       }
@@ -1189,9 +1243,9 @@ describe("一起听房间状态机", () => {
 
     await service.create("7");
     service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     failMode = false;
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
 
     // 上报失败不算认领：服务端返回的 ORDER_LOOP 应当正常下发
     expect(applied).toContain("ORDER_LOOP");
@@ -1250,6 +1304,7 @@ describe("一起听房间状态机", () => {
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
       if (name === "listen_together_play_command_report") {
         // 认领成功：服务端尚未回显
         if (params.type === "PLAYMODE_CHANGE") return { status: 200, body: { code: 200 } };
@@ -1266,14 +1321,14 @@ describe("一起听房间状态机", () => {
 
     await service.create("7");
     service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     applied.length = 0;
 
     // 对端抢先改成 SINGLE_LOOP，服务端一直不回显我们的 RANDOM
     snapshotMode = "SINGLE_LOOP";
     snapshotCommand = modeCommand("8", 5);
-    await cycle();
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
 
     // 必须解除认领并应用对端的模式
     expect(applied).toContain("SINGLE_LOOP");
@@ -1416,6 +1471,7 @@ describe("一起听房间状态机", () => {
     mocks.call.mockImplementation(async (name: string, params: Record<string, unknown>) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
       if (name === "listen_together_play_command_report") {
         sent.push(String(params.type));
         return { status: 200, body: { code: 200 } };
@@ -1425,7 +1481,7 @@ describe("一起听房间状态机", () => {
 
     await service.create("7");
     service.updateLocal(localState({ songId: "100" }));
-    await cycle();
+    await pulse(nimGoto("88", "100"));
     sent.length = 0;
 
     // 对方切歌到 200
@@ -1438,14 +1494,14 @@ describe("一起听房间状态机", () => {
       progress: 0,
       serverSeq: 1,
     };
-    // 只推进到下一次拉取：必须留在回声存活期内，否则跟随会被如实上报
-    await vi.advanceTimersByTimeAsync(SNAPSHOT_POLL_TICKS * SYNC_INTERVAL_MS);
+    // 事件驱动的拉取必须留在回声存活期内，否则跟随会被如实上报
+    await pulse(nimGoto("88", "200"));
     // 采纳命令本身不该被回声回报
     expect(sent).toHaveLength(0);
 
     // 用户在刚刚采纳远端后马上 seek
     service.updateLocal(localState({ songId: "200", currentIndex: 1, seekRevision: 1 }));
-    await vi.advanceTimersByTimeAsync(SNAPSHOT_POLL_TICKS * SYNC_INTERVAL_MS);
+    await pulse(nimGoto("88", "200"));
 
     expect(sent).toContain("PROGRESS");
     // 用户操作只该发一次，不能被回声逻辑重复放大
@@ -1462,6 +1518,7 @@ describe("一起听房间状态机", () => {
     mocks.call.mockImplementation(async (name: string) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
       if (name === "listen_together_play_command_report")
         return { status: 200, body: { code: 200 } };
       return snapshotBody(["100"], snapshotMode);
@@ -1472,12 +1529,15 @@ describe("一起听房间状态机", () => {
 
     await service.create("7");
     service.updateLocal(localState({ songId: "100", playMode: "RANDOM" }));
-    await cycle();
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     applied.length = 0;
 
-    // 服务端始终不回显 RANDOM，随后改成 SINGLE_LOOP
+    // 服务端始终不回显 RANDOM，随后改成 SINGLE_LOOP。
+    // 认领预算按快照拉取次数扣减（CLAIM_TICKS=5），耗尽后才解除认领
     snapshotMode = "SINGLE_LOOP";
-    await cycle();
+    for (let i = 0; i < 6; i++) {
+      await pulse(remoteCommand("PLAYMODE_CHANGE"));
+    }
 
     expect(applied).toContain("SINGLE_LOOP");
   });
@@ -1552,6 +1612,8 @@ describe("一起听房间状态机", () => {
       if (name === "listen_together_room_create") return createBody("R1", [7]);
       if (name === "listen_together_status") {
         if (holdJoinStatus) return heldStatus;
+        // 房间失效后 status/get 也报 488：周期心跳靠它发现旧房间已没了
+        if (oldRoomGone) throw new Error("netease 488: 一起听已失效");
         return statusBody(true, "R1", [7]);
       }
       if (name === "listen_together_sync_playlist_get") {
@@ -1576,14 +1638,14 @@ describe("一起听房间状态机", () => {
     // 先处于旧房间 R1
     await service.create("7");
     service.updateLocal(localState());
-    await cycle();
+    await pulse(remoteCommand());
 
     // 被邀请，开始接收 R2；把它的会话查询挂起
     holdJoinStatus = true;
     const joinPromise = service.join("R2", "8", "7");
     await Promise.resolve();
 
-    // 旧房间在服务端已失效，tick 会结束旧会话
+    // 旧房间在服务端已失效：周期 tick 的心跳/状态检查会发现 488 并结束旧会话
     oldRoomGone = true;
     holdJoinStatus = false;
     await cycle();
@@ -1758,12 +1820,13 @@ describe("一起听房间状态机", () => {
     await cycle();
     expect(gotos).toEqual(["100"]);
   });
-  it("房间拉取按低频进行而不是每 tick 一次", async () => {
+  it("快照拉取由实时事件驱动，周期 tick 不再拉取", async () => {
     const service = await load();
     let snapshotCalls = 0;
     mocks.call.mockImplementation(async (name: string) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
       if (name === "listen_together_sync_playlist_get") {
         snapshotCalls += 1;
         return snapshotBody(["100"]);
@@ -1773,15 +1836,14 @@ describe("一起听房间状态机", () => {
 
     await service.create("7");
     service.updateLocal(localState());
-    await vi.advanceTimersByTimeAsync(SYNC_INTERVAL_MS * SNAPSHOT_POLL_TICKS);
-    snapshotCalls = 0;
+    // 只推进时间、不发任何实时事件：旧的周期轮询已移除，快照不该被碰
+    await vi.advanceTimersByTimeAsync(SYNC_INTERVAL_MS * SNAPSHOT_POLL_TICKS * 3);
+    const idleCalls = snapshotCalls;
+    expect(idleCalls).toBe(0);
 
-    const ticks = SNAPSHOT_POLL_TICKS * 3;
-    for (let i = 0; i < ticks; i++) await vi.advanceTimersByTimeAsync(SYNC_INTERVAL_MS);
-
-    // 3 个周期内至多 4 次，绝不该等于 tick 数
-    expect(snapshotCalls).toBeGreaterThan(0);
-    expect(snapshotCalls).toBeLessThanOrEqual(SNAPSHOT_POLL_TICKS);
+    // 远端事件到达才拉一次
+    await pulse(remoteCommand());
+    expect(snapshotCalls).toBe(1);
   });
 
   it("拒绝邀请调用官方 rejection 端点", async () => {
@@ -1859,22 +1921,28 @@ describe("一起听房间状态机", () => {
     mocks.call.mockImplementation(async (name: string) => {
       if (name === "listen_together_room_create") return createBody();
       if (name === "listen_together_status") return statusBody(true, "R1", [7]);
-      return snapshotBody(["100", "200"]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      if (name === "listen_together_sync_playlist_get") {
+        return snapshotBody(["100", "200"]);
+      }
+      return { status: 200, body: { code: 200 } };
     });
 
     await service.create("7");
     // 本地队列与房间不同，且渲染端始终没上报跟随（applyRemote 可能因取不到曲目提前返回）
     service.updateLocal(localState({ songId: "900", queueSongIds: ["900"] }));
-    await cycle();
-    const first = events.length;
+    // 推送节奏：首发 fresh 命令 1 次 + 队列替换重试 3 次 + 认领轮 1 次 = 5 次后收口
+    for (let i = 0; i < 5; i++) {
+      await pulse(remoteCommand());
+    }
     // 提前把 localQueueIds 推进成目标队列的话只会下发一次，
     // 渲染端这次没跟上就再也不会重试，本地队列会与服务端永久分叉
-    expect(first).toBeGreaterThan(1);
-
-    await cycle();
+    expect(events.length).toBeGreaterThan(1);
 
     // 但重试必须有上限：上千首的曲目请求不能每轮都重发一遍
-    expect(events.length).toBe(first);
+    const settled = events.length;
+    await pulse(remoteCommand());
+    expect(events.length).toBe(settled);
   });
 
   it("新听友进来时补发一次队列", async () => {

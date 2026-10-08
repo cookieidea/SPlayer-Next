@@ -76,6 +76,7 @@ const sessionEvent = (roomId = "R1"): TogetherSyncEvent => ({
   room: {
     roomId,
     creatorId: "7",
+    chatRoomId: "",
     roomType: "FRIEND",
     members: [{ userId: "7", nickname: "我", avatarUrl: "" }],
   },
@@ -143,6 +144,7 @@ describe("一起听渲染端服务", () => {
       room: {
         roomId: "R1",
         creatorId: "7",
+        chatRoomId: "",
         roomType: "MULTI_MATCH_SONG",
         members: [{ userId: "7", nickname: "我", avatarUrl: "" }],
       },
@@ -423,7 +425,7 @@ describe("一起听渲染端服务", () => {
     emit?.({
       type: "session",
       session: { roomId: "R2", userId: "7", generation: 1 },
-      room: { roomId: "R2", creatorId: "7", roomType: "FRIEND", members: [] },
+      room: { roomId: "R2", creatorId: "7", chatRoomId: "", roomType: "FRIEND", members: [] },
     });
     expect(useTogetherStore().isInvited("9")).toBe(false);
   });
@@ -446,7 +448,7 @@ describe("一起听渲染端服务", () => {
     emit?.({
       type: "session",
       session: { roomId: "R2", userId: "7", generation: 2 },
-      room: { roomId: "R2", creatorId: "7", roomType: "FRIEND", members: [] },
+      room: { roomId: "R2", creatorId: "7", chatRoomId: "", roomType: "FRIEND", members: [] },
     });
     expect(store.session?.roomId).toBe("R2");
 
@@ -455,7 +457,7 @@ describe("一起听渲染端服务", () => {
 
     emit?.({
       type: "room",
-      room: { roomId: "R1", creatorId: "9", roomType: "FRIEND", members: [] },
+      room: { roomId: "R1", creatorId: "9", chatRoomId: "", roomType: "FRIEND", members: [] },
       generation: 1,
     });
     expect(store.room?.roomId).toBe("R2");

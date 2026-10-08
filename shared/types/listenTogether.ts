@@ -7,6 +7,8 @@ export interface TogetherMember {
 export interface TogetherRoom {
   roomId: string;
   creatorId: string;
+  /** 该房间对应的云信聊天室 ID。实时同步走它，房间本身的状态仍由服务端接口提供 */
+  chatRoomId: string;
   /** FRIEND=双人，MATCH_SONG=匹配房，MULTI_* =多人。服务端在有人加入时会自动把 FRIEND 转成多人 */
   roomType: string;
   members: TogetherMember[];

@@ -1,10 +1,10 @@
 import { callNetease } from "@main/apis/netease";
+import { connectNimRoom, disconnectNimRoom, setNimListener } from "@main/services/nim/realtime";
 import { neteaseLog } from "@main/utils/logger";
 import { fetchWithProxy } from "@main/utils/proxy";
 import {
   ADVANCE_HANDOVER_MS,
   HEARTBEAT_TICKS,
-  SNAPSHOT_POLL_TICKS,
   STATUS_TICKS,
   SYNC_INTERVAL_MS,
   baselineOf,
@@ -35,6 +35,9 @@ import type {
 
 // 采纳回声的最长存活 tick 数。必须覆盖渲染端加载房间曲目的耗时：
 // 加载完成前它不会跟随本地状态，回声若先过期，随后的跟随会被当成用户切歌上报
+/** 实时通道断开后的重连间隔 */
+const REALTIME_RETRY_MS = 5000;
+
 const ADOPT_CONFIRM_TICKS = 15;
 
 const FRIENDS_LIMIT = 100;
@@ -91,6 +94,7 @@ let notInRoomStreak = 0;
 let knownMemberIds: string[] = [];
 let previousSongId = "";
 let rateLimitUntil = 0;
+let realtimeRetry: ReturnType<typeof setTimeout> | null = null;
 let rateLimitFailures = 0;
 // 房间操作代号：后发的 create/join/restore 使先发操作的最终提交失效
 let roomOperation = 0;
@@ -588,7 +592,7 @@ const guarded = async (work: () => Promise<void>, expected?: number): Promise<bo
   }
 };
 
-const tick = async (): Promise<void> => {
+const tick = async (realtime = false): Promise<void> => {
   if (!session || ticking || !hasLocalState) return;
   if (Date.now() < rateLimitUntil) return;
   ticking = true;
@@ -835,8 +839,10 @@ const tick = async (): Promise<void> => {
       tickCount += 1;
       return;
     }
-    // 拉取按更低频率进行：每秒一次是每秒一个请求，风控风险明显
-    if (tickCount % SNAPSHOT_POLL_TICKS === 0) {
+    // 快照只在实时事件到达时拉（realtime=true，见 refreshFromRealtime）：
+    // 房间变化由云信推送驱动，定时 tick 只负责心跳与本地差异上报
+    if (realtime) {
+      neteaseLog.warn("DBG tick: 到达快照段");
       healthy =
         (await guarded(async () => {
           await applySnapshot(false);
@@ -874,6 +880,9 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   const ended = generation;
   if (timer) clearInterval(timer);
   timer = null;
+  if (realtimeRetry) clearTimeout(realtimeRetry);
+  realtimeRetry = null;
+  disconnectNimRoom();
   generation += 1;
   session = null;
   room = null;
@@ -900,6 +909,66 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   rateLimitUntil = 0;
   rateLimitFailures = 0;
   for (const listener of endListeners) listener(reason, ended);
+};
+
+/** 取云信凭据：实时通道靠它登录聊天室 */
+const fetchImCredentials = async (): Promise<{ accId: string; token: string }> => {
+  const response = await callNetease("middle_im_token_get", { bizName: "music_listenTogether" });
+  const data = obj(obj((response as { body?: unknown })?.body)?.data);
+  const accId = str(data?.accId);
+  const token = str(data?.token);
+  if (!accId || !token) throw new Error("未取到云信凭据");
+  return { accId, token };
+};
+
+/**
+ * 接实时通道，失败就重连。
+ *
+ * 房间事件（对端播放命令、队列变更、成员进出）全部由云信推送，接上后
+ * 收到事件立刻拉一次权威状态即可，不必再按秒轮询
+ */
+const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise<void> => {
+  try {
+    const credentials = await fetchImCredentials();
+    if (generation !== issuing || !session) return;
+    await connectNimRoom({
+      chatRoomId: nextRoom.chatRoomId,
+      accId: credentials.accId,
+      token: credentials.token,
+    });
+    if (generation !== issuing) return;
+    setNimListener((event) => {
+      if (!session || generation !== issuing) return;
+      // 服务端会把事件也推给发送者本人：自己的操作本地已生效，拉了只会制造回声
+      if (
+        event.kind === "member"
+          ? event.userId === session.userId
+          : event.senderId === session.userId
+      ) {
+        return;
+      }
+      void refreshFromRealtime(issuing);
+    });
+  } catch (error) {
+    if (generation !== issuing) return;
+    neteaseLog.warn(`一起听实时通道连接失败，稍后重连：${str(obj(error)?.message)}`);
+    if (realtimeRetry) clearTimeout(realtimeRetry);
+    realtimeRetry = setTimeout(() => {
+      realtimeRetry = null;
+      if (session && generation === issuing) void connectRealtime(nextRoom, issuing);
+    }, REALTIME_RETRY_MS);
+  }
+};
+
+/**
+ * 实时事件到达后立刻同步一轮。
+ *
+ * 直接走 tick：首次采纳（adopt）、首帧上报（report）这些状态机分支都在里面，
+ * 绕开它单独拉快照会漏掉 pendingInitial 的处理；ticking 锁同样由 tick 持有
+ */
+const refreshFromRealtime = (issuing: number): Promise<void> => {
+  if (!session || generation !== issuing || ticking) return Promise.resolve();
+  return tick(true);
 };
 
 const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): TogetherRoom => {
@@ -936,7 +1005,14 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   playlistVersion = 0;
   leaderId = nextMode === "create" ? userId : pickLeader(nextRoom, userId);
   pendingInitial = nextMode === "create" ? "report" : "adopt";
+  // 不再定时轮询：房间事件由云信推送，收到就拉一次状态。
+  // 只留一个低频心跳维持在线与房间存活（服务端靠它算房间是否还在）
   timer = setInterval(() => void tick(), SYNC_INTERVAL_MS);
+  const issuing = session.generation;
+  // 加入/建房后先拉一次权威状态：旧实现靠首轮轮询完成 adopt，
+  // 轮询移除后必须在进房时显式拉，否则加入者看不到房主现有队列
+  void refreshFromRealtime(issuing);
+  void connectRealtime(nextRoom, issuing);
   return nextRoom;
 };
 
@@ -987,7 +1063,7 @@ export const join = async (
   );
   ensureCurrent();
   return enterRoom(
-    accepted ?? { roomId, creatorId: "", roomType: "", members: [] },
+    accepted ?? { roomId, creatorId: "", chatRoomId: "", roomType: "", members: [] },
     userId,
     "join",
   );

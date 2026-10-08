@@ -1,9 +1,5 @@
 import { callNetease } from "@main/apis/netease";
-import {
-  connectNimRoom,
-  disconnectNimRoom,
-  setNimPlaybackListener,
-} from "@main/services/nim/realtime";
+import { connectNimRoom, disconnectNimRoom, setNimListener } from "@main/services/nim/realtime";
 import { setMultiRoomActive } from "@main/services/togetherPresence";
 import { neteaseLog } from "@main/utils/logger";
 import { list, multiRoomFromBody, obj, str, toRoomSong } from "@main/utils/togetherParse";
@@ -19,6 +15,9 @@ import type {
 export const MULTI_HEARTBEAT_MS = 8000;
 
 const ROOM_GONE_CODE = 488;
+
+/** 实时通道断开后的重连间隔 */
+const REALTIME_RETRY_MS = 5000;
 
 /**
  * 取易盾风控令牌。
@@ -60,6 +59,7 @@ let session: TogetherMultiSession | null = null;
 let room: TogetherMultiRoom | null = null;
 let generation = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
+let realtimeRetry: ReturnType<typeof setTimeout> | null = null;
 let ticking = false;
 /** 心跳在途期间收到的刷新请求，在当前这轮结束后补做一次 */
 let refreshPending = false;
@@ -109,6 +109,8 @@ const stop = (reason: TogetherMultiEndReason): void => {
   setMultiRoomActive(false);
   if (timer) clearInterval(timer);
   timer = null;
+  if (realtimeRetry) clearTimeout(realtimeRetry);
+  realtimeRetry = null;
   disconnectNimRoom();
   endListener?.(reason, ended.generation);
 };
@@ -164,38 +166,57 @@ const enterMultiRoom = (next: TogetherMultiRoom, userId: string): TogetherMultiR
   session = { roomId: next.roomId, userId, generation: issuing };
   publish(next, issuing);
   startMultiTick();
-  void openRealtime(next, issuing);
+  void connectRealtime(next, issuing);
   return next;
 };
 
 /**
- * 尝试把房间的实时通道接起来。
+ * 接实时通道，失败就重连。
  *
- * 播放指令走云信长连接，接上后能立即收到对端操作；接不上就继续用心跳轮询，
- * 所以这里任何失败都只记日志，不改房间状态
+ * 长连接是同步的唯一来源，一旦断开对端操作就完全收不到，所以要一直重试到
+ * 接上为止；重试只在会话仍然有效时进行，退出房间时随会话一起取消
+ */
+const connectRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<void> => {
+  try {
+    await openRealtime(room, issuing);
+  } catch (error) {
+    if (!session || generation !== issuing) return;
+    neteaseLog.warn(`[一起听] 实时通道连接失败，稍后重连：${str(obj(error)?.message)}`);
+    if (realtimeRetry) clearTimeout(realtimeRetry);
+    realtimeRetry = setTimeout(() => {
+      realtimeRetry = null;
+      if (session && generation === issuing) void connectRealtime(room, issuing);
+    }, REALTIME_RETRY_MS);
+  }
+};
+
+/**
+ * 接上房间的实时通道。
+ *
+ * 对端操作会由云信推送过来，收到后立刻刷一次心跳拿权威状态，
+ * 不必等下一个心跳周期，切歌/暂停的延迟因此从数秒降到几乎无感
  */
 const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<void> => {
-  try {
-    const credentials = await fetchImCredentials();
-    if (!credentials || generation !== issuing || !session) return;
-    await connectNimRoom({
-      roomId: room.roomId,
-      chatRoomId: room.chatRoomId,
-      accId: credentials.accId,
-      token: credentials.token,
-    });
-    if (generation !== issuing) return;
-    // 对端操作立刻到了：直接刷新一次心跳拿到权威队列与播放态，
-    // 不必等下一个心跳周期，这样切歌/暂停的延迟从数秒降到几乎无感
-    setNimPlaybackListener((event) => {
-      if (!session || generation !== issuing) return;
-      if (event.senderId && event.senderId === session.userId) return;
-      void refreshMultiRoom();
-    });
-    neteaseLog.info("[一起听] 实时通道已连接");
-  } catch (error) {
-    neteaseLog.info(`[一起听] 实时通道不可用，继续用轮询：${str(obj(error)?.message)}`);
-  }
+  const credentials = await fetchImCredentials();
+  if (!credentials) throw new Error("未取到云信凭据");
+  if (generation !== issuing || !session) return;
+  await connectNimRoom({
+    chatRoomId: room.chatRoomId,
+    accId: credentials.accId,
+    token: credentials.token,
+  });
+  if (generation !== issuing) return;
+  setNimListener((event) => {
+    if (!session || generation !== issuing) return;
+    // 服务端会把事件也推给发送者本人：自己的操作本地已生效，拉了只会制造回声
+    if (
+      event.kind === "member" ? event.userId === session.userId : event.senderId === session.userId
+    ) {
+      return;
+    }
+    void refreshMultiRoom();
+  });
+  neteaseLog.info("[一起听] 实时通道已连接");
 };
 
 /** 取云信凭据：失败返回 null，调用方按"没有实时通道"处理 */

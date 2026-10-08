@@ -1,9 +1,15 @@
 /**
  * 一起听实时通道（云信聊天室）。
  *
- * 官方客户端的播放指令走云信长连接推送，HTTP 只有房间生命周期与低频校准。
- * 这里接入长连接，把聊天室里的播放事件解出来交给上层；连不上时由调用方
- * 回落 HTTP 轮询，所以本模块的所有失败都只是 throw，不改变房间状态。
+ * 官方客户端把房间事件全部走云信长连接推送，实测覆盖：
+ *   type=20000  播放命令（PLAY / PAUSE / GOTO / PROGRESS / PLAYMODE_CHANGE …）
+ *   type=20001  播放列表变更（只带 version，队列内容要再拉一次）
+ *   type=20010  一起听时长统计
+ *   msg_type_=5 成员进入 / 退出（msg_attach_.id：301 进入、302 退出）
+ *
+ * 消息外层是 NIM 的 `msg_attach_` JSON 字符串，形如
+ *   { msgType: 120, content: { type: 20000, bizType: 3, content: { …命令… } } }
+ * 所以判断事件类型要看 `content.type`，不是 outer 的字段名。
  *
  * 两个必须遵守的实测约束：
  * - `ChatRoom` 实例全局只初始化一次；重复 init 会破坏原生运行时
@@ -12,17 +18,40 @@
 
 import { requestNimTicket } from "./ticket";
 
-/** 聊天室里的播放事件（event_type=20000），字段与官方命令一一对应 */
+/** 播放命令事件（type=20000） */
 export interface NimPlaybackEvent {
+  kind: "playback";
+  /** 发送者 uid。服务端会把命令也推给发送者本人，用它过滤回声 */
+  senderId: string;
   commandType: string;
   targetSongId: string;
   formerSongId: string;
   progressMs: number;
-  playing: boolean;
+  playStatus: string;
   serverSeq: number;
   clientSeq: number;
-  senderId: string;
+  /** 服务端准备好的可读提示，如「对方刚刚切歌了」 */
+  hint: string;
 }
+
+/** 播放列表变更（type=20001）：只带版本号，队列内容需重新拉取 */
+export interface NimQueueEvent {
+  kind: "queue";
+  senderId: string;
+  serverSeq: number;
+  /** 上报者的版本号；用它和本地已知版本比对可避免无意义拉取 */
+  version: Array<{ userId: string; version: number }>;
+  hint: string;
+}
+
+/** 成员进入 / 退出（msg_type_=5） */
+export interface NimMemberEvent {
+  kind: "member";
+  userId: string;
+  joined: boolean;
+}
+
+export type NimRoomEvent = NimPlaybackEvent | NimQueueEvent | NimMemberEvent;
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -44,6 +73,11 @@ interface NodeNimModule {
 }
 
 const ENTER_TIMEOUT_MS = 15_000;
+const EVENT_PLAYBACK = 20_000;
+const EVENT_QUEUE = 20_001;
+const MSG_TYPE_NOTIFICATION = 5;
+const NOTIFY_ENTER = 301;
+const NOTIFY_EXIT = 302;
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -53,68 +87,107 @@ const readString = (value: unknown): string =>
 
 const readNumber = (value: unknown): number => (Number.isFinite(Number(value)) ? Number(value) : 0);
 
-/** 消息体可能是 JSON 字符串、数组或已解析对象，逐层找 event_type=20000 */
-const findPlaybackEnvelope = (value: unknown, depth = 0): Record<string, unknown> | null => {
-  if (depth > 7) return null;
-  let parsed: unknown = value;
+/** msg_attach_ 是 JSON 字符串，偶尔可能已被 SDK 解析成对象 */
+const parseAttach = (value: unknown): Record<string, unknown> => {
   if (typeof value === "string") {
     try {
-      parsed = JSON.parse(value);
+      return asRecord(JSON.parse(value));
     } catch {
-      return null;
+      return {};
     }
   }
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      const found = findPlaybackEnvelope(item, depth + 1);
-      if (found) return found;
-    }
-    return null;
+  return asRecord(value);
+};
+
+const parseVersion = (value: unknown): Array<{ userId: string; version: number }> =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => {
+      const entry = asRecord(item);
+      return { userId: readString(entry.userId), version: readNumber(entry.version) };
+    })
+    .filter((entry) => entry.userId);
+
+/**
+ * 取服务端配好的可读提示。
+ *
+ * `operateMsg` 是「谁看到什么」的映射（键是观看者 uid），同一条消息对每个
+ * 成员给的文案一样，所以取第一个非发送者的条目即可
+ */
+const pickHint = (operateMsg: unknown, senderId: string): string => {
+  const map = asRecord(operateMsg);
+  for (const [uid, text] of Object.entries(map)) {
+    if (uid !== senderId) return readString(text);
   }
-  const object = asRecord(parsed);
-  if (Object.keys(object).length === 0) return null;
-  if (readNumber(object.event_type) === 20_000) return object;
-  for (const nested of Object.values(object)) {
-    const found = findPlaybackEnvelope(nested, depth + 1);
-    if (found) return found;
+  return "";
+};
+
+/** 从通知里取被操作用户的 uid：进入/退出的 target 就是那个人 */
+const notifyUserId = (data: Record<string, unknown>): string => {
+  const target = data.target;
+  if (Array.isArray(target) && target.length) return readString(target[0]);
+  return readString(data.operator);
+};
+
+/**
+ * 解析一条聊天室消息。
+ *
+ * 非房间事件（普通聊天文本、表情等）返回 null，由调用方忽略
+ */
+export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
+  const message = asRecord(raw);
+  const msgType = readNumber(message.msg_type_);
+  if (msgType === MSG_TYPE_NOTIFICATION) {
+    // 通知的 id 在外层，data 里才是被操作用户
+    const attach = parseAttach(message.msg_attach_);
+    const notifyId = readNumber(attach.id);
+    if (notifyId !== NOTIFY_ENTER && notifyId !== NOTIFY_EXIT) return null;
+    return {
+      kind: "member",
+      userId: notifyUserId(asRecord(attach.data)),
+      joined: notifyId === NOTIFY_ENTER,
+    };
   }
+
+  const attach = parseAttach(message.msg_attach_);
+  const content = asRecord(attach.content);
+  const eventType = readNumber(content.type);
+  const body = asRecord(content.content);
+  const senderId = readString(message.from_id_);
+  const hint = pickHint(body.operateMsg, senderId);
+
+  if (eventType === EVENT_PLAYBACK) {
+    const commandType = readString(body.commandType).toUpperCase();
+    if (!commandType) return null;
+    return {
+      kind: "playback",
+      senderId: readString(body.sendUid) || senderId,
+      commandType,
+      targetSongId: readString(body.targetSongId),
+      formerSongId: readString(body.formerSongId),
+      progressMs: Math.max(0, readNumber(body.progress)),
+      playStatus: readString(body.playStatus).toUpperCase(),
+      serverSeq: readNumber(body.serverSeq),
+      clientSeq: readNumber(body.clientSeq),
+      hint,
+    };
+  }
+
+  if (eventType === EVENT_QUEUE) {
+    return {
+      kind: "queue",
+      senderId: readString(body.sendUid) || senderId,
+      serverSeq: readNumber(body.serverSeq),
+      version: parseVersion(body.version),
+      hint,
+    };
+  }
+
   return null;
-};
-
-/** 从 envelope 里取出命令体：可能直接是 command，也可能在 config/content/data 里 */
-const extractCommand = (envelope: Record<string, unknown>): Record<string, unknown> => {
-  const direct = asRecord(envelope.command);
-  if (Object.keys(direct).length > 0) return direct;
-  for (const key of ["config", "content", "data", "commandInfo"]) {
-    const nested = asRecord(envelope[key]);
-    if (Object.keys(nested).length > 0) return nested;
-  }
-  return envelope;
-};
-
-export const decodeNimPlayback = (raw: unknown): NimPlaybackEvent | null => {
-  const envelope = findPlaybackEnvelope(raw);
-  if (!envelope) return null;
-  const command = extractCommand(envelope);
-  const commandType = readString(command.commandType).toUpperCase();
-  const targetSongId = readString(command.targetSongId);
-  if (!commandType || !targetSongId) return null;
-  const playStatus = readString(command.playStatus).toUpperCase();
-  return {
-    commandType,
-    targetSongId,
-    formerSongId: readString(command.formerSongId),
-    progressMs: Math.max(0, readNumber(command.progress)),
-    playing: playStatus === "PLAY",
-    serverSeq: readNumber(command.serverSeq) || readNumber(envelope.serverSeq),
-    clientSeq: readNumber(command.clientSeq),
-    senderId: readString(asRecord(raw).from_id_),
-  };
 };
 
 let chatroom: ChatRoomLike | null = null;
 let currentRoom = 0;
-let listener: ((event: NimPlaybackEvent) => void) | null = null;
+let listener: ((event: NimRoomEvent) => void) | null = null;
 let unavailable = false;
 
 const loadRuntime = async (): Promise<NodeNimModule> => {
@@ -141,32 +214,29 @@ const ensureChatroom = async (): Promise<ChatRoomLike> => {
   instance.on("receiveMsg", (...args: unknown[]) => {
     const room = readNumber(args[0]);
     if (currentRoom && room !== currentRoom) return;
-    const event = decodeNimPlayback(args[1]);
+    const event = decodeNimMessage(args[1]);
     if (event) listener?.(event);
   });
   chatroom = instance;
   return instance;
 };
 
-export const setNimPlaybackListener = (next: ((event: NimPlaybackEvent) => void) | null): void => {
+export const setNimListener = (next: ((event: NimRoomEvent) => void) | null): void => {
   listener = next;
 };
 
 export const isNimAvailable = (): boolean => !unavailable;
 
 /**
- * 进入某个多人房的聊天室。
+ * 进入房间的聊天室。
  *
- * 失败一律向外抛，由调用方决定是否回落 HTTP —— 本模块不持有房间会话，
- * 只负责把长连接接起来并把事件转出去
+ * 失败一律向外抛：本模块不持有房间会话，只负责把长连接接起来并转出事件
  */
 export const connectNimRoom = async (options: {
-  roomId: string;
   chatRoomId: string;
   accId: string;
   token: string;
   nickname?: string;
-  avatar?: string;
 }): Promise<void> => {
   const roomNumber = Number(options.chatRoomId);
   if (!Number.isFinite(roomNumber) || roomNumber <= 0) throw new Error("聊天室 ID 非法");
