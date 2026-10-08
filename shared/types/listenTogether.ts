@@ -176,7 +176,7 @@ export interface TogetherApi {
   getSession: () => Promise<TogetherSession | null>;
   create: (userId: string) => Promise<TogetherRoom>;
   join: (roomId: string, inviterId: string, userId: string) => Promise<TogetherRoom>;
-  restore: (userId: string) => Promise<TogetherRoom | null>;
+  restore: (userId: string, entering?: boolean) => Promise<TogetherRoom | null>;
   resolveLink: (url: string) => Promise<string>;
   pendingInvites: () => Promise<TogetherInviteCard[]>;
   friends: (userId: string) => Promise<TogetherFriend[]>;

@@ -447,7 +447,8 @@ const api = {
     create: (userId: string) => ipcRenderer.invoke("together:create", userId),
     join: (roomId: string, inviterId: string, userId: string) =>
       ipcRenderer.invoke("together:join", roomId, inviterId, userId),
-    restore: (userId: string) => ipcRenderer.invoke("together:restore", userId),
+    restore: (userId: string, entering?: boolean) =>
+      ipcRenderer.invoke("together:restore", userId, entering === true),
     resolveLink: (url: string) => ipcRenderer.invoke("together:resolveLink", url),
     pendingInvites: () => ipcRenderer.invoke("together:pendingInvites"),
     friends: (userId: string) => ipcRenderer.invoke("together:friends", userId),

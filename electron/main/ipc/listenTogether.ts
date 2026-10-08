@@ -48,8 +48,8 @@ export const registerTogetherIpc = (): void => {
     together.rejectInvitation(roomId),
   );
 
-  ipcMain.handle("together:restore", async (_event, userId: string) => {
-    const room = await together.restore(userId);
+  ipcMain.handle("together:restore", async (_event, userId: string, entering?: boolean) => {
+    const room = await together.restore(userId, entering === true);
     const session = together.getSession();
     if (room && session) send({ type: "session", session, room });
     return room;

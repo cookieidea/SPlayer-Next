@@ -180,8 +180,9 @@ const pollMatch = async (userId: string): Promise<void> => {
       return;
     }
     // 必须真的去问服务端：getSession 读的是主进程内存里的会话，
-    // 而它只有渲染端调过 restore 才会有值——匹配成功也永远不会被发现
-    const room = await window.api.together.restore(userId);
+    // 而它只有渲染端调过 restore 才会有值——匹配成功也永远不会被发现。
+    // entering=true：这是"刚匹配进来"而不是"重启恢复"，要跟随房间的播放态与进度
+    const room = await window.api.together.restore(userId, true);
     if (!room) return;
     // 匹配到就必须通知服务端结束匹配，否则账号会一直挂在匹配队列里
     finishMatch();

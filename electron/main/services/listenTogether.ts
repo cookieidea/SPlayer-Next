@@ -928,7 +928,9 @@ export const join = async (
   const current = statusFromBody(await callNetease("listen_together_status", {}));
   ensureCurrent();
   if (current.inRoom && current.room?.roomId === roomId) {
-    return enterRoom(current.room, userId, "restore");
+    // 这是"用户刚进来"（点接受邀请或匹配成功），不是重启后的恢复：
+    // 标成 restore 会走"不抢播放"的分支，导致进来就停在暂停、进度也不同步
+    return enterRoom(current.room, userId, "join");
   }
   const check = roomCheckFromBody(await callNetease("listen_together_room_check", { roomId }));
   ensureCurrent();
@@ -1030,13 +1032,20 @@ export const abandon = (): void => {
   endSession("logout");
 };
 
-export const restore = async (userId: string): Promise<TogetherRoom | null> => {
+/**
+ * 恢复一起听会话
+ * @param userId - 当前账号
+ * @param entering - true 表示"用户刚匹配进房"而不是"重启后恢复"。
+ *   前者要跟随房间的播放态与进度，后者保持本地原状态、不抢播放，
+ *   两者共用这一条查询路径但语义相反
+ */
+export const restore = async (userId: string, entering = false): Promise<TogetherRoom | null> => {
   if (session) return room;
   const operation = ++roomOperation;
   const status = statusFromBody(await callNetease("listen_together_status", {}));
   if (operation !== roomOperation) return null;
   if (!status.inRoom || !status.room) return null;
-  const restored = enterRoom(status.room, userId, "restore");
+  const restored = enterRoom(status.room, userId, entering ? "join" : "restore");
   // status/get 只给房间与成员，当前歌曲/模式/队列要等快照。
   // 不立即拉一次的话，恢复后要等一个快照周期（最长 4 秒）才开始跟随
   void guarded(async () => {
