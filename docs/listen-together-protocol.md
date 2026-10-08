@@ -186,7 +186,108 @@ listening/privacy/update { privacyKey: "listening_entrance", value: 0|1 }
 7. **头像挂件**：`avatar/pendant/*`
 8. **VIP 礼物**：`vip/gift/report`、`ask/for/vip`
 
-## 四、已知不确定项（不要当成结论）
+## 四、协议分家与枚举值（逆向补充）
+
+### 双人与多人是两套完全独立的协议
+
+从字节码里提取全部 `listen/together/...` 路径后比对：
+
+```
+双人族   55 个端点（status / heartbeat / sync / song/match / room / invite 等）
+多人族   14 个端点（multi/* 前缀）
+交集      0 个
+```
+
+**两族不共用任何端点。** 房型升级（双人 → 多人）时必须整体切换协议，
+这也是 `switchToMultiProtocol` 存在的唯一原因；沿用旧协议会让队列被反复覆盖。
+
+### 多人族完整参数（14 个端点）
+
+| 端点                              | 参数                                                                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `multi/room/create`               | `type`, `songId`, `from`, `playedTime`, `artistId`, `playlistIds`, `groupIds`, `inviteUids`, `nextSongIds`, `checkToken`, `autoJoinUids` |
+| `multi/invite`                    | `roomId`, `inviteUids`, `groupIds`                                                                                                       |
+| `multi/match`                     | `songId`, `checkToken`                                                                                                                   |
+| `multi/match/ack`                 | `roomId`, `agree`, `checkToken`, `inviterUid`                                                                                            |
+| `multi/match/cancel`              | 无参                                                                                                                                     |
+| `multi/match/exit`                | `roomId`, `exitType`                                                                                                                     |
+| `multi/match/heartbeat`           | `roomId`                                                                                                                                 |
+| `multi/match/status/get`          | 无参                                                                                                                                     |
+| `multi/match/song/operate`        | `roomId`, `songId`, `bizId`, `operate`, `checkToken`                                                                                     |
+| `multi/special/song/operate`      | 同 `multi/match/song/operate`                                                                                                            |
+| `multi/match/msg/history`         | `roomId`                                                                                                                                 |
+| `multi/special/msg/history`       | `roomId`                                                                                                                                 |
+| `multi/match/msg/translate/retry` | `roomId`, `msgId`                                                                                                                        |
+| `multi/start/msg`                 | `roomId`                                                                                                                                 |
+
+### 双人族的补充字段（本次新提取）
+
+| 端点                         | 本次新增的参数                                         |
+| ---------------------------- | ------------------------------------------------------ |
+| `room/create`                | `inviteUid`（此前只记了 `refer`/`extJson`/`robotUid`） |
+| `play/command/report`        | `playPlayListOnlyInWiFI`                               |
+| `sync/list/command/report`   | `clientSeq`（已补进实现）                              |
+| `privilege/get`              | `onMusicStart`, `otherUserId`, `playScene`, `songIds`  |
+| `relation/statistics/get/v2` | `roomUserIds`                                          |
+| `user/gps/report`            | `longitude`, `ssid`, `opened`, `privacy`               |
+
+### `exitType` 的全部取值
+
+```
+NORMAL_END          正常结束
+TIMEOUT             超时（匹配房 60 秒窗口到点即此值，服务端会结束房间）
+KICKED / KICKOUT    被移出
+KICK_MIC            被收回麦克风
+KICK_BY_OTHER_CLIENT / KICK_OUT_BY_CONFLICT_LOGIN   同账号别处登录顶掉
+KICK_OUT_BY_MANAGER 管理员移出
+```
+
+**"匹配到人后过一会自己退了"对应 `TIMEOUT`** —— 这是服务端行为，不是客户端 bug。
+实测匹配窗口：双人 `maxWaitTimeMills=60000`，多人 `maxWaitTimeMills=30000`。
+
+### 官方的房间失效判定（`Lyc0/a0$a.d`）
+
+官方只在心跳响应里读到明确标记时才退房：
+
+```java
+HeartBeatResult r = u0.u(...);
+log("upload heart beat targetSongId ... playStatus ... progress ... playlistVersion");
+if ("ERROR_ROOM_INVALID".equals(r.getType())) { 处理房间失效(); }
+t0.W(...);   // 否则照常重置状态，什么都不做
+```
+
+**正常心跳响应里没有 `type` 字段**（实测：`{code:200, data:{result:true, message:null, timeSpan, time}}`）。
+另一处官方日志明确了处理原则：
+
+```
+"进入播放页检查一起听歌房间失败，暂不清除本地状态，直接返回false"
+```
+
+**即：查询失败 ≠ 房间没了。** 本项目已按此对齐（见 `docs` 之外的服务实现）：
+心跳只在 `type === "ERROR_ROOM_INVALID"` 或 `result === false` 时退房；
+`status/get` 响应缺 `data` 时只记不健康，且"不在房间"要连续两次才认。
+
+### 匹配结果靠推送，但走云信长连
+
+```
+LTMatchSuccessNoticeReceiver   ← "match_success_push"
+  data → matchPlayType / MASKED_REVEAL
+LTMatchResultAckNoticeReceiver ← 匹配确认
+  data.roomInfo.roomId
+```
+
+推送经由**云信 IM**（`yunxin/token/get`），本项目未接 IM SDK，因此用轮询
+（`status/get` 或 `multi/match/status/get`）替代 —— 效果等价，延迟上限一个轮询周期。
+
+### 其他场景字符串
+
+```
+LT_END_ABNORMAL      异常结束
+LT_EXCEPTION_RATIO_SAMPLE  异常采样
+ltType               站内邀请的类型枚举（0 非法，1/2 合法，但不区分房型）
+```
+
+## 五、已知不确定项（不要当成结论）
 
 - `multi/match/ack` 的 `checkToken`/`inviterUid` 是否需要、取什么值
 - `privilege/get` 的生效条件（实测恒 400）
@@ -201,3 +302,9 @@ listening/privacy/update { privacyKey: "listening_entrance", value: 0|1 }
 - `multi/match/song/operate` 的 `checkToken` **可选**，不带也能加歌/删歌
 - `multi/special/song/operate` 与普通版**行为一致**，不是另一套语义
 - `emoticon/get` 的 `scenes` 要 JSON 数组字符串，不是裸值
+- 心跳**正常响应不含 `type` 字段**，官方只在 `ERROR_ROOM_INVALID` 时退房
+- `status/get` 在"匹配进行中"会返回 `inRoom:false, roomInfo:null`（数据完整），
+  所以单次否定不足以判定退房
+- `multi/match/exit` 带不带 `exitType` 响应**完全相同**（都含结果页 `orpheus`）
+- 曲目批次上限在 1000~1200 之间（实测 1000 首正常、1200 首报 400），
+  因此 `QUEUE_FETCH_LIMIT=500` 安全，上千首歌单不会整批失败
