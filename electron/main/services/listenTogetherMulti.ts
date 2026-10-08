@@ -340,7 +340,8 @@ export const startStrangerMatch = async (): Promise<StrangerMatchResult> => {
  *
  * 配对成功后必须回一次 ack 才算真正进房，否则服务端按 ACK 等待超时把人踢出去
  * （常量表里的 MULTI_MATCH_WAIT_ACK_TIMEOUT 就是这条超时）。
- * 官方靠 IM 推送拿到 roomId 后调用，我们没接 IM，改用轮询 start 接口带回的 existedRoomId
+ * 官方靠 IM 点对点推送拿到 roomId；匹配等待发生在进房前、聊天室尚未连上，
+ * 所以我们沿用轮询 start 接口带回的 existedRoomId，进房后同步即切 IM 推送
  */
 /** 多人配对确认：同上，配对成功后必须回一次 ack 才算进房 */
 export const ackMultiMatch = async (roomId: string): Promise<void> => {
