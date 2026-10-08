@@ -65,7 +65,14 @@ export interface TogetherMultiApi {
   getStrangerVisible: () => Promise<boolean>;
   setStrangerVisible: (visible: boolean) => Promise<void>;
   createRoom: (songId: string, userId: string) => Promise<TogetherMultiRoom>;
-  startMatch: () => Promise<{ maxWaitMs: number; roomId: string; roomType: string }>;
+  startMatch: () => Promise<{
+    maxWaitMs: number;
+    roomId: string;
+    roomType: string;
+    waiting: boolean;
+  }>;
+  ackMatch: (roomId: string) => Promise<void>;
+  ackMultiMatch: (roomId: string) => Promise<void>;
   cancelMatch: () => Promise<void>;
   startMultiMatch: (songId: string) => Promise<{
     matching: boolean;

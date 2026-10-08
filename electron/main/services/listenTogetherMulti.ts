@@ -1,5 +1,6 @@
 import { callNetease } from "@main/apis/netease";
 import { setMultiRoomActive } from "@main/services/togetherPresence";
+import { neteaseLog } from "@main/utils/logger";
 import { list, multiRoomFromBody, obj, str, toRoomSong } from "@main/utils/togetherParse";
 import type {
   TogetherMultiEndReason,
@@ -186,6 +187,8 @@ export interface StrangerMatchResult {
   /** 已匹配到房间时直接给出：实测重复调用会返回 existedRoomId，无需推送通道 */
   roomId: string;
   roomType: string;
+  /** 还在队列里等（重复查询时的正常状态，不是失败） */
+  waiting: boolean;
 }
 
 /**
@@ -228,6 +231,8 @@ export const createMultiRoom = async (
  * 并带上 existedRoomId，因此轮询它即可代替官方推送
  */
 export const startStrangerMatch = async (): Promise<StrangerMatchResult> => {
+  // 匹配没有界面之外的反馈，出问题时只能靠日志定位，这里记下服务端的原始答复
+  neteaseLog.info("[一起听] 发起双人匹配");
   const response = await callNetease("listen_together_song_match_start", {
     matchType: "match_start",
   });
@@ -235,10 +240,49 @@ export const startStrangerMatch = async (): Promise<StrangerMatchResult> => {
   const data = obj(body.data) ?? {};
   const roomId = str(data.existedRoomId);
   const roomType = str(data.existedRoomType);
-  if (!roomId && data.success !== true) {
-    throw new Error(str(data.failedMsg) || str(data.failedType) || "开始匹配失败");
+  const failedType = str(data.failedType);
+  // ALREADY_IN_MATCH 是"已在匹配队列里"，属于重复查询的正常状态：
+  // 抛错会让轮询直接中断，界面上还会弹一个看不懂的错误
+  if (!roomId && failedType === "ALREADY_IN_MATCH") {
+    return { maxWaitMs: Number(data.maxWaitTimeMills) || 0, roomId: "", roomType, waiting: true };
   }
-  return { maxWaitMs: Number(data.maxWaitTimeMills) || 0, roomId, roomType };
+  if (!roomId && data.success !== true) {
+    throw new Error(str(data.failedMsg) || failedType || "开始匹配失败");
+  }
+  return {
+    maxWaitMs: Number(data.maxWaitTimeMills) || 0,
+    roomId,
+    roomType,
+    waiting: !roomId,
+  };
+};
+
+/**
+ * 确认配对结果。
+ *
+ * 配对成功后必须回一次 ack 才算真正进房，否则服务端按 ACK 等待超时把人踢出去
+ * （常量表里的 MULTI_MATCH_WAIT_ACK_TIMEOUT 就是这条超时）。
+ * 官方靠 IM 推送拿到 roomId 后调用，我们没接 IM，改用轮询 start 接口带回的 existedRoomId
+ */
+/** 多人配对确认：同上，配对成功后必须回一次 ack 才算进房 */
+export const ackMultiMatch = async (roomId: string): Promise<void> => {
+  if (!roomId) return;
+  const response = await callNetease("listen_together_multi_ack", {
+    roomId,
+    agree: true,
+  });
+  const body = obj(obj(response)?.body) ?? {};
+  neteaseLog.info(`[一起听] 已确认多人配对 room=${roomId.slice(0, 18)} code=${body.code}`);
+};
+
+export const ackStrangerMatch = async (roomId: string): Promise<void> => {
+  if (!roomId) return;
+  const response = await callNetease("listen_together_song_match_ack", {
+    roomId,
+    agree: true,
+  });
+  const body = obj(obj(response)?.body) ?? {};
+  neteaseLog.info(`[一起听] 已确认配对 room=${roomId.slice(0, 18)} code=${body.code}`);
 };
 
 export const cancelStrangerMatch = async (): Promise<void> => {
@@ -256,6 +300,7 @@ export interface MultiMatchState {
  * 与双人匹配（song/match/start 的 matchType）是两套
  */
 export const startMultiMatch = async (songId: string): Promise<MultiMatchState> => {
+  neteaseLog.info(`[一起听] 发起多人匹配 song=${songId || "-"}`);
   const response = await callNetease("listen_together_multi_match", {
     songId: songId || "0",
     checkToken: "null",

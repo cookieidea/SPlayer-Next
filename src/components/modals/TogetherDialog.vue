@@ -107,7 +107,12 @@ const loadMultiFriends = async (): Promise<void> => {
 };
 
 const onInviteMulti = async (friend: TogetherFriend): Promise<void> => {
-  await togetherMulti.inviteMultiFriends([friend.userId]);
+  pending.value = `invite:${friend.userId}`;
+  try {
+    await togetherMulti.inviteMultiFriends([friend.userId]);
+  } finally {
+    pending.value = "";
+  }
 };
 
 /** 复用曲目菜单那套判定：只有"自己在待播窗口里的歌"才给移除按钮 */
@@ -163,6 +168,7 @@ const onCopyMultiLink = (): void => {
 };
 
 const onLeaveMulti = async (): Promise<void> => {
+  pending.value = "leave";
   // 退出期间冻结房间信息：store 被清空后视图会翻到加入界面，淡出还没结束就"变脸"
   frozenMulti.value = multiStore.room;
   frozenQueueTracks.value = multiStore.queueTracks;
@@ -172,6 +178,7 @@ const onLeaveMulti = async (): Promise<void> => {
     await togetherMulti.leaveTogetherMulti();
   } finally {
     leavingMulti.value = false;
+    pending.value = "";
   }
 };
 
@@ -220,7 +227,12 @@ watch(
  */
 const onCreate = async (): Promise<void> => {
   if (needLogin()) return;
-  if (!(await together.createRoom(userId.value))) return;
+  pending.value = "create";
+  try {
+    if (!(await together.createRoom(userId.value))) return;
+  } finally {
+    pending.value = "";
+  }
   if (pickedFriends.value.length > 0) {
     const friend = createFriends.value.find((item) => item.userId === pickedFriends.value[0]);
     if (friend) await together.inviteFriend(friend);
@@ -232,7 +244,12 @@ const onCreate = async (): Promise<void> => {
 /** 建多人房并邀请已选好友。需要当前正在播放一首歌作为起播曲 */
 const onCreateMulti = async (): Promise<void> => {
   if (needLogin()) return;
-  if (!(await togetherMulti.createMultiRoom(userId.value))) return;
+  pending.value = "createMulti";
+  try {
+    if (!(await togetherMulti.createMultiRoom(userId.value))) return;
+  } finally {
+    pending.value = "";
+  }
   if (pickedFriends.value.length > 0) {
     await togetherMulti.inviteMultiFriends(pickedFriends.value);
   }
@@ -246,6 +263,16 @@ const onJoin = async (): Promise<void> => {
     toast.warning(t("player.together.needLogin"));
     return;
   }
+  pending.value = "join";
+  try {
+    await runJoin();
+  } finally {
+    pending.value = "";
+  }
+};
+
+/** 加入的实际流程：按链接形态分流到双人或多人的协议 */
+const runJoin = async (): Promise<void> => {
   const value = invitationInput.value.trim();
   if (!value) return;
   // 多人房分享链接与双人共用这一个输入框，靠链接路径分流
@@ -267,11 +294,13 @@ const onLeave = async (): Promise<void> => {
   frozenInvitation.value = invitation.value;
   leavingDual.value = true;
   emit("update:open", false);
+  pending.value = "leave";
   try {
     await together.leaveRoom();
   } finally {
     leavingDual.value = false;
     leaving = false;
+    pending.value = "";
   }
   friends.value = [];
   invites.value = [];
@@ -287,6 +316,15 @@ const loadInbox = async (): Promise<void> => {
 };
 
 const onAccept = async (card: TogetherInviteCard): Promise<void> => {
+  pending.value = `accept:${card.roomId}`;
+  try {
+    await runAccept(card);
+  } finally {
+    pending.value = "";
+  }
+};
+
+const runAccept = async (card: TogetherInviteCard): Promise<void> => {
   // 多人大厅的邀请必须走多人协议：双人的 ack 接口加入不了多人房
   if (card.multi) {
     const link = buildMultiInvitation(card.roomId, card.inviterId);
@@ -299,6 +337,19 @@ const onAccept = async (card: TogetherInviteCard): Promise<void> => {
   roomView.value = true;
 };
 
+/** 每个操作各自的忙状态：共用一个全局标志会让四个按钮一起转圈 */
+const pending = ref<
+  | ""
+  | "create"
+  | "createMulti"
+  | "matchDuo"
+  | "matchMulti"
+  | "join"
+  | `invite:${string}`
+  | "leave"
+  | `accept:${string}`
+>("");
+
 const needLogin = (): boolean => {
   if (userId.value) return false;
   toast.warning(t("player.together.needLogin"));
@@ -308,13 +359,23 @@ const needLogin = (): boolean => {
 const onStartMatch = async (): Promise<void> => {
   if (needLogin()) return;
   // 匹配状态由服务层维护：失败/超时都要由它复位，界面自己记会卡在"匹配中"
-  await togetherMulti.startStrangerMatch(userId.value);
+  pending.value = "matchDuo";
+  try {
+    await togetherMulti.startStrangerMatch(userId.value);
+  } finally {
+    pending.value = "";
+  }
 };
 
 const onStartMultiMatch = async (): Promise<void> => {
   if (needLogin()) return;
   // 多人匹配要带当前播放的歌曲，没有就传 0
-  await togetherMulti.startMultiMatch(String(useStatusStore().currentTrack?.id ?? "0"));
+  pending.value = "matchMulti";
+  try {
+    await togetherMulti.startMultiMatch(String(useStatusStore().currentTrack?.id ?? "0"));
+  } finally {
+    pending.value = "";
+  }
 };
 
 const onCancelMatch = async (): Promise<void> => {
@@ -441,7 +502,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
                   <SButton
                     size="small"
                     variant="secondary"
-                    :disabled="multiStore.busy"
+                    :loading="pending === `invite:${friend.userId}`"
                     @click="onInviteMulti(friend)"
                   >
                     {{ t("player.together.invite") }}
@@ -463,7 +524,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <SButton
             type="error"
             variant="secondary"
-            :loading="multiStore.busy"
+            :loading="pending === 'leave'"
             @click="onLeaveMulti"
           >
             {{ t("player.together.leave") }}
@@ -557,7 +618,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           </div>
         </div>
 
-        <SButton type="error" variant="secondary" :loading="store.busy" @click="onLeave">
+        <SButton type="error" variant="secondary" :loading="pending === 'leave'" @click="onLeave">
           {{ t("player.together.leave") }}
         </SButton>
       </template>
@@ -586,7 +647,12 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
             <SButton size="small" variant="secondary" @click="onRejectInvite(card)">
               {{ t("player.together.reject") }}
             </SButton>
-            <SButton size="small" type="primary" :loading="store.busy" @click="onAccept(card)">
+            <SButton
+              size="small"
+              type="primary"
+              :loading="pending === `accept:${card.roomId}`"
+              @click="onAccept(card)"
+            >
               {{ t("player.together.accept") }}
             </SButton>
           </div>
@@ -632,7 +698,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
             <SButton
               class="flex-1"
               type="primary"
-              :loading="store.busy"
+              :loading="pending === 'create'"
               :disabled="!userId"
               @click="onCreate"
             >
@@ -641,7 +707,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
             <SButton
               class="flex-1"
               variant="secondary"
-              :loading="multiStore.busy"
+              :loading="pending === 'createMulti'"
               :disabled="!userId"
               @click="onCreateMulti"
             >
@@ -654,7 +720,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
                 class="flex-1"
                 type="info"
                 variant="secondary"
-                :loading="multiStore.busy"
+                :loading="pending === 'matchDuo'"
                 :disabled="!userId"
                 @click="onStartMatch"
               >
@@ -664,7 +730,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
                 class="flex-1"
                 type="info"
                 variant="secondary"
-                :loading="multiStore.busy"
+                :loading="pending === 'matchMulti'"
                 :disabled="!userId"
                 @click="onStartMultiMatch"
               >
@@ -686,7 +752,7 @@ const onInvite = async (friend: TogetherFriend): Promise<void> => {
           <SButton
             type="info"
             variant="secondary"
-            :loading="store.busy"
+            :loading="pending === 'join'"
             :disabled="!userId || !invitationInput.trim()"
             @click="onJoin"
           >

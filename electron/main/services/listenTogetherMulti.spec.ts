@@ -9,6 +9,8 @@ import {
   onMultiEnd,
   onMultiError,
   cancelMultiMatch,
+  ackMultiMatch,
+  ackStrangerMatch,
   cancelStrangerMatch,
   createMultiRoom,
   getStrangerVisible,
@@ -28,6 +30,8 @@ import type { TogetherMultiRoom } from "@shared/types/listenTogether";
 const mocks = vi.hoisted(() => ({ call: vi.fn() }));
 
 vi.mock("@main/apis/netease", () => ({ callNetease: mocks.call }));
+// logger 依赖 electron，测试里必须 mock 掉，否则整条模块链会因 BrowserWindow 缺失而加载失败
+vi.mock("@main/utils/logger", () => ({ neteaseLog: { info: vi.fn(), warn: vi.fn() } }));
 
 const multiBody = (
   roomId = "R_1",
@@ -600,5 +604,55 @@ describe("多人一起听", () => {
 
     await expect(pending).rejects.toThrow("已被后续操作取代");
     expect(getMultiSession()).toBeNull();
+  });
+
+  it("已在匹配队列时不抛错，只标记 waiting", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: { code: 200, data: { success: false, failedType: "ALREADY_IN_MATCH" } },
+    });
+
+    // 重复查询时服务端就是回这个；抛错会让轮询中断、界面弹看不懂的错误
+    const result = await startStrangerMatch();
+
+    expect(result.waiting).toBe(true);
+    expect(result.roomId).toBe("");
+  });
+
+  it("配对成功时带回房间号并标记不需等待", async () => {
+    mocks.call.mockResolvedValue({
+      status: 200,
+      body: {
+        code: 200,
+        data: { success: true, existedRoomId: "R_M", existedRoomType: "MATCH_SONG" },
+      },
+    });
+
+    const result = await startStrangerMatch();
+
+    expect(result.roomId).toBe("R_M");
+    expect(result.waiting).toBe(false);
+  });
+
+  it("确认配对走 song/match/ack 并带 agree", async () => {
+    mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+
+    await ackStrangerMatch("R_M");
+
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_song_match_ack", {
+      roomId: "R_M",
+      agree: true,
+    });
+  });
+
+  it("多人确认配对走 multi/match/ack", async () => {
+    mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
+
+    await ackMultiMatch("R_M");
+
+    expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_ack", {
+      roomId: "R_M",
+      agree: true,
+    });
   });
 });

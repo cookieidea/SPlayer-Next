@@ -51,6 +51,14 @@ export const registerTogetherMultiIpc = (): void => {
 
   ipcMain.handle("togetherMulti:startMatch", () => multi.startStrangerMatch());
 
+  ipcMain.handle("togetherMulti:ackMatch", (_event, roomId: string) =>
+    multi.ackStrangerMatch(roomId),
+  );
+
+  ipcMain.handle("togetherMulti:ackMultiMatch", (_event, roomId: string) =>
+    multi.ackMultiMatch(roomId),
+  );
+
   ipcMain.handle("togetherMulti:cancelMatch", () => multi.cancelStrangerMatch());
 
   ipcMain.handle("togetherMulti:startMultiMatch", (_event, songId: string) =>
