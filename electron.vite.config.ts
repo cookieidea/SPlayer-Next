@@ -43,6 +43,8 @@ export default defineConfig({
             __dirname,
             "electron/main/services/recognition/fingerprint.worker.ts",
           ),
+          // 一起听云信换票子进程：必须独立成文件，fork 才能直接执行
+          "nim.ticketChild": resolve(__dirname, "electron/main/services/nim/ticketChild.ts"),
         },
       },
     },

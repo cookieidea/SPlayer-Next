@@ -109,6 +109,7 @@ import artist_sublist from "./artist_sublist";
 import listen_together_room_create from "./listen_together_room_create";
 import listen_together_status from "./listen_together_status";
 import listen_together_device_reconnect_notice from "./listen_together_device_reconnect_notice";
+import middle_im_token_get from "./middle_im_token_get";
 import listen_together_reconnect_info from "./listen_together_reconnect_info";
 import listen_together_room_check from "./listen_together_room_check";
 import listen_together_invitation_info from "./listen_together_invitation_info";
@@ -230,6 +231,7 @@ export const modules: Record<string, NeteaseModule> = {
   listen_together_room_create,
   listen_together_status,
   listen_together_device_reconnect_notice,
+  middle_im_token_get,
   listen_together_reconnect_info,
   listen_together_room_check,
   listen_together_invitation_info,

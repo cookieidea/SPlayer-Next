@@ -1,4 +1,9 @@
 import { callNetease } from "@main/apis/netease";
+import {
+  connectNimRoom,
+  disconnectNimRoom,
+  setNimPlaybackListener,
+} from "@main/services/nim/realtime";
 import { setMultiRoomActive } from "@main/services/togetherPresence";
 import { neteaseLog } from "@main/utils/logger";
 import { list, multiRoomFromBody, obj, str, toRoomSong } from "@main/utils/togetherParse";
@@ -14,6 +19,17 @@ import type {
 export const MULTI_HEARTBEAT_MS = 8000;
 
 const ROOM_GONE_CODE = 488;
+
+/**
+ * 取易盾风控令牌。
+ *
+ * 动态导入：checktoken 链路会拉进 proxy / store / paths，而后者依赖
+ * Electron 的 app。顶层导入会让不跑 Electron 的测试直接加载失败
+ */
+const fetchCheckToken = async (): Promise<string> => {
+  const { getAntiCheatTokenV3 } = await import("@main/apis/netease/core/checktoken");
+  return getAntiCheatTokenV3();
+};
 
 // operate 枚举实测自真实多人房（服务端 failedMsg 逐条印证）：
 //   0 加歌  "已将你带来的歌曲推荐给大家"
@@ -93,6 +109,7 @@ const stop = (reason: TogetherMultiEndReason): void => {
   setMultiRoomActive(false);
   if (timer) clearInterval(timer);
   timer = null;
+  disconnectNimRoom();
   endListener?.(reason, ended.generation);
 };
 
@@ -147,7 +164,47 @@ const enterMultiRoom = (next: TogetherMultiRoom, userId: string): TogetherMultiR
   session = { roomId: next.roomId, userId, generation: issuing };
   publish(next, issuing);
   startMultiTick();
+  void openRealtime(next, issuing);
   return next;
+};
+
+/**
+ * 尝试把房间的实时通道接起来。
+ *
+ * 播放指令走云信长连接，接上后能立即收到对端操作；接不上就继续用心跳轮询，
+ * 所以这里任何失败都只记日志，不改房间状态
+ */
+const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<void> => {
+  try {
+    const credentials = await fetchImCredentials();
+    if (!credentials || generation !== issuing || !session) return;
+    await connectNimRoom({
+      roomId: room.roomId,
+      chatRoomId: room.chatRoomId,
+      accId: credentials.accId,
+      token: credentials.token,
+    });
+    if (generation !== issuing) return;
+    // 对端操作立刻到了：直接刷新一次心跳拿到权威队列与播放态，
+    // 不必等下一个心跳周期，这样切歌/暂停的延迟从数秒降到几乎无感
+    setNimPlaybackListener((event) => {
+      if (!session || generation !== issuing) return;
+      if (event.senderId && event.senderId === session.userId) return;
+      void refreshMultiRoom();
+    });
+    neteaseLog.info("[一起听] 实时通道已连接");
+  } catch (error) {
+    neteaseLog.info(`[一起听] 实时通道不可用，继续用轮询：${str(obj(error)?.message)}`);
+  }
+};
+
+/** 取云信凭据：失败返回 null，调用方按"没有实时通道"处理 */
+const fetchImCredentials = async (): Promise<{ accId: string; token: string } | null> => {
+  const response = await callNetease("middle_im_token_get", { bizName: "music_listenTogether" });
+  const data = obj(obj((response as { body?: unknown })?.body)?.data);
+  const accId = str(data?.accId);
+  const token = str(data?.token);
+  return accId && token ? { accId, token } : null;
 };
 
 const startMultiTick = (): void => {
@@ -267,9 +324,11 @@ export const startStrangerMatch = async (): Promise<StrangerMatchResult> => {
 /** 多人配对确认：同上，配对成功后必须回一次 ack 才算进房 */
 export const ackMultiMatch = async (roomId: string): Promise<void> => {
   if (!roomId) return;
+  // 配对确认同样要 checkToken：实测缺它服务端直接 400
   const response = await callNetease("listen_together_multi_ack", {
     roomId,
     agree: true,
+    checkToken: await fetchCheckToken(),
   });
   const body = obj(obj(response)?.body) ?? {};
   neteaseLog.info(`[一起听] 已确认多人配对 room=${roomId.slice(0, 18)} code=${body.code}`);
@@ -336,10 +395,12 @@ export const joinMultiRoom = async (
   deviceId: string,
 ): Promise<TogetherMultiRoom> => {
   const issuing = claimGeneration();
+  // checkToken 是必需的且一次性：每次加入都要现取，复用会被判重（491）
   const response = await callNetease("listen_together_multi_ack", {
     roomId,
     inviterUid,
     deviceId,
+    checkToken: await fetchCheckToken(),
   });
   assertCurrent(issuing);
   const body = obj(obj(response)?.body) ?? {};

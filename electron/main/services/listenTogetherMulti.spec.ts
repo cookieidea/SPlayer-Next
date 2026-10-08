@@ -32,6 +32,11 @@ const mocks = vi.hoisted(() => ({ call: vi.fn() }));
 vi.mock("@main/apis/netease", () => ({ callNetease: mocks.call }));
 // logger 依赖 electron，测试里必须 mock 掉，否则整条模块链会因 BrowserWindow 缺失而加载失败
 vi.mock("@main/utils/logger", () => ({ neteaseLog: { info: vi.fn(), warn: vi.fn() } }));
+// checktoken 会拉进 proxy / store / paths，那条链依赖 Electron 的 app；
+// 测试环境没有 Electron，这里给个固定令牌即可
+vi.mock("@main/apis/netease/core/checktoken", () => ({
+  getAntiCheatTokenV3: () => Promise.resolve("TEST_TOKEN"),
+}));
 
 const multiBody = (
   roomId = "R_1",
@@ -86,10 +91,12 @@ describe("多人一起听", () => {
 
     await joinMultiRoom("R_1", "77", "88", "dev-1");
 
+    // checkToken 是必需的：缺它服务端 400（实测）
     expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_ack", {
       roomId: "R_1",
       inviterUid: "77",
       deviceId: "dev-1",
+      checkToken: "TEST_TOKEN",
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
@@ -653,6 +660,7 @@ describe("多人一起听", () => {
     expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_ack", {
       roomId: "R_M",
       agree: true,
+      checkToken: "TEST_TOKEN",
     });
   });
 });

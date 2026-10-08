@@ -6,6 +6,8 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  # node-nim 的 prebuild 二进制要靠安装脚本下载，放行后才有 .node 可用
+  node-nim: true
   vue-demi: true
 minimumReleaseAgeExclude:
   - app-builder-lib@26.15.3
