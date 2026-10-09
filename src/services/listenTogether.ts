@@ -1,4 +1,5 @@
 import { useTogetherStore } from "@/stores/together";
+import { skipUnshareableCurrent } from "@/services/togetherPlayback";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { useStatusStore } from "@/stores/status";
 import { useUserStore } from "@/stores/user";
@@ -99,6 +100,7 @@ const notifyUnshareable = (trackList: readonly Track[]): void => {
 
 const pushState = (): void => {
   if (!useTogetherStore().inRoom) return;
+  void skipUnshareableCurrent();
   window.api.together.sync(collectState());
 };
 

@@ -7,6 +7,7 @@ import { useStatusStore } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
 import * as queue from "@/stores/queue";
 import * as player from "@/core/player";
+import { skipUnshareableCurrent } from "@/services/togetherPlayback";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { buildMultiInvitation } from "@shared/utils/togetherInvitation";
@@ -70,6 +71,8 @@ const roomPositionMs = (room: TogetherMultiRoom): number => {
 };
 
 const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
+  // 房间内正播不可共享曲目时先跳走：同步锚是歌曲 id，本地播它没有意义
+  await skipUnshareableCurrent();
   const roomSongId = room.playSong?.songId ?? "";
   if (!roomSongId) return;
   if (String(useMediaStore().track?.id ?? "") !== roomSongId) {

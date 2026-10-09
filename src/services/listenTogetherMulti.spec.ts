@@ -211,6 +211,46 @@ describe("多人一起听渲染端服务", () => {
     }
   });
 
+  // —— 房间内云盘/本地音乐自动跳过 ——
+  it("双人房正播云盘歌时自动切到下一首可共享的", async () => {
+    const cloud = { ...track("cloud1"), source: "netease", cloud: true } as Track;
+    const online = track("200");
+    queue.setQueue([cloud, online]);
+    // 直接写 playIndex 指向 cloud：currentTrack 由它推导出云盘曲目
+    const { useStatusStore } = await import("@/stores/status");
+    const statusStore = useStatusStore();
+    statusStore.playIndex = 0;
+    mediaMock.state.track = cloud;
+    mocks.getCurrentTime.mockReturnValue(0);
+    mods.initTogetherMulti();
+
+    // 先建立会话（inRoom=true），skipUnshareableCurrent 才会工作
+    emit?.({
+      type: "session",
+      session: { roomId: "room1", userId: "88", generation: 1 },
+      room: room("room1", []),
+    });
+    await Promise.resolve();
+    emit?.(roomEvent({ ...room("room1", []), playProgress: 0, sampledAt: Date.now() }));
+    const { useTogetherMultiStore } = await import("@/stores/togetherMulti");
+    expect(useTogetherMultiStore().inRoom).toBe(true);
+    // 直调跳过函数：隔离 followRoom 链路差异
+    const tp = await import("@/services/togetherPlayback");
+    await tp.skipUnshareableCurrent();
+    await vi.waitFor(() => {
+      // 应已跳到 online：playFrom 被以包含 200 的列表调用
+      expect(mocks.playFrom).toHaveBeenCalled();
+    });
+    // playFrom 可能被进房跟随先调用过一次：找跳过那一次（目标是 200）
+    // playFrom 签名是 (items, startIndex, context, autoPlay)
+    const skipCall = mocks.playFrom.mock.calls.some((call: unknown[]) => {
+      const items = call[0] as Track[] | undefined;
+      const startIndex = call[1] as number | undefined;
+      return items?.[Number(startIndex)]?.id === "200";
+    });
+    expect(skipCall).toBe(true);
+  });
+
   it("多人房落后房间进度时会追上", async () => {
     queue.setQueue([track("room1")]);
     mediaMock.state.track = track("room1");
