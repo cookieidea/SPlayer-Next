@@ -478,6 +478,7 @@ const api = {
     createRoom: (songId: string, userId: string) =>
       ipcRenderer.invoke("togetherMulti:create", songId, userId),
     startMatch: () => ipcRenderer.invoke("togetherMulti:startMatch"),
+    pollMatch: () => ipcRenderer.invoke("togetherMulti:pollMatch"),
     ackMatch: (roomId: string) => ipcRenderer.invoke("togetherMulti:ackMatch", roomId),
     ackMultiMatch: (roomId: string) => ipcRenderer.invoke("togetherMulti:ackMultiMatch", roomId),
     cancelMatch: () => ipcRenderer.invoke("togetherMulti:cancelMatch"),

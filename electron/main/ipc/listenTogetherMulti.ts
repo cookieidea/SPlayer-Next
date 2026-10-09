@@ -50,6 +50,8 @@ export const registerTogetherMultiIpc = (): void => {
     multi.inviteToMultiRoom(uids ?? []),
   );
 
+  ipcMain.handle("togetherMulti:pollMatch", () => multi.pollMatch());
+
   ipcMain.handle("togetherMulti:startMatch", async () => {
     // 匹配通知走个人通道：配对发生在还没有房间的阶段，不挂它就收不到 type=20022
     await multi.openPersonalChannel().catch((error: unknown) => {

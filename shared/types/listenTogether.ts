@@ -80,6 +80,8 @@ export interface TogetherMultiApi {
     roomType: string;
     waiting: boolean;
   }>;
+  /** 查询配对结果（轮询用，与 startMatch 是同一个端点） */
+  pollMatch: () => Promise<boolean>;
   ackMatch: (roomId: string) => Promise<void>;
   ackMultiMatch: (roomId: string) => Promise<void>;
   cancelMatch: () => Promise<void>;

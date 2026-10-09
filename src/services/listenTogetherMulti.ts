@@ -319,16 +319,21 @@ const pollMatch = async (userId: string): Promise<void> => {
       toast.warning("没有找到合适的听友，请稍后重试");
       return;
     }
-    // 只看自己有没有被放进房间。绝不能在轮询里再调 startMatch：
-    // 那是"发起匹配"接口，每调一次就重置 60 秒窗口，窗口走不完就永远配不到人。
-    // entering=true：这是"刚匹配进来"而不是"重启恢复"，要跟随房间的播放态与进度
-    const room = await window.api.together.restore(userId, true);
-    if (!room) {
+    // 用 match/start 查询配对结果：官方就是这个路径——匹配成功时它返回
+    // failedType=MULTI_MATCH_ALREADY_IN_ROOM 并带上 existedRoomId。
+    // 走 status/get 的话服务端不一定把"刚配对上的房间"算作 inRoom，
+    // 实测房间会短暂出现又消失，于是永远发现不了配对结果
+    const result = await window.api.togetherMulti.pollMatch();
+    if (!result) {
       if (matchPollCount === 1 || matchPollCount === 30) {
         console.info(`[一起听] 匹配中（第 ${matchPollCount} 轮）`);
       }
       return;
     }
+    const room = await window.api.together.restore(userId, true);
+    // match/start 已给出 roomId，但房间会话要靠 restore 建立；
+    // 这一步失败说明服务端还没把账号放进房间，下一轮继续
+    if (!room) return;
     // 配对成功后必须回一次 ack 才算真正进房。
     // 少了它服务端会按 ACK 等待超时把账号踢出去——表现就是"匹配到了，过一会自己退出"。
     // ack 请求偶发挂起（实测会卡死整个加入流程），20 秒兜底放行：

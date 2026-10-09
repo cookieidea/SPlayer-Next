@@ -375,22 +375,21 @@ describe("多人一起听渲染端服务", () => {
     vi.useRealTimers();
   });
 
-  it("匹配轮询直接问服务端，而不是读主进程内存", async () => {
+  it("匹配轮询问服务端要配对结果，而不是只看本地会话", async () => {
     vi.useFakeTimers();
     const api = (window as unknown as { api: Record<string, unknown> }).api;
-    const together = api.together as Record<string, ReturnType<typeof vi.fn>>;
-    (api.togetherMulti as Record<string, unknown>).startMatch = vi.fn(() =>
-      Promise.resolve({ success: true }),
-    );
-    (api.togetherMulti as Record<string, unknown>).cancelMatch = vi.fn(() => Promise.resolve());
+    const multi = api.togetherMulti as Record<string, ReturnType<typeof vi.fn>>;
+    multi.startMatch = vi.fn(() => Promise.resolve({ success: true }));
+    multi.cancelMatch = vi.fn(() => Promise.resolve());
+    // 轮询用 match/start 问服务端（官方路径）：配对成功时它返回 existedRoomId。
+    // 只读本地会话的话，服务端把账号放进房间了我们也不知道
+    multi.pollMatch = vi.fn(() => Promise.resolve(true));
 
     mods.initTogetherMulti();
     await mods.startStrangerMatch("88");
     await vi.advanceTimersByTimeAsync(3100);
 
-    // getSession 读的是主进程内存里的会话，只有渲染端调过 restore 才会有值；
-    // 轮询它的话，匹配成功也永远发现不了
-    expect(together.restore).toHaveBeenCalled();
+    expect(multi.pollMatch).toHaveBeenCalled();
     vi.useRealTimers();
   });
 

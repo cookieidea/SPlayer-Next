@@ -403,6 +403,29 @@ export const createMultiRoom = async (
  * 未匹配到时返回 success=true；已匹配到房间时返回 failedType=ALREADY_IN_ROOM
  * 并带上 existedRoomId，因此轮询它即可代替官方推送
  */
+/**
+ * 查询配对结果（轮询用）。
+ *
+ * 与 startStrangerMatch 是同一个端点：官方就用它轮询——匹配成功时返回
+ * failedType=MULTI_MATCH_ALREADY_IN_ROOM 并带 existedRoomId。
+ * 单独一个入口是为了不把"发起匹配"的日志刷进每一轮轮询
+ */
+export const pollMatch = async (): Promise<boolean> => {
+  const response = await callNetease("listen_together_song_match_start", {
+    matchType: "match_start",
+  });
+  const body = obj(obj(response)?.body) ?? {};
+  const data = obj(body.data) ?? {};
+  const roomId = str(data.existedRoomId);
+  if (roomId) {
+    neteaseLog.info(`[一起听] 轮询到配对结果 room=${roomId.slice(0, 18)}`);
+    return true;
+  }
+  // 已在队列里是正常状态；其余失败交给上层按"还在匹配"处理，
+  // 单轮抖动不该终结整个匹配流程
+  return false;
+};
+
 export const startStrangerMatch = async (): Promise<StrangerMatchResult> => {
   // 匹配没有界面之外的反馈，出问题时只能靠日志定位，这里记下服务端的原始答复
   neteaseLog.info("[一起听] 发起双人匹配");
