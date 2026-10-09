@@ -1031,6 +1031,11 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       if (sender && sender === session.userId) return;
       // 播放命令直接下发渲染端：play/command 不落库，快照 command=null，
       // 拉取路径拿不到 PAUSE/PLAY/PROGRESS，IM 推送是唯一接收途径
+      // 房间挂起/单曲通知都是一条文案（服务端给用户看的），双人房同样要透出
+      if (event.kind === "roomSuspend") {
+        if (event.text) noticeListener(event.text);
+        return;
+      }
       if (event.kind === "playback") {
         neteaseLog.info(
           `[一起听] 收到远端命令 ${event.commandType} from=${event.senderId} target=${event.targetSongId || "-"}`,

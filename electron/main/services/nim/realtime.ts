@@ -326,8 +326,13 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
     return { kind: "roomSuspend", roomId: readString(body.roomId), text: readString(body.text) };
   }
 
-  // 单曲通知不改变跟随目标，明确忽略而不是落到默认分支
-  if (eventType === EVENT_ROOM_SINGLE) return null;
+  // 单曲通知（30004）：载荷 LTMultiSingleNoticeInfo{text, uid}，是服务端的一条文案。
+  // 不改变跟随目标，但文案要给用户看（如"XX 点了赞"）
+  if (eventType === EVENT_ROOM_SINGLE) {
+    const single = asRecord(body.singleNoticeInfo);
+    const text = readString(single.text);
+    return text ? { kind: "roomSuspend", roomId: readString(body.roomId), text } : null;
+  }
 
   if (eventType === EVENT_ROOM_STATE) {
     return {

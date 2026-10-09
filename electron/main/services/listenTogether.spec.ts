@@ -1084,6 +1084,27 @@ describe("一起听房间状态机", () => {
     expect(notices).toContain("对方暂停了歌曲播放");
   });
 
+  it("房间挂起文案透出为提示", async () => {
+    const service = await load();
+    const notices: string[] = [];
+    service.onNotice((text: string) => notices.push(text));
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    await vi.advanceTimersByTimeAsync(1000);
+    notices.length = 0;
+
+    mocks.emit({ kind: "roomSuspend", roomId: "R1", text: "对方网络不太好" });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(notices).toContain("对方网络不太好");
+  });
+
   it("在途旧快照不会向新会话派发同步事件", async () => {
     const service = await load();
     const applied: unknown[] = [];
