@@ -1015,6 +1015,41 @@ describe("一起听房间状态机", () => {
     expect(posts).not.toContain("listen_together_play_command_report");
   });
 
+  it("播放模式变化走 IM 直达，不等快照", async () => {
+    const service = await load();
+    const modes: string[] = [];
+    service.onRemoteCommand((payload: { playMode?: string }) => {
+      if (payload.playMode) modes.push(payload.playMode);
+    });
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      return snapshotBody(["100"], "ORDER_LOOP");
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", playMode: "ORDER_LOOP" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    modes.length = 0;
+
+    // 对端切成随机播放：mode 就带在命令里，不该等一个拉取周期
+    mocks.emit({
+      kind: "playback",
+      senderId: "88",
+      commandType: "PLAYMODE_CHANGE",
+      targetSongId: "100",
+      progressMs: 0,
+      playStatus: "PLAY",
+      mode: "RANDOM",
+      serverSeq: 9,
+      clientSeq: 9,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(modes).toContain("RANDOM");
+  });
+
   it("在途旧快照不会向新会话派发同步事件", async () => {
     const service = await load();
     const applied: unknown[] = [];

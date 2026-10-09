@@ -33,6 +33,7 @@ import {
 } from "@main/utils/togetherParse";
 import type {
   TogetherCommand,
+  TogetherCommandType,
   TogetherFriend,
   TogetherInviteCard,
   TogetherLocalState,
@@ -293,6 +294,9 @@ const pickLeader = (value: TogetherRoom, selfUserId: string): string => {
   });
   return sorted[0] ?? selfUserId;
 };
+
+/** 可直接直达渲染端的播放命令类型 */
+const COMMAND_TYPES: ReadonlySet<string> = new Set(["PLAY", "PAUSE", "PROGRESS", "GOTO"]);
 
 /** 等长连接就绪的上限：进房到连上实测最慢 7 秒，留一倍余量 */
 const CHANNEL_WAIT_MS = 15_000;
@@ -1078,17 +1082,20 @@ const emitPlayback = (event: {
   targetSongId: string;
   progressMs: number;
   playStatus: string;
+  mode: string;
   serverSeq: number;
   clientSeq: number;
 }): void => {
   const type = event.commandType;
   const playing = event.playStatus === "PLAY";
+  // 带 mode 的命令直达渲染端：官方把播放模式放在 40001 的 playingInfo.mode 里，
+  // 这是 IM 侧唯一的模式通道。只走快照要等一个拉取周期，切换循环模式明显发慢
+  // 用真值判断：mode 可能是空串（20000 格式没这个字段）或缺失
+  const hasMode = Boolean(event.mode) && event.mode !== lastRemotePlayMode;
   // GOTO 必须直达渲染端：当前曲目只存在于这条命令里，
   // 快照的 playlist 只有队列、playCommand 恒为 null（play/command 不落库），
   // 只走拉取路径的话对方切歌永远学不到
-  if (type !== "PLAY" && type !== "PAUSE" && type !== "PROGRESS" && type !== "GOTO") {
-    // 其余类型（PLAYMODE_CHANGE）只改模式，队列与模式会随 playlist 落库，
-    // 交给拉取路径统一处理
+  if (type !== "PLAY" && type !== "PAUSE" && type !== "PROGRESS" && type !== "GOTO" && !hasMode) {
     void refreshFromRealtime(generation);
     return;
   }
@@ -1110,6 +1117,10 @@ const emitPlayback = (event: {
   }
   lastDirectSignature = signature;
   lastRemoteSeq = Math.max(lastRemoteSeq, event.serverSeq);
+  if (hasMode) {
+    lastRemotePlayMode = event.mode;
+    adoptionEcho.push({ dim: "playMode", value: event.mode });
+  }
   if (type === "GOTO") {
     adoptionEcho.push({ dim: "track", value: event.targetSongId });
   }
@@ -1121,16 +1132,21 @@ const emitPlayback = (event: {
   adoptionTicks = Math.max(adoptionTicks, ADOPT_CONFIRM_TICKS);
   for (const listener of commandListeners) {
     listener({
-      command: {
-        type,
-        playing,
-        targetSongId: event.targetSongId,
-        progressMs: event.progressMs,
-        serverSeq: event.serverSeq,
-        userId: "",
-      },
+      // 只带模式、没有播放动作的命令走 playMode 字段（与快照路径同一语义）；
+      // 其余命令照常带 type，渲染端按类型分支处理
+      command:
+        type === "PLAYMODE_CHANGE" || (hasMode && !COMMAND_TYPES.has(type))
+          ? null
+          : {
+              type: type as TogetherCommandType,
+              playing,
+              targetSongId: event.targetSongId,
+              progressMs: event.progressMs,
+              serverSeq: event.serverSeq,
+              userId: "",
+            },
       songIds: [],
-      playMode: "",
+      playMode: hasMode ? event.mode : "",
       initial: false,
       autoPlay: false,
     });

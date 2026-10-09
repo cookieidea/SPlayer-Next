@@ -83,6 +83,8 @@ describe("一起听实时消息解码", () => {
       playStatus: "PLAY",
       serverSeq: 1791500218472,
       clientSeq: 13,
+      // 20000 是早期自定义格式，载荷里没有 mode
+      mode: "",
     });
   });
 

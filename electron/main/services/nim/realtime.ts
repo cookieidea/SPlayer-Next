@@ -27,6 +27,9 @@ export interface NimPlaybackEvent {
   targetSongId: string;
   progressMs: number;
   playStatus: string;
+  /** 播放模式（ORDER_LOOP / SINGLE_LOOP / RANDOM …）。官方放在 playingInfo.mode 里，
+   *  是唯一的 IM 侧模式通道；空串表示这条命令没带模式 */
+  mode: string;
   serverSeq: number;
   clientSeq: number;
 }
@@ -220,6 +223,8 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       targetSongId: readString(body.targetSongId),
       progressMs: Math.max(0, readNumber(body.progress)),
       playStatus: readString(body.playStatus).toUpperCase(),
+      // 20000 是早期自定义格式，载荷里没有 mode
+      mode: "",
       serverSeq: readNumber(body.serverSeq),
       clientSeq: readNumber(body.clientSeq),
     };
@@ -236,6 +241,9 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       targetSongId: readString(info.playingSongId),
       progressMs: Math.max(0, readNumber(info.progress)),
       playStatus: info.playing === true ? "PLAY" : "PAUSE",
+      // 官方把播放模式放在 playingInfo.mode 里，这是唯一的 IM 侧模式通道；
+      // 只靠快照同步会慢一个周期
+      mode: readString(info.mode).toUpperCase(),
       serverSeq: readNumber(info.operateSeq) || readNumber(body.seq),
       clientSeq: readNumber(body.seq),
     };
