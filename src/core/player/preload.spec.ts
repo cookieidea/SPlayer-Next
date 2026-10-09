@@ -473,6 +473,24 @@ describe("交叉过渡的队列交接", () => {
     expect(mocks.onTrackEnded).not.toHaveBeenCalled();
   });
 
+  it("暂停态 seek 立即结算，不等待 position 事件", async () => {
+    Object.assign(window.api.player, { seek: vi.fn().mockResolvedValue({ success: true }) });
+    const player = await import("./index");
+    const playback = await import("@/services/playback");
+
+    // 暂停态：引擎停了位置定时器，不会再有 position 事件
+    mocks.status.isPlaying = false;
+    expect(player.isSeeking()).toBe(false);
+
+    await player.seek(4200);
+
+    // 必须立刻脱离 seeking 态，否则后续所有位置更新都会被 hasReachedSeekTarget 丢弃
+    expect(player.isSeeking()).toBe(false);
+    expect(mocks.status.position).toBe(4200);
+    expect(vi.mocked(playback.setSeeking)).toHaveBeenCalledWith(false);
+    mocks.status.isPlaying = true;
+  });
+
   it("停止后迟到的交接错误不能触发下一曲兜底", async () => {
     let finish!: (value: unknown) => void;
     mocks.transition.mockImplementationOnce(

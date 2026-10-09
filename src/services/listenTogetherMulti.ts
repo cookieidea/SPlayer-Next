@@ -8,6 +8,7 @@ import { useMediaStore } from "@/stores/media";
 import * as queue from "@/stores/queue";
 import * as player from "@/core/player";
 import { skipUnshareableCurrent } from "@/services/togetherPlayback";
+import { setTogetherRoomActive } from "@/services/togetherRoomFlag";
 import { songsByIds } from "@/apis/song/netease";
 import { toast } from "@/composables/useToast";
 import { buildMultiInvitation } from "@shared/utils/togetherInvitation";
@@ -135,6 +136,8 @@ const handleEvent = (): void => {
         void syncRoomQueue(event.room);
         notifyNewMembers(event.room);
       }
+      if (event.type === "session") setTogetherRoomActive(true);
+      if (event.type === "session-end") setTogetherRoomActive(false);
       if (event.type === "session-end" && event.reason !== "left") {
         // 自己退出不用提示；房间被服务端结束（过期/被移出）必须说一声，
         // 否则界面会"莫名其妙"退回普通状态

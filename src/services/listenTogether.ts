@@ -1,5 +1,6 @@
 import { watch } from "vue";
 import { useTogetherStore } from "@/stores/together";
+import { setTogetherRoomActive } from "@/services/togetherRoomFlag";
 import { skipUnshareableCurrent } from "@/services/togetherPlayback";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
 import { useStatusStore } from "@/stores/status";
@@ -212,7 +213,8 @@ const applyRemote = async (
       if (playOnEntry) {
         pendingLoad = true;
         try {
-          await player.playFrom(tracks, keep, TOGETHER_CONTEXT, true);
+          // autoPlay 用调用方传入的值：进房只对齐曲目与进度，不代用户起播
+          await player.playFrom(tracks, keep, TOGETHER_CONTEXT, false);
         } finally {
           pendingLoad = false;
         }
@@ -329,12 +331,14 @@ const commandToast = (command: TogetherCommand): string => {
 
 const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
   if (next.type === "session") {
+    setTogetherRoomActive(true);
     setTogetherCounting(true);
     startReporting();
     pushState();
     return;
   }
   if (next.type === "session-end") {
+    setTogetherRoomActive(false);
     setTogetherCounting(false);
     stopReporting();
     // 必须复位：否则第二次遇到"双人房被升级为多人"就不切协议，
@@ -469,11 +473,9 @@ export const createRoom = async (userId: string): Promise<boolean> => {
   beginBusy();
   try {
     await window.api.together.create(userId);
-    // 双人房不重置进度：创建者正在听什么、听到哪里，对端进来就跟着听那一段，
-    // 倒回开头会把"我在听什么对方就听什么"的语义破坏掉
-    // 建房后自动起播：官方行为是创建即播放，否则对端进来听到的是静音
-    const status = useStatusStore();
-    if (status.currentTrack && !status.isPlaying) await player.play();
+    // 双人房不做两件事：不重置进度、不自动起播。
+    // 创建者原本在听什么、听到哪里、有没有在播，对端进来就跟随那个状态；
+    // 主动 play/pause 会把创建者自己的收听状态改掉
     return true;
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));

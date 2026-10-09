@@ -470,7 +470,7 @@ describe("一起听渲染端服务", () => {
     emit?.({ type: "session-end", reason: "server", generation: 1 });
     expect(store.session).toBeNull();
   });
-  it("入场采纳时真正加载并播放共享歌曲", async () => {
+  it("入场采纳时加载共享歌曲但不自动播放（播放态由用户/房间命令决定）", async () => {
     queue.setQueue([track("100")]);
     mocks.songsByIds.mockResolvedValue([track("200"), track("300")]);
 
@@ -492,7 +492,8 @@ describe("一起听渲染端服务", () => {
     const call = mocks.playFrom.mock.calls[0] as unknown[];
     // 本地那首不在共享队列里，只能落到队首（锚点字段服务端从未返回过）
     expect(call[1]).toBe(0);
-    expect(call[3]).toBe(true);
+    // 进房只对齐曲目与进度，不代用户起播
+    expect(call[3]).toBe(false);
   });
 
   it("常规队列更新不抢播放", async () => {

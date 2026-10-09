@@ -449,8 +449,9 @@ const applySnapshot = async (initial: boolean): Promise<boolean> => {
       songIds: replaceQueue ? [...snapshot.songIds] : [],
       playMode: modeChanged ? snapshot.playMode : "",
       initial,
-      // 入场采纳才自动播放；恢复会话保持原语义（不抢播放）
-      autoPlay: initial && !restored,
+      // 一律不自动播放：进房跟随的是房间的曲目与进度，
+      // 播放态由双方各自的播放命令决定，客户端不代用户按下播放键
+      autoPlay: false,
     });
   }
   // 只有采纳了对端命令才需要压制本地回传；单纯队列对齐不该冻结本地上报，

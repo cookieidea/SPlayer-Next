@@ -7,6 +7,7 @@ import type { RepeatMode, ShuffleMode } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
 import { useSettingsStore } from "@/stores/settings";
 import { useStatusStore } from "@/stores/status";
+import { isTogetherRoomActive } from "@/services/togetherRoomFlag";
 import { useStreamingStore } from "@/stores/streaming";
 import { usePluginsStore } from "@/stores/plugins";
 import { useHistoryStore } from "@/stores/history";
@@ -631,6 +632,13 @@ export const seek = async (posMs: number): Promise<void> => {
   if (result.success) {
     status.position = posMs;
     playback.setCurrentTime(posMs);
+    // 暂停时引擎不推 position 事件（暂停会停掉位置定时器），
+    // 此时 seekTarget 永远不会被清除，后续位置更新全被丢弃 ——
+    // 表现就是"不播放时调整进度无效"。暂停态由 seek 的返回直接结算
+    if (!status.isPlaying) {
+      seekTarget = null;
+      playback.setSeeking(false);
+    }
   }
 };
 
@@ -949,7 +957,11 @@ export const trySmartTransition = async (
     status.fmMode ||
     status.repeatMode === "one" ||
     status.abLoop.enable ||
-    autoClose.shouldStopAfterCurrentTrack()
+    autoClose.shouldStopAfterCurrentTrack() ||
+    // 一起听房间内禁止本地自动交接：下一曲必须由房间决定，
+    // 本地抢先切歌会让两端曲目错位，表现就像"切歌不同步"。
+    // 用监听标志而非直接读 store：本函数可能在 pinia 尚未激活的上下文被调用
+    isTogetherRoomActive()
   ) {
     return;
   }
