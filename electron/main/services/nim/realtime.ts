@@ -114,6 +114,11 @@ interface NodeNimModule {
 const ENTER_TIMEOUT_MS = 15_000;
 const EVENT_PLAYBACK = 20_000;
 const EVENT_QUEUE = 20_001;
+// 官方客户端（APK 9.6.05）双人房实际用的是 40001 FLTPlaySyncMsg，
+// 载荷为 { operation, playingInfo:{ playingSongId, progress, playing, mode } }。
+// 20000 是我们早期按抓包推断的自定义格式，服务端两者都原样透传，
+// 所以发送用官方格式（对方官方客户端也能解析），接收两种都认
+const EVENT_PLAY_SYNC = 40_001;
 // 服务端在房间状态变化时主动推送（实测加歌/顶歌/切歌/成员进出都会触发）：
 //   30000 房间播放状态全量（与心跳响应的 roomPlaySongInfo 结构一致）
 //   30005 成员与文案，30006 标签
@@ -210,6 +215,24 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       playStatus: readString(body.playStatus).toUpperCase(),
       serverSeq: readNumber(body.serverSeq),
       clientSeq: readNumber(body.clientSeq),
+      hint,
+    };
+  }
+
+  if (eventType === EVENT_PLAY_SYNC) {
+    const info = asRecord(body.playingInfo);
+    const operation = readString(body.operation).toUpperCase();
+    if (!operation) return null;
+    return {
+      kind: "playback",
+      senderId: readString(body.operator) || senderId,
+      commandType: operation,
+      targetSongId: readString(info.playingSongId),
+      formerSongId: "",
+      progressMs: Math.max(0, readNumber(info.progress)),
+      playStatus: info.playing === true ? "PLAY" : "PAUSE",
+      serverSeq: readNumber(info.operateSeq) || readNumber(body.seq),
+      clientSeq: readNumber(body.seq),
       hint,
     };
   }
@@ -346,11 +369,41 @@ export const connectNimRoom = async (options: {
  * 再加服务端转发，所以这条路才是官方"秒同步"的来源。
  * 未进房（无聊天室连接）时返回 false，调用方回退到 HTTP
  */
-export const sendPlaybackCommand = (payload: Record<string, unknown>): boolean => {
+export const sendPlaybackCommand = (payload: {
+  roomId: string;
+  userId: string;
+  commandType: string;
+  targetSongId: string;
+  progressMs: number;
+  playing: boolean;
+  mode: string;
+  seq: number;
+}): boolean => {
   if (!chatroom || !currentRoom) return false;
+  // 用官方客户端的 40001 载荷：对方若是官方客户端也能正确解析这条同步
   const attach = JSON.stringify({
     msgType: WRAPPER_MSG_TYPE,
-    content: { type: EVENT_PLAYBACK, bizType: BIZ_TYPE_TOGETHER, content: payload },
+    content: {
+      type: EVENT_PLAY_SYNC,
+      bizType: BIZ_TYPE_TOGETHER,
+      content: {
+        operator: Number(payload.userId) || 0,
+        operation: payload.commandType,
+        trigger: "user",
+        currentRoomId: payload.roomId,
+        seq: payload.seq,
+        ts: Date.now(),
+        playingInfo: {
+          roomId: payload.roomId,
+          playing: payload.playing,
+          playingSongId: Number(payload.targetSongId) || 0,
+          progress: Math.max(0, Math.round(payload.progressMs)),
+          mode: payload.mode,
+          operateSeq: payload.seq,
+          listOperateSeq: 0,
+        },
+      },
+    },
   });
   try {
     chatroom.sendMsg(

@@ -142,7 +142,18 @@ describe("一起听实时消息解码", () => {
 describe("聊天室直发与成员列表", () => {
   it("未进房时直发返回 false，调用方回退到 HTTP", async () => {
     const mod = await import("./realtime");
-    expect(mod.sendPlaybackCommand({ commandType: "PAUSE" })).toBe(false);
+    expect(
+      mod.sendPlaybackCommand({
+        roomId: "R1",
+        userId: "7",
+        commandType: "PAUSE",
+        targetSongId: "100",
+        progressMs: 1000,
+        playing: false,
+        mode: "ORDER_LOOP",
+        seq: 1,
+      }),
+    ).toBe(false);
   });
 
   it("未进房时成员列表为空", async () => {
@@ -214,5 +225,68 @@ describe("服务端推送的房间状态与成员", () => {
       content: { type: 30006, bizType: 3, content: { roomId: "R1", tagList: [], version: 5 } },
     });
     expect(decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" })).toBeNull();
+  });
+});
+
+describe("官方客户端格式的播放同步", () => {
+  it("解析 type=40001 FLTPlaySyncMsg（官方双人房实际用的格式）", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 40001,
+        bizType: 3,
+        content: {
+          operator: 6294223883,
+          operation: "PAUSE",
+          trigger: "user",
+          currentRoomId: "R1",
+          seq: 11,
+          ts: 1791582427960,
+          playingInfo: {
+            roomId: "R1",
+            playing: false,
+            playingSongId: 1345872140,
+            progress: 88000,
+            mode: "ORDER_LOOP",
+            operateSeq: 11,
+            listOperateSeq: 0,
+          },
+        },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "6294223883" });
+    expect(event?.kind).toBe("playback");
+    if (event?.kind !== "playback") return;
+    expect(event.commandType).toBe("PAUSE");
+    expect(event.senderId).toBe("6294223883");
+    expect(event.targetSongId).toBe("1345872140");
+    expect(event.progressMs).toBe(88000);
+    expect(event.playStatus).toBe("PAUSE");
+    expect(event.serverSeq).toBe(11);
+  });
+
+  it("40001 的 GOTO 映射为切换曲目且处于播放态", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 40001,
+        bizType: 3,
+        content: {
+          operator: 88,
+          operation: "GOTO",
+          currentRoomId: "R1",
+          seq: 3,
+          playingInfo: { roomId: "R1", playing: true, playingSongId: 999, progress: 0 },
+        },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "88" });
+    expect(event?.kind).toBe("playback");
+    if (event?.kind !== "playback") return;
+    expect(event.commandType).toBe("GOTO");
+    expect(event.targetSongId).toBe("999");
+    expect(event.playStatus).toBe("PLAY");
   });
 });

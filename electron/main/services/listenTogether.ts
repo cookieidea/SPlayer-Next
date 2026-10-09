@@ -326,14 +326,14 @@ const reportCommand = async (
   // 播放命令不落库（实测 report 返回 result=true，但快照 command 恒为 null），
   // 所以直发成功就不必再发 HTTP —— 那一发只是白等一次往返
   const sent = sendPlaybackCommand({
+    roomId,
+    userId: session.userId,
     commandType: type,
     targetSongId,
-    formerSongId: formerSongId || "0",
-    progress: state.positionMs,
-    playStatus: type === "PAUSE" ? "PAUSE" : "PLAY",
-    sendUid: session.userId,
-    clientSeq: seq,
-    serverSeq: seq,
+    progressMs: state.positionMs,
+    playing,
+    mode: state.playMode,
+    seq,
   });
   neteaseLog.info(
     `[一起听] 上报 ${type} target=${targetSongId} former=${formerSongId || "-"}${sent ? "（直发）" : "（HTTP，实时通道未连接）"}`,
