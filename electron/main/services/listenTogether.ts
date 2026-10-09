@@ -82,6 +82,9 @@ let clientSeq = 0;
 let playlistVersion = 0;
 let lastRemoteSignature = "";
 let lastRemoteSeq = -1;
+/** 上次直达下发给渲染端的命令签名：服务端会重发同一条命令直到本地跟上，
+ *  重复直达会让渲染端反复重载；判据与快照路径的 isFreshCommand 同源 */
+let lastDirectSignature = "";
 let lastRemotePlayMode = "";
 const QUEUE_REPLACE_RETRIES = 3;
 // 远端采纳后需要吞掉一次的回声：按维度 + 期望值记录，而不是冻结整个上报窗口。
@@ -954,6 +957,7 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   hasLocalState = false;
   lastRemoteSignature = "";
   lastRemoteSeq = -1;
+  lastDirectSignature = "";
   lastRemotePlayMode = "";
   pendingModeAck = "";
   claimingMode = "";
@@ -1069,6 +1073,7 @@ const announcePlayback = async (): Promise<void> => {
  * 下发后登记回声，否则渲染端跟随产生的状态变化会被当成用户操作再上报回房间
  */
 const emitPlayback = (event: {
+  senderId: string;
   commandType: string;
   targetSongId: string;
   progressMs: number;
@@ -1078,16 +1083,39 @@ const emitPlayback = (event: {
 }): void => {
   const type = event.commandType;
   const playing = event.playStatus === "PLAY";
-  // GOTO 与 PLAYMODE_CHANGE 伴随房间状态变化（歌/模式随 playlist 落库），
-  // 交给拉取路径统一处理，直接执行会和拉取打架
-  if (type !== "PLAY" && type !== "PAUSE" && type !== "PROGRESS") {
+  // GOTO 必须直达渲染端：当前曲目只存在于这条命令里，
+  // 快照的 playlist 只有队列、playCommand 恒为 null（play/command 不落库），
+  // 只走拉取路径的话对方切歌永远学不到
+  if (type !== "PLAY" && type !== "PAUSE" && type !== "PROGRESS" && type !== "GOTO") {
+    // 其余类型（PLAYMODE_CHANGE）只改模式，队列与模式会随 playlist 落库，
+    // 交给拉取路径统一处理
     void refreshFromRealtime(generation);
     return;
   }
+  const signature = [
+    event.senderId,
+    type,
+    event.targetSongId,
+    event.progressMs,
+    event.playStatus,
+    event.serverSeq,
+  ].join("|");
+  // 同一条命令服务端会持续重发（直到本地状态跟上），重复直达会让渲染端反复重载。
+  // 但队列替换（songIds 非空）是另一条路径，必须允许重试——它有自己的上限，
+  // 去重会把它压成一次下发，渲染端没跟上就永久分叉
+  if (signature === lastDirectSignature) {
+    // 命令跳过，但队列替换仍需下发
+    void refreshFromRealtime(generation);
+    return;
+  }
+  lastDirectSignature = signature;
   lastRemoteSeq = Math.max(lastRemoteSeq, event.serverSeq);
+  if (type === "GOTO") {
+    adoptionEcho.push({ dim: "track", value: event.targetSongId });
+  }
   if (type === "PAUSE" || type === "PLAY") {
     adoptionEcho.push({ dim: "playState", value: String(playing) });
-  } else {
+  } else if (type === "PROGRESS") {
     adoptionEcho.push({ dim: "seek", value: "*" });
   }
   adoptionTicks = Math.max(adoptionTicks, ADOPT_CONFIRM_TICKS);

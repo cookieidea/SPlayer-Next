@@ -592,8 +592,9 @@ describe("一起听房间状态机", () => {
     // 让监听器真正挂上后再喂事件
     await vi.advanceTimersByTimeAsync(1000);
     const afterFirst = callCount;
+    // PLAYMODE_CHANGE 走拉取路径（GOTO 现在直达渲染端、不拉快照）
     for (let i = 0; i < 5; i++) {
-      await pulse(remoteCommand());
+      await pulse(remoteCommand("PLAYMODE_CHANGE"));
     }
     expect(errors.some((m) => m.includes("受限"))).toBe(true);
     // 限流后不再发请求：5 次事件最多消耗「重试上限内的」拉取，
@@ -821,7 +822,8 @@ describe("一起听房间状态机", () => {
     service.updateLocal(localState());
     await vi.advanceTimersByTimeAsync(1000);
     // 当前代次的限流应当给出提示：远端事件触发的拉取直接撞上 429
-    await pulse(remoteCommand());
+    // （PLAYMODE_CHANGE 走拉取路径；GOTO 现在直达渲染端、不拉快照）
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     await vi.waitFor(() => expect(errors.some((m) => m.includes("受限"))).toBe(true));
   });
 
@@ -1847,8 +1849,9 @@ describe("一起听房间状态机", () => {
     const idleCalls = snapshotCalls;
     expect(idleCalls).toBe(0);
 
-    // 远端事件到达才拉一次
-    await pulse(remoteCommand());
+    // 远端事件到达才拉一次：PLAYMODE_CHANGE 只改模式（随 playlist 落库），
+    // 走的就是拉取路径
+    await pulse(remoteCommand("PLAYMODE_CHANGE"));
     expect(snapshotCalls).toBe(1);
   });
 
@@ -2076,9 +2079,11 @@ describe("一起听房间状态机", () => {
     await service.create("7");
     // 本地队列与房间不同，且渲染端始终没上报跟随（applyRemote 可能因取不到曲目提前返回）
     service.updateLocal(localState({ songId: "900", queueSongIds: ["900"] }));
-    // 推送节奏：首发 fresh 命令 1 次 + 队列替换重试 3 次 + 认领轮 1 次 = 5 次后收口
-    for (let i = 0; i < 5; i++) {
-      await pulse(remoteCommand());
+    // 反复推送同一条命令（服务端会重复下发同一条，直到客户端跟上）。
+    // 每次都发新命令的话本来就该每轮下发一次，验不出重试上限
+    const same = remoteCommand();
+    for (let i = 0; i < 12; i++) {
+      await pulse(same);
     }
     // 提前把 localQueueIds 推进成目标队列的话只会下发一次，
     // 渲染端这次没跟上就再也不会重试，本地队列会与服务端永久分叉
@@ -2086,7 +2091,9 @@ describe("一起听房间状态机", () => {
 
     // 但重试必须有上限：上千首的曲目请求不能每轮都重发一遍
     const settled = events.length;
-    await pulse(remoteCommand());
+    for (let i = 0; i < 3; i++) {
+      await pulse(same);
+    }
     expect(events.length).toBe(settled);
   });
 
