@@ -66,6 +66,16 @@ const fetchCheckToken = async (): Promise<string> => {
 //   6 收藏  "你收藏了歌曲 X"
 //   7 删歌  "只能删除待播状态的歌曲哦～"
 //   8 未知（result=true 且无副作用）
+/** 官方 operate 失败码 → 用户可读提示（LTMultiSongOperateResultCode） */
+const OPERATE_FAILED_HINT: Readonly<Record<number, string>> = {
+  10004: "切歌太频繁了，稍等一下再试",
+  10005: "上一次切歌还在生效中，请稍候",
+  10006: "这首歌已经播过了，换一首吧",
+  10009: "这首歌已经播完，无法置顶",
+  10000: "你没有权限操作房间的歌曲",
+  100010: "需要先关注房主才能操作",
+};
+
 const OPERATE_ADD = 0;
 
 const OPERATE_TOP = 2;
@@ -129,23 +139,9 @@ const refreshMembersFromIm = async (issuing: number): Promise<void> => {
   if (!session || generation !== issuing || members.length === 0) return;
   const current = room;
   if (!current) return;
-  const byId = new Map(members.map((member) => [member.userId, member]));
-  publish(
-    {
-      ...current,
-      members: current.members.map((member) => {
-        const live = byId.get(member.userId);
-        return live
-          ? {
-              ...member,
-              nickname: live.nickname || member.nickname,
-              avatarUrl: live.avatarUrl || member.avatarUrl,
-            }
-          : member;
-      }),
-    },
-    issuing,
-  );
+  // 聊天室名单是权威的（含昵称头像），直接采用：
+  // 只补昵称的写法在房间协议成员为空时补不出任何东西
+  publish({ ...current, members }, issuing);
 };
 
 const publish = (next: TogetherMultiRoom, issuing: number): void => {
@@ -222,6 +218,9 @@ const enterMultiRoom = (next: TogetherMultiRoom, userId: string): TogetherMultiR
   publish(next, issuing);
   startMultiTick();
   void connectRealtime(next, issuing);
+  // 房间协议的成员字段常常是空的（心跳响应只有 roomInfoDTO，不带成员聚合），
+  // 进房立刻拉一次聊天室名单，否则界面上的成员列表一直是空的
+  void refreshMembersFromIm(issuing);
   return next;
 };
 
@@ -294,27 +293,13 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
       return;
     }
 
-    // 服务端推的成员名单比心跳的聚合更新，直接换掉昵称/头像
+    // 服务端推的成员名单是权威快照（带昵称头像），直接采用：
+    // 只映射已有成员的话，房间初始成员为空时永远是空列表，
+    // 表现就是"进房了也不显示成员"
     if (event.kind === "members") {
       const current = room;
-      if (!current || event.roomId !== current.roomId) return;
-      const byId = new Map(event.members.map((member) => [member.userId, member]));
-      publish(
-        {
-          ...current,
-          members: current.members.map((member) => {
-            const live = byId.get(member.userId);
-            return live
-              ? {
-                  ...member,
-                  nickname: live.nickname || member.nickname,
-                  avatarUrl: live.avatarUrl || member.avatarUrl,
-                }
-              : member;
-          }),
-        },
-        issuing,
-      );
+      if (!current || event.roomId !== current.roomId || event.members.length === 0) return;
+      publish({ ...current, members: event.members }, issuing);
       return;
     }
 
@@ -681,14 +666,21 @@ const operate = async (
   if (generation !== issuing) return { room: null, message: "", rejected: false };
   const body = obj(obj(response)?.body) ?? {};
   const data = obj(body.data) ?? {};
-  const message = str(data.failedMsg);
+  // 官方失败码（LTMultiSongOperateResultCode）：服务端文案不可控，
+  // 这几类"点太快/切换中/点的是已播完"要用自己的措辞，
+  // 否则用户看到"已是完播歌曲"会以为界面状态错了
+  const failedCode = Number(data.failedCode) || 0;
+  const message = OPERATE_FAILED_HINT[failedCode] || str(data.failedMsg);
   // 服务端否决（歌已播完、太频繁、不是自己加的等）是正常业务结果而非异常：
   // 抛异常会变成 IPC handler 错误，界面拿不到原因，用户只看到"点了没反应"
   const rejected = data.result === false;
   // operate 的响应没有 roomInfo/multiLtRoomSnapshot，只有 roomSongInfo。
   // 之前只看前者会解析成 null，于是加歌成功但界面不更新
+  // 即使操作被拒，响应里的房间状态仍是权威的：它告诉我们"服务端此刻认为在播哪首"。
+  // 只在不被拒时更新的话，本地 playSong 会停在旧值——用户再点切歌就是对旧歌投票，
+  // 服务端回"已播完"，界面与房间越来越偏
   const next = applyOperateResult(response);
-  if (!rejected && next) publish(next, issuing);
+  if (next) publish(next, issuing);
   // 文案一律透出：投票可能是"记了一票"、"太频繁"或"切歌成功"，都要让用户看到
   return { room: next, message, rejected };
 };

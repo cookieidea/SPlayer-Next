@@ -66,10 +66,18 @@ const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
  */
 const PROGRESS_AHEAD_TOLERANCE_MS = 1500;
 
-/** 房间当前曲应处的进度：采样值 + 从采样到现在经过的时间 */
+/**
+ * 房间当前曲应处的进度：采样值 + 从采样到现在经过的时间。
+ *
+ * 减去一个网络往返估计：playedTime 是服务端生成响应的时刻，而 sampledAt 是
+ * 我们收到的时刻，两者之间差了半程延迟。不扣的话每次对齐都会比房间快一点
+ * （实测约 1 秒），而这点偏差又落在容差内不会被纠正
+ */
+const NETWORK_ONE_WAY_MS = 400;
+
 const roomPositionMs = (room: TogetherMultiRoom): number => {
   if (!room.playProgress && !room.sampledAt) return -1;
-  const elapsed = Math.max(0, Date.now() - room.sampledAt);
+  const elapsed = Math.max(0, Date.now() - room.sampledAt - NETWORK_ONE_WAY_MS);
   const target = room.playProgress + elapsed;
   // 别越过曲尾：留 100ms 余量，避免刚好撞上结束事件
   return room.playDuration > 0 ? Math.min(target, Math.max(0, room.playDuration - 100)) : target;
