@@ -1,7 +1,9 @@
 import { callNetease } from "@main/apis/netease";
 import {
   connectNimRoom,
+  connectPersonalChannel,
   disconnectNimRoom,
+  disconnectPersonalChannel,
   fetchRoomMembers,
   setNimListener,
 } from "@main/services/nim/realtime";
@@ -260,6 +262,12 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
   });
   if (generation !== issuing) return;
   setNimListener((event) => {
+    // 配对通知发生在"还没有房间"的阶段（session 尚未建立），
+    // 必须放在 session 校验之前处理，否则这条最关键的推送会被直接丢掉
+    if (event.kind === "matchLock") {
+      void handleMatchLock(event);
+      return;
+    }
     if (!session || generation !== issuing) return;
     // 成员变动即便是自己的也刷新名单：进来的是别人，只是在事件里标了"谁触发的"
     if (event.kind === "member") void refreshMembersFromIm(issuing);
@@ -445,6 +453,58 @@ export const ackMultiMatch = async (roomId: string): Promise<void> => {
   const body = obj(obj(response)?.body) ?? {};
   neteaseLog.info(`[一起听] 已确认多人配对 room=${roomId.slice(0, 18)} code=${body.code}`);
 };
+
+/**
+ * 处理配对通知（type=20022）。
+ *
+ * 官方的陌生人匹配是"服务端推配对 → 客户端立刻 ack"：
+ * 服务端等 ACK 的窗口很短，等下一轮轮询再 ack 会直接报 488（房间已失效），
+ * 表现就是"匹配到了但进不去"。这里收到就 ack，窗口内完成握手。
+ * APPLY 是"有人申请"，AGREE 才是"对方已同意"，只有后者要进房
+ */
+const handleMatchLock = async (event: { matchType: string; roomId: string }): Promise<void> => {
+  if (event.matchType !== "AGREE" || !event.roomId) {
+    neteaseLog.info(`[一起听] 配对申请 room=${event.roomId.slice(0, 18)}`);
+    return;
+  }
+  neteaseLog.info(`[一起听] 收到配对通知，立即确认 room=${event.roomId.slice(0, 18)}`);
+  await ackStrangerMatch(event.roomId).catch((error: unknown) => {
+    neteaseLog.warn(`一起听配对确认失败：${String(error)}`);
+  });
+};
+
+/**
+ * 挂上个人通道。
+ *
+ * 陌生人匹配的配对通知（type=20022）发生在还没有房间的阶段，只能从个人通道收到；
+ * 官方客户端登录时就挂着它。只靠轮询发现房间会错过服务端的 ACK 等待窗口，
+ * 表现为"匹配到了但进不去"
+ */
+export const openPersonalChannel = async (): Promise<void> => {
+  if (personalChannelIssuing) return;
+  const response = await callNetease("middle_im_token_get", { bizName: "music_listenTogether" });
+  const data = obj(obj((response as { body?: unknown })?.body)?.data);
+  const accId = str(data?.accId);
+  const token = str(data?.token);
+  if (!accId || !token) throw new Error("未取到云信凭据");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  await connectPersonalChannel({
+    accId,
+    token,
+    dataDir: join(tmpdir(), `splayer-nim-personal-${process.pid}`),
+  });
+  personalChannelIssuing = true;
+  neteaseLog.info("[一起听] 个人通道已连接（用于接收匹配配对通知）");
+};
+
+export const closePersonalChannel = (): void => {
+  if (!personalChannelIssuing) return;
+  disconnectPersonalChannel();
+  personalChannelIssuing = false;
+};
+
+let personalChannelIssuing = false;
 
 export const ackStrangerMatch = async (roomId: string): Promise<void> => {
   if (!roomId) return;

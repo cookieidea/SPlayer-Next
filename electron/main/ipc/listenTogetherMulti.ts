@@ -1,3 +1,4 @@
+import { neteaseLog } from "@main/utils/logger";
 import { ipcMain } from "electron";
 import { getDeviceId } from "@main/apis/netease/core/device";
 import { broadcast } from "@main/utils/broadcast";
@@ -49,7 +50,13 @@ export const registerTogetherMultiIpc = (): void => {
     multi.inviteToMultiRoom(uids ?? []),
   );
 
-  ipcMain.handle("togetherMulti:startMatch", () => multi.startStrangerMatch());
+  ipcMain.handle("togetherMulti:startMatch", async () => {
+    // 匹配通知走个人通道：配对发生在还没有房间的阶段，不挂它就收不到 type=20022
+    await multi.openPersonalChannel().catch((error: unknown) => {
+      neteaseLog.warn(`一起听个人通道连接失败：${String(error)}`);
+    });
+    return multi.startStrangerMatch();
+  });
 
   ipcMain.handle("togetherMulti:ackMatch", (_event, roomId: string) =>
     multi.ackStrangerMatch(roomId),
@@ -59,11 +66,17 @@ export const registerTogetherMultiIpc = (): void => {
     multi.ackMultiMatch(roomId),
   );
 
-  ipcMain.handle("togetherMulti:cancelMatch", () => multi.cancelStrangerMatch());
+  ipcMain.handle("togetherMulti:cancelMatch", async () => {
+    multi.closePersonalChannel();
+    return multi.cancelStrangerMatch();
+  });
 
-  ipcMain.handle("togetherMulti:startMultiMatch", (_event, songId: string) =>
-    multi.startMultiMatch(songId),
-  );
+  ipcMain.handle("togetherMulti:startMultiMatch", async (_event, songId: string) => {
+    await multi.openPersonalChannel().catch((error: unknown) => {
+      neteaseLog.warn(`一起听个人通道连接失败：${String(error)}`);
+    });
+    return multi.startMultiMatch(songId);
+  });
 
   ipcMain.handle("togetherMulti:cancelMultiMatch", () => multi.cancelMultiMatch());
 

@@ -16,7 +16,7 @@
  * - 换票必须放子进程（见 ticket.ts）：原生 SDK 在 Linux 上退出不可靠
  */
 
-import { requestNimTicket } from "./ticket";
+import { NIM_APP_KEY, requestNimTicket } from "./ticket";
 
 /** 播放命令事件（type=20000） */
 export interface NimPlaybackEvent {
@@ -65,8 +65,29 @@ export interface NimMembersEvent {
   members: NimRoomMember[];
 }
 
+/**
+ * 陌生人匹配解锁（type=20022）。
+ *
+ * 匹配期间没有房间，事件里的 roomId 是"配对后将要进入的房间"，
+ * 此时客户端要做的是尽快回 ack，慢了服务端会按 ACK 超时把账号移出房间
+ */
+export interface NimMatchLockEvent {
+  kind: "matchLock";
+  /** APPLY=有人申请；AGREE=对方已同意 */
+  matchType: string;
+  roomId: string;
+  /** 触发方 uid：官方只处理"不是自己"的那一条 */
+  userId: string;
+  eventId: string;
+}
+
 export type NimRoomEvent =
-  NimPlaybackEvent | NimQueueEvent | NimMemberEvent | NimStateEvent | NimMembersEvent;
+  | NimPlaybackEvent
+  | NimQueueEvent
+  | NimMemberEvent
+  | NimStateEvent
+  | NimMembersEvent
+  | NimMatchLockEvent;
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -110,6 +131,12 @@ interface NodeNimModule {
 const ENTER_TIMEOUT_MS = 15_000;
 const EVENT_PLAYBACK = 20_000;
 const EVENT_QUEUE = 20_001;
+// 陌生人匹配解锁（官方 LtMatchLockApplyMsg）：
+// matchType=APPLY 表示有人申请配对，=AGREE 表示对方已同意、可以进房。
+// 匹配期间还没有房间，所以这条只能从个人通道收到
+const EVENT_MATCH_LOCK = 20_022;
+const MATCH_LOCK_APPLY = "APPLY";
+const MATCH_LOCK_AGREE = "AGREE";
 // 官方客户端（APK 9.6.05）双人房实际用的是 40001 FLTPlaySyncMsg，
 // 载荷为 { operation, playingInfo:{ playingSongId, progress, playing, mode } }。
 // 20000 是我们早期按抓包推断的自定义格式，服务端两者都原样透传，
@@ -222,6 +249,18 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
     };
   }
 
+  if (eventType === EVENT_MATCH_LOCK) {
+    const matchType = readString(body.matchType).toUpperCase();
+    if (matchType !== MATCH_LOCK_APPLY && matchType !== MATCH_LOCK_AGREE) return null;
+    return {
+      kind: "matchLock",
+      matchType,
+      roomId: readString(body.roomId),
+      userId: readString(body.userId),
+      eventId: readString(body.eventId),
+    };
+  }
+
   if (eventType === EVENT_ROOM_STATE) {
     return { kind: "state", roomId: readString(body.roomId), songInfo: body };
   }
@@ -283,6 +322,73 @@ const ensureChatroom = async (): Promise<ChatRoomLike> => {
 
 export const setNimListener = (next: ((event: NimRoomEvent) => void) | null): void => {
   listener = next;
+};
+
+interface NimClientLike2 {
+  init(appKey: string, dataDir: string, installDir: string, config?: unknown): boolean;
+  initEventHandlers(): void;
+  login(
+    appKey: string,
+    account: string,
+    password: string,
+    cb: null,
+    extension: string,
+  ): Promise<unknown[]>;
+}
+
+interface NimTalkLike {
+  initEventHandlers(): void;
+  on(event: string, handler: EventHandler): unknown;
+}
+
+interface NimPersonalModule {
+  NIMClient?: new () => NimClientLike2;
+  NIMTalk?: new () => NimTalkLike;
+}
+
+let personalTalk: NimTalkLike | null = null;
+
+/**
+ * 建立个人通道（不进聊天室）。
+ *
+ * 陌生人匹配的配对通知（type=20022）发生在"还没有房间"的阶段，
+ * 走的是个人通道而非聊天室。官方客户端在登录时就挂着它，配对通知一到就回 ack；
+ * 只靠轮询的话，服务端等 ACK 的窗口很短——实测轮询发现房间后再 ack 会报 488
+ */
+export const connectPersonalChannel = async (options: {
+  accId: string;
+  token: string;
+  dataDir: string;
+}): Promise<void> => {
+  if (personalTalk) return;
+  const imported = (await import("node-nim")) as { default?: unknown };
+  const module = (imported.default ?? imported) as NimPersonalModule;
+  if (typeof module.NIMClient !== "function" || typeof module.NIMTalk !== "function") {
+    throw new Error("node-nim 未导出 NIMClient/NIMTalk");
+  }
+  const client = new module.NIMClient();
+  const ok = client.init(NIM_APP_KEY, `${options.dataDir}/`, "", {
+    database_encrypt_key_: NIM_APP_KEY,
+    use_https_: true,
+    sdk_log_level_: 4,
+  });
+  if (!ok) throw new Error("云信个人通道初始化失败");
+  client.initEventHandlers();
+  const login = await client.login(NIM_APP_KEY, options.accId, options.token, null, "");
+  const first = (Array.isArray(login) ? login[0] : login) as { res_code_?: number };
+  if (Number(first?.res_code_) !== 200) throw new Error("云信个人通道登录失败");
+
+  const talk = new module.NIMTalk();
+  talk.initEventHandlers();
+  talk.on("receiveMsg", (...args: unknown[]) => {
+    const event = decodeNimMessage(args[0]);
+    if (event) listener?.(event);
+  });
+  personalTalk = talk;
+};
+
+export const disconnectPersonalChannel = (): void => {
+  personalTalk = null;
 };
 
 /**

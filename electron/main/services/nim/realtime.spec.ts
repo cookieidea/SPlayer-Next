@@ -287,3 +287,54 @@ describe("官方客户端格式的播放同步", () => {
     expect(event.playStatus).toBe("PLAY");
   });
 });
+
+describe("陌生人匹配解锁通知（type=20022）", () => {
+  it("解析 APPLY（有人申请配对）", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 20022,
+        bizType: 3,
+        content: {
+          matchType: "APPLY",
+          roomId: "R_match_1",
+          userId: 9152873371,
+          eventId: "evt_1",
+        },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "9152873371" });
+    expect(event?.kind).toBe("matchLock");
+    if (event?.kind !== "matchLock") return;
+    expect(event.matchType).toBe("APPLY");
+    expect(event.roomId).toBe("R_match_1");
+    expect(event.userId).toBe("9152873371");
+  });
+
+  it("解析 AGREE（对方已同意，可以进房）", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 20022,
+        bizType: 3,
+        content: { matchType: "AGREE", roomId: "R_match_2", userId: 88, eventId: "evt_2" },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "88" });
+    expect(event?.kind).toBe("matchLock");
+    if (event?.kind !== "matchLock") return;
+    expect(event.matchType).toBe("AGREE");
+    expect(event.roomId).toBe("R_match_2");
+  });
+
+  it("未知 matchType 被忽略", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: { type: 20022, bizType: 3, content: { matchType: "OTHER", roomId: "R1" } },
+    });
+    expect(decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" })).toBeNull();
+  });
+});
