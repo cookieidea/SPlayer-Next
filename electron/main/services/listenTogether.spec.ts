@@ -1843,6 +1843,87 @@ describe("一起听房间状态机", () => {
     expect(snapshotCalls).toBe(1);
   });
 
+  // —— IM 播放命令直达执行 ——
+  it("远端 PAUSE 事件直接下发渲染端（play/command 不落库，快照拿不到）", async () => {
+    const service = await load();
+    const commands: Array<{ type?: string; playing?: boolean }> = [];
+    service.onRemoteCommand((payload) => {
+      if (payload.command) commands.push(payload.command);
+    });
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      // 快照 command=null：模拟 play/command 不落库的协议事实
+      return {
+        status: 200,
+        body: { code: 200, data: { playlist: { displayList: [], playMode: "ORDER_LOOP" } } },
+      };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await pulse({
+      kind: "playback",
+      senderId: "88",
+      commandType: "PAUSE",
+      targetSongId: "100",
+      formerSongId: "0",
+      progressMs: 5000,
+      playStatus: "PAUSE",
+      serverSeq: 2,
+      clientSeq: 2,
+      hint: "对方暂停了播放",
+    });
+
+    // PAUSE 必须直达渲染端，不等快照
+    expect(commands.some((c) => c.type === "PAUSE" && c.playing === false)).toBe(true);
+  });
+
+  it("自己的 PAUSE 事件被回声过滤，不下发也不拉取", async () => {
+    const service = await load();
+    const commands: Array<{ type?: string }> = [];
+    service.onRemoteCommand((payload) => {
+      if (payload.command) commands.push(payload.command);
+    });
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      return {
+        status: 200,
+        body: { code: 200, data: { playlist: { displayList: [], playMode: "ORDER_LOOP" } } },
+      };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState());
+    await vi.advanceTimersByTimeAsync(1000);
+    const before = mocks.call.mock.calls.filter(
+      ([n]) => n === "listen_together_sync_playlist_get",
+    ).length;
+
+    await pulse({
+      kind: "playback",
+      senderId: "7",
+      commandType: "PAUSE",
+      targetSongId: "100",
+      formerSongId: "0",
+      progressMs: 5000,
+      playStatus: "PAUSE",
+      serverSeq: 3,
+      clientSeq: 3,
+      hint: "",
+    });
+
+    expect(commands.some((c) => c.type === "PAUSE")).toBe(false);
+    expect(
+      mocks.call.mock.calls.filter(([n]) => n === "listen_together_sync_playlist_get").length,
+    ).toBe(before);
+  });
+
   it("拒绝邀请调用官方 rejection 端点", async () => {
     const service = await load();
     mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });

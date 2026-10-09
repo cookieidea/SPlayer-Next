@@ -949,6 +949,12 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       ) {
         return;
       }
+      // 播放命令直接下发渲染端：play/command 不落库，快照 command=null，
+      // 拉取路径拿不到 PAUSE/PLAY/PROGRESS，IM 推送是唯一接收途径
+      if (event.kind === "playback") {
+        emitPlayback(event);
+        return;
+      }
       void refreshFromRealtime(issuing);
     });
   } catch (error) {
@@ -959,6 +965,55 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       realtimeRetry = null;
       if (session && generation === issuing) void connectRealtime(nextRoom, issuing);
     }, REALTIME_RETRY_MS);
+  }
+};
+
+/**
+ * 把 IM 播放命令直接下发给渲染端。
+ *
+ * 命令不落库（快照 command=null 拿不到），IM 推送是唯一接收路径；
+ * 下发后登记回声，否则渲染端跟随产生的状态变化会被当成用户操作再上报回房间
+ */
+const emitPlayback = (event: {
+  commandType: string;
+  targetSongId: string;
+  formerSongId: string;
+  progressMs: number;
+  playStatus: string;
+  serverSeq: number;
+  clientSeq: number;
+}): void => {
+  const type = event.commandType;
+  const playing = event.playStatus === "PLAY";
+  // GOTO 与 PLAYMODE_CHANGE 伴随房间状态变化（歌/模式随 playlist 落库），
+  // 交给拉取路径统一处理，直接执行会和拉取打架
+  if (type !== "PLAY" && type !== "PAUSE" && type !== "PROGRESS") {
+    void refreshFromRealtime(generation);
+    return;
+  }
+  lastRemoteSeq = Math.max(lastRemoteSeq, event.serverSeq);
+  if (type === "PAUSE" || type === "PLAY") {
+    adoptionEcho.push({ dim: "playState", value: String(playing) });
+  } else {
+    adoptionEcho.push({ dim: "seek", value: "*" });
+  }
+  adoptionTicks = Math.max(adoptionTicks, ADOPT_CONFIRM_TICKS);
+  for (const listener of commandListeners) {
+    listener({
+      command: {
+        type,
+        playing,
+        targetSongId: event.targetSongId,
+        formerSongId: event.formerSongId,
+        progressMs: event.progressMs,
+        serverSeq: event.serverSeq,
+        userId: "",
+      },
+      songIds: [],
+      playMode: "",
+      initial: false,
+      autoPlay: false,
+    });
   }
 };
 
