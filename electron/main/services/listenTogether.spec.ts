@@ -913,6 +913,34 @@ describe("一起听房间状态机", () => {
     await pulse(remoteCommand("PLAYMODE_CHANGE"));
     expect(modeReports).toHaveLength(1);
   });
+  it("本地暂停立刻上报，不等下一轮 tick", async () => {
+    const service = await load();
+    const reports: Array<Record<string, unknown>> = [];
+    mocks.call.mockImplementation(async (name: string, payload: Record<string, unknown>) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      if (name === "listen_together_play_command_report") {
+        reports.push(payload);
+        return { body: { code: 200, data: { result: true } } };
+      }
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    // 进房首帧同步完成（pendingInitial 收敛）后才允许立即上报
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], playing: true }));
+    await vi.advanceTimersByTimeAsync(1000);
+    reports.length = 0;
+
+    // 用户按暂停：不该等满 1 秒的 tick 周期才发出去
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], playing: false }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    const pause = reports.filter((item) => item.type === "PAUSE");
+    expect(pause.length).toBeGreaterThan(0);
+  });
+
   it("在途旧快照不会向新会话派发同步事件", async () => {
     const service = await load();
     const applied: unknown[] = [];

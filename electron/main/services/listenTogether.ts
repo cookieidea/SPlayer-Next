@@ -94,6 +94,8 @@ let notInRoomStreak = 0;
 let knownMemberIds: string[] = [];
 let previousSongId = "";
 let rateLimitUntil = 0;
+/** 上一次已上报的播放态：只用来判断"播放态变了"，不参与 delta 计算 */
+let previousPlaying = false;
 let realtimeRetry: ReturnType<typeof setTimeout> | null = null;
 let rateLimitFailures = 0;
 // 房间操作代号：后发的 create/join/restore 使先发操作的最终提交失效
@@ -927,6 +929,7 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   previousSongId = "";
   rateLimitUntil = 0;
   rateLimitFailures = 0;
+  previousPlaying = false;
   for (const listener of endListeners) listener(reason, ended);
 };
 
@@ -1098,6 +1101,7 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   previousSongId = "";
   rateLimitUntil = 0;
   rateLimitFailures = 0;
+  previousPlaying = false;
   // 队列版本号必须每房从 1 开始：实测新房首条上报若是 version>1，
   // 服务端会整条丢弃（playlist 根本不会建立）
   playlistVersion = 0;
@@ -1387,4 +1391,13 @@ export const updateLocal = (state: TogetherLocalState): void => {
     pendingQueueSignature = null;
     pendingQueueRetries = 0;
   }
+  // 播放态与曲目变化立刻上报，不等下一轮 tick。
+  // tick 间隔 1 秒，一次暂停/切歌最坏要压 1 秒才发出去，对端听感就是"延迟很大"；
+  // 进度必须留给 tick（拖进度会连发几十次），否则会被服务端限流。
+  // 只在本房首帧同步完成之后生效：初期状态由进房流程统一上报，
+  // 这里插一脚会与首帧上报重复
+  const immediate =
+    pendingInitial === null && (state.playing !== previousPlaying || state.songId !== previousId);
+  previousPlaying = state.playing;
+  if (immediate && !ticking) void tick();
 };

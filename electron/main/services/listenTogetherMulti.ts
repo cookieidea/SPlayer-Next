@@ -279,6 +279,7 @@ export interface StrangerMatchResult {
  */
 export const refreshMultiRoom = async (): Promise<void> => {
   if (!session) return;
+  neteaseLog.info("[一起听] 主动拉取房间状态");
   // 心跳在途时直接 tick 会被 ticking 守卫吞掉，静默失去"播完立刻续上"的意义，
   // 改为留个待办，由当前这轮在 finally 里补一次
   if (ticking) {
