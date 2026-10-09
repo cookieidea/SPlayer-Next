@@ -340,3 +340,71 @@ describe("陌生人匹配解锁通知（type=20022）", () => {
     expect(decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" })).toBeNull();
   });
 });
+
+describe("房间挂起通知与心跳间隔", () => {
+  it("解析 type=30009 房间挂起文案", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 30009,
+        bizType: 3,
+        content: { roomId: "R1", text: "房间暂时无法同步，请稍后重试", serverSeq: 5 },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" });
+    expect(event?.kind).toBe("roomSuspend");
+    if (event?.kind !== "roomSuspend") return;
+    expect(event.text).toBe("房间暂时无法同步，请稍后重试");
+  });
+
+  it("type=30000 带出服务端下发的心跳间隔", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 30000,
+        bizType: 3,
+        content: {
+          roomId: "R1",
+          heartBeatDuration: 30,
+          playedTime: 1000,
+          version: 3,
+          playSong: { songId: 1, songBizId: 0 },
+        },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" });
+    expect(event?.kind).toBe("state");
+    if (event?.kind !== "state") return;
+    // 官方据此调整心跳节奏，固定值会在服务端调长时过度请求
+    expect(event.heartBeatDuration).toBe(30);
+  });
+
+  it("type=30008 解析房间操作事件", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 30008,
+        bizType: 3,
+        content: { roomId: "R1", operateType: 0, songId: 405998765, version: 7, opUid: 88 },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "88" });
+    expect(event?.kind).toBe("roomOperate");
+    if (event?.kind !== "roomOperate") return;
+    expect(event.operateType).toBe(0);
+    expect(event.songId).toBe("405998765");
+    expect(event.version).toBe(7);
+  });
+
+  it("type=30004 单曲通知被忽略", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: { type: 30004, bizType: 3, content: { roomId: "R1", singleNoticeInfo: {} } },
+    });
+    expect(decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" })).toBeNull();
+  });
+});

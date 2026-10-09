@@ -276,12 +276,20 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
     // 这条路径取代了"等 8 秒心跳"或"再拉一次心跳"，房间一变界面立刻跟上，
     // 也是"播完自动接下一首"的可靠来源
     if (event.kind === "state") {
+      applyHeartBeatDuration(event.heartBeatDuration);
       const current = room;
       if (!current || event.roomId !== current.roomId) return;
       neteaseLog.info(
         `[一起听] 服务端推房间状态 曲=${event.songInfo.playSong ? "有" : "无"} 版本=${String(event.songInfo.version ?? "-")}`,
       );
       publish({ ...current, ...multiPlaybackFromSongInfo(event.songInfo) }, issuing);
+      return;
+    }
+
+    // 房间挂起（30009）：服务端给的一条文案（网络异常、房间维护等），
+    // 官方同样只把它显示成提示，不做状态变更
+    if (event.kind === "roomSuspend") {
+      if (event.text) errorListener?.(event.text);
       return;
     }
 
@@ -333,9 +341,27 @@ const fetchImCredentials = async (): Promise<{ accId: string; token: string } | 
   return accId && token ? { accId, token } : null;
 };
 
+/**
+ * 心跳间隔（毫秒）。
+ *
+ * 服务端会通过 30000 下发 heartBeatDuration（秒），官方据此调整节奏；
+ * 一直用固定值的话，服务端调长时我们会过度请求，调短时又跟不上
+ */
+let heartbeatMs = MULTI_HEARTBEAT_MS;
+
 const startMultiTick = (): void => {
   if (timer) clearInterval(timer);
-  timer = setInterval(() => void tick(), MULTI_HEARTBEAT_MS);
+  timer = setInterval(() => void tick(), heartbeatMs);
+};
+
+/** 服务端下发的心跳间隔（秒）：与当前不同就重排定时器 */
+const applyHeartBeatDuration = (seconds: number): void => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return;
+  const next = Math.max(1000, Math.min(seconds * 1000, 60_000));
+  if (next === heartbeatMs) return;
+  heartbeatMs = next;
+  neteaseLog.info(`[一起听] 心跳间隔调整为 ${seconds} 秒`);
+  if (session) startMultiTick();
 };
 
 const tick = async (): Promise<void> => {

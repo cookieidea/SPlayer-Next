@@ -59,6 +59,8 @@ export interface NimStateEvent {
   roomId: string;
   /** 未解析的 songInfo：交给 togetherParse 的解析器，避免两处结构知识分叉 */
   songInfo: Record<string, unknown>;
+  /** 服务端下发的心跳间隔（秒）。0 表示本条没带，沿用当前节奏 */
+  heartBeatDuration: number;
 }
 
 /**
@@ -74,6 +76,13 @@ export interface NimRoomOperateEvent {
   songId: string;
   version: number;
   operatorId: string;
+}
+
+/** 房间挂起提示（type=30009）：服务端给用户的一条文案 */
+export interface NimRoomSuspendEvent {
+  kind: "roomSuspend";
+  roomId: string;
+  text: string;
 }
 
 /** 服务端推送的成员与文案（type=30005） */
@@ -106,7 +115,8 @@ export type NimRoomEvent =
   | NimStateEvent
   | NimMembersEvent
   | NimMatchLockEvent
-  | NimRoomOperateEvent;
+  | NimRoomOperateEvent
+  | NimRoomSuspendEvent;
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -173,6 +183,9 @@ const EVENT_ROOM_TAGS = 30_006;
 const EVENT_ROOM_OPERATE = 30_008;
 // 单曲通知：官方 LTMultiRoomSingleMsg
 const EVENT_ROOM_SINGLE = 30_004;
+// 房间挂起提示：官方 LTMultiRoomSuspendNotifyMsg，载荷 {roomId, text, serverSeq}。
+// 官方把它当一条文案提示显示给用户（网络异常、房间维护等场景）
+const EVENT_ROOM_SUSPEND = 30_009;
 const MSG_TYPE_NOTIFICATION = 5;
 // 业务消息统一用 msgType=120 包一层 content.type，与官方客户端一致
 const MSG_TYPE_BUSINESS = 100;
@@ -301,11 +314,21 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
     };
   }
 
+  if (eventType === EVENT_ROOM_SUSPEND) {
+    return { kind: "roomSuspend", roomId: readString(body.roomId), text: readString(body.text) };
+  }
+
   // 单曲通知不改变跟随目标，明确忽略而不是落到默认分支
   if (eventType === EVENT_ROOM_SINGLE) return null;
 
   if (eventType === EVENT_ROOM_STATE) {
-    return { kind: "state", roomId: readString(body.roomId), songInfo: body };
+    return {
+      kind: "state",
+      roomId: readString(body.roomId),
+      songInfo: body,
+      // 服务端会下发心跳间隔（秒），官方据此调整心跳节奏
+      heartBeatDuration: readNumber(body.heartBeatDuration),
+    };
   }
 
   if (eventType === EVENT_ROOM_MEMBERS) {
