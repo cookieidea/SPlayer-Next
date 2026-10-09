@@ -1,3 +1,4 @@
+import { watch } from "vue";
 import { useTogetherStore } from "@/stores/together";
 import { skipUnshareableCurrent } from "@/services/togetherPlayback";
 import { useTogetherMultiStore } from "@/stores/togetherMulti";
@@ -62,8 +63,12 @@ const collectState = (): TogetherLocalState => {
   const trackList = queue.originalQueue.value
     ? queue.originalQueue.value.map((entry) => entry.track)
     : queue.queue.value;
+  // 官方播放列表上限 999 首：超出的部分服务端拒收整条上报
   const songIds = shareableTrack
-    ? trackList.filter(isTogetherShareable).map((item) => item.id)
+    ? trackList
+        .filter(isTogetherShareable)
+        .slice(0, 999)
+        .map((item) => item.id)
     : [];
   notifyUnshareable(trackList);
   return {
@@ -347,7 +352,18 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
   }
   if (next.playMode) applyPlayMode(next.playMode);
   await applyRemote(next.songIds, next.command, next.initial, next.autoPlay);
-  if (next.command && !next.initial) toast.info(commandToast(next.command));
+  // 拖动到 0 会以 PROGRESS 形式到达；只有 GOTO 且目标曲与本地不同才是真切歌，
+  // 否则同一首重发会误报"对方切换了歌曲"
+  if (
+    next.command &&
+    !next.initial &&
+    !(
+      next.command.type === "GOTO" &&
+      next.command.targetSongId === useStatusStore().currentTrack?.id
+    )
+  ) {
+    toast.info(commandToast(next.command));
+  }
 };
 
 let switchedToMulti = false;
@@ -407,6 +423,12 @@ export const initTogether = (): void => {
   if (!onlineBound) {
     onlineBound = true;
     window.addEventListener("online", () => void reconnectTogether());
+    // 本地操作即时上报：只靠 1 秒轮询的话，暂停/切歌要等下一轮才到对端，
+    // 官方端是事件驱动的瞬时同步；watch 播放态与当前曲即可补齐
+    watch(
+      () => [useStatusStore().isPlaying, useStatusStore().currentTrack?.id],
+      () => pushState(),
+    );
   }
 };
 
@@ -437,6 +459,9 @@ export const createRoom = async (userId: string): Promise<boolean> => {
   beginBusy();
   try {
     await window.api.together.create(userId);
+    // 建房后自动起播：官方行为是创建即播放，否则对端进来听到的是静音
+    const status = useStatusStore();
+    if (status.currentTrack && !status.isPlaying) await player.play();
     return true;
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));

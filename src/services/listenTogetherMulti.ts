@@ -75,6 +75,9 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   await skipUnshareableCurrent();
   const roomSongId = room.playSong?.songId ?? "";
   if (!roomSongId) return;
+  // 本轮是否刚加载了新曲：新曲从 0 开始播，进度必须无条件对齐到房间位置，
+  // 否则"建房后进度没重置""被邀请进来进度不准"都是这个洞
+  let justLoaded = false;
   if (String(useMediaStore().track?.id ?? "") !== roomSongId) {
     const [track] = await resolveTracks([roomSongId]);
     if (!track) return;
@@ -87,6 +90,7 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
     } else {
       await player.playAtIndex(at);
     }
+    justLoaded = true;
   }
   // 进度对齐：服务端在 roomPlaySongInfo 里给了 playedTime（已播毫秒）与
   // 采样时刻，心跳之间按「playedTime + 经过时间」推算真实位置。
@@ -96,6 +100,11 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   const target = roomPositionMs(room);
   if (target < 0) return;
   const drift = target - getCurrentTime();
+  // 刚加载新曲：无论差多少都对齐（新曲从头播，不拉齐必然进度不准）
+  if (justLoaded) {
+    await player.seek(target);
+    return;
+  }
   if (room.forceSync) {
     if (Math.abs(drift) > 500) await player.seek(target);
     return;
