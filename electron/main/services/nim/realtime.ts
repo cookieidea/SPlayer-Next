@@ -64,6 +64,26 @@ interface ChatRoomLike {
   ): boolean;
   exit(roomId: number, extension: string): void;
   on(event: string, handler: EventHandler): unknown;
+  sendMsg(roomId: number, message: Record<string, unknown>, extension: string): unknown;
+  getMembersOnlineAsync(
+    roomId: number,
+    parameters: Record<string, unknown>,
+    callback: unknown,
+    extension: string,
+  ): Promise<unknown[]>;
+  getMembersCountByTagOnlineAsync(
+    roomId: number,
+    tag: string,
+    callback: unknown,
+    extension: string,
+  ): Promise<unknown[]>;
+}
+
+/** 聊天室在线成员 */
+export interface NimRoomMember {
+  userId: string;
+  nickname: string;
+  avatarUrl: string;
 }
 
 interface NodeNimModule {
@@ -74,6 +94,10 @@ const ENTER_TIMEOUT_MS = 15_000;
 const EVENT_PLAYBACK = 20_000;
 const EVENT_QUEUE = 20_001;
 const MSG_TYPE_NOTIFICATION = 5;
+// 业务消息统一用 msgType=120 包一层 content.type，与官方客户端一致
+const MSG_TYPE_BUSINESS = 100;
+const WRAPPER_MSG_TYPE = 120;
+const BIZ_TYPE_TOGETHER = 3;
 const NOTIFY_ENTER = 301;
 const NOTIFY_EXIT = 302;
 
@@ -264,6 +288,61 @@ export const connectNimRoom = async (options: {
   });
 
   currentRoom = roomNumber;
+};
+
+/**
+ * 直发一条播放命令。
+ *
+ * 实测服务端对 msg_attach_ 内容不做校验，原样透传给房间成员；
+ * 客户端直发的送达延迟约 0.2 秒，而 HTTP 上报要等一轮同步周期（1 秒）
+ * 再加服务端转发，所以这条路才是官方"秒同步"的来源。
+ * 未进房（无聊天室连接）时返回 false，调用方回退到 HTTP
+ */
+export const sendPlaybackCommand = (payload: Record<string, unknown>): boolean => {
+  if (!chatroom || !currentRoom) return false;
+  const attach = JSON.stringify({
+    msgType: WRAPPER_MSG_TYPE,
+    content: { type: EVENT_PLAYBACK, bizType: BIZ_TYPE_TOGETHER, content: payload },
+  });
+  try {
+    chatroom.sendMsg(
+      currentRoom,
+      {
+        msg_type_: MSG_TYPE_BUSINESS,
+        msg_attach_: attach,
+        client_msg_id_: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      },
+      "",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * 拉聊天室在线成员。
+ *
+ * 比心跳响应里的成员聚合更新（心跳 8 秒一轮），进房与成员变动时用它即时刷新
+ */
+export const fetchRoomMembers = async (): Promise<NimRoomMember[]> => {
+  if (!chatroom || !currentRoom) return [];
+  try {
+    const result = await chatroom.getMembersOnlineAsync(
+      currentRoom,
+      { type_: "0", limit_: 100, time_tag_: 0 },
+      null,
+      "",
+    );
+    const list = Array.isArray(result?.[2]) ? (result[2] as Record<string, unknown>[]) : [];
+    return list.map((item) => ({
+      userId: readString(item.account_id_),
+      nickname: readString(item.nick_),
+      avatarUrl: readString(item.avatar_),
+    }));
+  } catch {
+    return [];
+  }
 };
 
 export const disconnectNimRoom = (): void => {

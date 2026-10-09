@@ -15,6 +15,9 @@ vi.mock("@main/utils/proxy", () => ({ fetchWithProxy: vi.fn() }));
 vi.mock("@main/services/nim/realtime", () => ({
   connectNimRoom: mocks.connect,
   disconnectNimRoom: vi.fn(),
+  // 测试里没有真实聊天室连接：直发按"未连接"处理，走 HTTP 那条路
+  sendPlaybackCommand: () => false,
+  fetchRoomMembers: () => Promise.resolve([]),
   setNimListener: (listener: (event: unknown) => void) => {
     mocks.emit.mockImplementation((event: unknown) => listener(event));
   },

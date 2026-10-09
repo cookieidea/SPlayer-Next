@@ -1,5 +1,11 @@
 import { callNetease } from "@main/apis/netease";
-import { connectNimRoom, disconnectNimRoom, setNimListener } from "@main/services/nim/realtime";
+import {
+  connectNimRoom,
+  disconnectNimRoom,
+  fetchRoomMembers,
+  sendPlaybackCommand,
+  setNimListener,
+} from "@main/services/nim/realtime";
 import { neteaseLog } from "@main/utils/logger";
 import { fetchWithProxy } from "@main/utils/proxy";
 import {
@@ -236,6 +242,34 @@ const signatureOf = (value: TogetherRoom): string =>
     value.members.map((member) => member.userId).join("_"),
   ].join("|");
 
+/**
+ * 用聊天室在线成员刷新房间成员。
+ *
+ * 心跳里的成员聚合 8 秒才更新一轮，而聊天室的成员名单是实时的；
+ * 进房与成员进出时拉一次，界面上的"谁在房间里"立刻就对。
+ * 只补齐已有成员的昵称/头像，不改成员集合——成员集合仍以房间协议为准，
+ * 两套数据不一致时宁可显示旧名单，也不能凭空多出或漏掉一个人
+ */
+const refreshMembersFromIm = async (issuing: number): Promise<void> => {
+  if (!session || generation !== issuing) return;
+  const members = await fetchRoomMembers();
+  if (!session || generation !== issuing || members.length === 0) return;
+  const current = room;
+  if (!current) return;
+  const byId = new Map(members.map((member) => [member.userId, member]));
+  const merged = current.members.map((member) => {
+    const live = byId.get(member.userId);
+    return live
+      ? {
+          ...member,
+          nickname: live.nickname || member.nickname,
+          avatarUrl: live.avatarUrl || member.avatarUrl,
+        }
+      : member;
+  });
+  publishRoom({ ...current, members: merged });
+};
+
 const publishRoom = (value: TogetherRoom): void => {
   if (!session) return;
   room = value;
@@ -288,7 +322,21 @@ const reportCommand = async (
   // 在这里重读会让请求内容与本次 delta 不再对应
   const targetSongId = state.songId || "0";
   if (issuing !== generation) return;
-  neteaseLog.info(`[一起听] 上报 ${type} target=${targetSongId} former=${formerSongId || "-"}`);
+  // 先走客户端直发：实测送达约 0.2 秒，而 HTTP 要等一轮同步周期再转发。
+  // HTTP 仍然照发——快照的歌单与播放模式靠它落库，两者互补
+  const sent = sendPlaybackCommand({
+    commandType: type,
+    targetSongId,
+    formerSongId: formerSongId || "0",
+    progress: state.positionMs,
+    playStatus: type === "PAUSE" ? "PAUSE" : "PLAY",
+    sendUid: session.userId,
+    clientSeq: seq,
+    serverSeq: seq,
+  });
+  neteaseLog.info(
+    `[一起听] 上报 ${type} target=${targetSongId} former=${formerSongId || "-"}${sent ? "（已直发）" : ""}`,
+  );
   await callNetease("listen_together_play_command_report", {
     roomId,
     type,
@@ -977,13 +1025,16 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       }
       // 有新成员进来：对方需要知道我现在听到哪，而快照里没有 progress，
       // 只能由本机主动播报一次（join 事件同时带进入与退出，只认进入）
-      if (event.kind === "member" && event.joined) {
-        void announcePlayback();
+      if (event.kind === "member") {
+        void refreshMembersFromIm(issuing);
+        if (event.joined) void announcePlayback();
         return;
       }
       void refreshFromRealtime(issuing);
     });
     neteaseLog.info("[一起听] 双人实时通道已连接");
+    // 连上就刷新成员：心跳里的成员聚合要 8 秒才更新，界面等不起
+    void refreshMembersFromIm(issuing);
   } catch (error) {
     // 代次已变时本次连接属于旧房间，静默放弃即可；否则必须留痕，
     // 否则"匹配成功但没声音"这类问题连日志都没有

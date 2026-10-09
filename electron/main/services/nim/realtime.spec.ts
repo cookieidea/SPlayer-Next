@@ -138,3 +138,15 @@ describe("一起听实时消息解码", () => {
     ).toBeNull();
   });
 });
+
+describe("聊天室直发与成员列表", () => {
+  it("未进房时直发返回 false，调用方回退到 HTTP", async () => {
+    const mod = await import("./realtime");
+    expect(mod.sendPlaybackCommand({ commandType: "PAUSE" })).toBe(false);
+  });
+
+  it("未进房时成员列表为空", async () => {
+    const mod = await import("./realtime");
+    await expect(mod.fetchRoomMembers()).resolves.toEqual([]);
+  });
+});

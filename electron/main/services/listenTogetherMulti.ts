@@ -1,5 +1,10 @@
 import { callNetease } from "@main/apis/netease";
-import { connectNimRoom, disconnectNimRoom, setNimListener } from "@main/services/nim/realtime";
+import {
+  connectNimRoom,
+  disconnectNimRoom,
+  fetchRoomMembers,
+  setNimListener,
+} from "@main/services/nim/realtime";
 import { setMultiRoomActive } from "@main/services/togetherPresence";
 import { neteaseLog } from "@main/utils/logger";
 import { list, multiRoomFromBody, obj, str, toRoomSong } from "@main/utils/togetherParse";
@@ -92,6 +97,37 @@ export const onMultiError = (listener: ErrorListener): (() => void) => {
 export const getMultiSession = (): TogetherMultiSession | null => session;
 
 export const getMultiRoom = (): TogetherMultiRoom | null => room;
+
+/**
+ * 用聊天室在线成员刷新房间名单。
+ *
+ * 心跳的成员聚合 8 秒一轮，聊天室名单是实时的；成员进出与进房时拉一次，
+ * 只补齐昵称/头像，不动成员集合——集合以房间协议为准
+ */
+const refreshMembersFromIm = async (issuing: number): Promise<void> => {
+  if (!session || generation !== issuing) return;
+  const members = await fetchRoomMembers();
+  if (!session || generation !== issuing || members.length === 0) return;
+  const current = room;
+  if (!current) return;
+  const byId = new Map(members.map((member) => [member.userId, member]));
+  publish(
+    {
+      ...current,
+      members: current.members.map((member) => {
+        const live = byId.get(member.userId);
+        return live
+          ? {
+              ...member,
+              nickname: live.nickname || member.nickname,
+              avatarUrl: live.avatarUrl || member.avatarUrl,
+            }
+          : member;
+      }),
+    },
+    issuing,
+  );
+};
 
 const publish = (next: TogetherMultiRoom, issuing: number): void => {
   if (generation !== issuing) return;
@@ -209,6 +245,8 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
   setNimListener((event) => {
     if (!session || generation !== issuing) return;
     // 服务端会把事件也推给发送者本人：自己的操作本地已生效，拉了只会制造回声
+    // 成员变动即便是自己的也刷新名单：进来的是别人，只是在事件里标了"谁触发的"
+    if (event.kind === "member") void refreshMembersFromIm(issuing);
     if (
       event.kind === "member" ? event.userId === session.userId : event.senderId === session.userId
     ) {
@@ -217,6 +255,7 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
     void refreshMultiRoom();
   });
   neteaseLog.info("[一起听] 实时通道已连接");
+  void refreshMembersFromIm(issuing);
 };
 
 /** 取云信凭据：失败返回 null，调用方按"没有实时通道"处理 */
