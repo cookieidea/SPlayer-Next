@@ -782,13 +782,16 @@ const tick = async (realtime = false): Promise<void> => {
         adoptionEcho = [];
       }
       if (!stale) {
-        if (delta.changes.includes("queue")) {
-          // 发送值与写回值必须是同一个数组：请求期间本地可能已改成别的队列，
-          // 写回当前值会让缓存与服务端实际持有的队列不一致
+        if (delta.changes.includes("queue") || delta.changes.includes("playMode")) {
+          // 播放模式必须随列表上报：实测 play/command 的 PLAYMODE_CHANGE
+          // 服务端根本不落库，对端拉快照永远拿到旧模式；
+          // 只有 sync/list 的 playlist.playMode 是权威存储。
+          // 队列没变时也要整表重发一遍（模式依附在 playlist 上）
           const sentQueue = [...state.queueSongIds];
           if (await guarded(() => reportQueue(sentQueue), issuing)) {
             localQueueIds = sentQueue;
             commit("queue");
+            if (delta.changes.includes("playMode")) commit("mode");
           } else {
             healthy = false;
           }
@@ -842,7 +845,6 @@ const tick = async (realtime = false): Promise<void> => {
     // 快照只在实时事件到达时拉（realtime=true，见 refreshFromRealtime）：
     // 房间变化由云信推送驱动，定时 tick 只负责心跳与本地差异上报
     if (realtime) {
-      neteaseLog.warn("DBG tick: 到达快照段");
       healthy =
         (await guarded(async () => {
           await applySnapshot(false);
