@@ -802,6 +802,22 @@ const tick = async (realtime = false): Promise<void> => {
           handleEnded();
           commit("end");
         }
+        // 切到房间歌单里没有的歌（比如直接在本地播放列表点播）时，
+        // 对端按快照解析不到 targetSongId 会静默丢弃 GOTO：
+        // 必须先把本地队列整表 REPLACE 进房间（官方上限 999），对端才解析得到
+        if (
+          delta.changes.includes("track") &&
+          state.queueSongIds.length > 0 &&
+          !localQueueIds.includes(state.songId)
+        ) {
+          const merged = [...state.queueSongIds];
+          if (await guarded(() => reportQueue(merged), issuing)) {
+            localQueueIds = merged;
+            commit("queue");
+          } else {
+            healthy = false;
+          }
+        }
         const actions = state.songId ? reportFor(delta.changes, state.playing) : [];
         for (const action of actions) {
           if (action.type === "GOTO") leaderId = selfUserId;

@@ -1924,6 +1924,41 @@ describe("一起听房间状态机", () => {
     ).toBe(before);
   });
 
+  // —— 切到房间歌单外的歌 ——
+  it("先把本地队列整表 REPLACE 进房间，再发 GOTO", async () => {
+    const service = await load();
+    const order: string[] = [];
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "middle_im_token_get") return imTokenBody();
+      if (name === "listen_together_sync_list_report") {
+        order.push("replace");
+        return { status: 200, body: { code: 200, data: { result: true } } };
+      }
+      if (name === "listen_together_play_command_report") {
+        order.push("cmd:report");
+        return { status: 200, body: { code: 200 } };
+      }
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "900", queueSongIds: ["900", "901"] }));
+    await pulse(remoteCommand());
+
+    // 切到一首共享队列里没有的歌
+    service.updateLocal(localState({ songId: "777", queueSongIds: ["777", "900", "901"] }));
+    await pulse(remoteCommand());
+
+    expect(order).toContain("replace");
+    const replaceAt = order.lastIndexOf("replace");
+    expect(replaceAt).toBeGreaterThan(-1);
+    // 切歌后的那条 GOTO 必须在 REPLACE 之后：对端靠快照歌单解析目标曲
+    const gotoAfterReplace = order.slice(replaceAt + 1).some((item) => item.startsWith("cmd:"));
+    expect(gotoAfterReplace).toBe(true);
+  });
+
   it("拒绝邀请调用官方 rejection 端点", async () => {
     const service = await load();
     mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });
