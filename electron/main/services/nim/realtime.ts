@@ -25,7 +25,6 @@ export interface NimPlaybackEvent {
   senderId: string;
   commandType: string;
   targetSongId: string;
-  formerSongId: string;
   progressMs: number;
   playStatus: string;
   serverSeq: number;
@@ -192,7 +191,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       senderId: readString(body.sendUid) || senderId,
       commandType,
       targetSongId: readString(body.targetSongId),
-      formerSongId: readString(body.formerSongId),
       progressMs: Math.max(0, readNumber(body.progress)),
       playStatus: readString(body.playStatus).toUpperCase(),
       serverSeq: readNumber(body.serverSeq),
@@ -209,7 +207,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       senderId: readString(body.operator) || senderId,
       commandType: operation,
       targetSongId: readString(info.playingSongId),
-      formerSongId: "",
       progressMs: Math.max(0, readNumber(info.progress)),
       playStatus: info.playing === true ? "PLAY" : "PAUSE",
       serverSeq: readNumber(info.operateSeq) || readNumber(body.seq),

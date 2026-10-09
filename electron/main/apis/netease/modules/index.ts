@@ -131,7 +131,6 @@ import listen_together_multi_song_operate from "./listen_together_multi_song_ope
 import listen_together_invitation_accept from "./listen_together_invitation_accept";
 import listen_together_sync_playlist_get from "./listen_together_sync_playlist_get";
 import listen_together_sync_list_report from "./listen_together_sync_list_report";
-import listen_together_play_command_report from "./listen_together_play_command_report";
 import listen_together_heartbeat from "./listen_together_heartbeat";
 import listen_together_end from "./listen_together_end";
 import listen_together_invite_send from "./listen_together_invite_send";
@@ -253,7 +252,6 @@ export const modules: Record<string, NeteaseModule> = {
   listen_together_invitation_accept,
   listen_together_sync_playlist_get,
   listen_together_sync_list_report,
-  listen_together_play_command_report,
   listen_together_heartbeat,
   listen_together_end,
   listen_together_invite_send,

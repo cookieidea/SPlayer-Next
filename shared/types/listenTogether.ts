@@ -102,7 +102,6 @@ export type TogetherCommandType =
 export interface TogetherCommand {
   userId: string;
   type: TogetherCommandType;
-  formerSongId: string;
   targetSongId: string;
   progressMs: number;
   playing: boolean;

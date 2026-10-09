@@ -239,7 +239,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "GOTO",
-        formerSongId: "",
         targetSongId: "200",
         progressMs: 0,
         playing: true,
@@ -271,7 +270,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "PROGRESS",
-        formerSongId: "100",
         targetSongId: "100",
         progressMs: 5000,
         playing: false,
@@ -532,7 +530,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "GOTO",
-        formerSongId: "0",
         targetSongId: "200",
         progressMs: 45000,
         playing: true,
@@ -566,7 +563,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "GOTO",
-        formerSongId: "0",
         targetSongId: "100",
         progressMs: 10000,
         playing: true,
@@ -602,7 +598,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "PAUSE",
-        formerSongId: "100",
         targetSongId: "100",
         progressMs: 30000,
         playing: false,
@@ -635,7 +630,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "GOTO",
-        formerSongId: "0",
         targetSongId: "100",
         progressMs: 60000,
         playing: true,
@@ -666,7 +660,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "PROGRESS",
-        formerSongId: "0",
         targetSongId: "200",
         progressMs: 30000,
         playing: false,
@@ -697,7 +690,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "PROGRESS",
-        formerSongId: "0",
         targetSongId: "200",
         progressMs: 30000,
         // PROGRESS 的 playing 是解析层刻意置的中性值
@@ -730,7 +722,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "GOTO",
-        formerSongId: "100",
         targetSongId: "200",
         progressMs: 0,
         playing: true,
@@ -791,7 +782,6 @@ describe("一起听渲染端服务", () => {
       command: {
         userId: "8",
         type: "GOTO",
-        formerSongId: "0",
         targetSongId: target,
         progressMs: 0,
         playing: true,

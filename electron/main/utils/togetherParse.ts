@@ -104,7 +104,6 @@ const toCommand = (raw: unknown): TogetherCommand | null => {
   return {
     userId: str(command.userId),
     type,
-    formerSongId: str(command.formerSongId),
     targetSongId: targetSongId === "0" ? "" : targetSongId,
     progressMs: Math.max(0, num(command.progress)),
     playing: !neutral && !paused,

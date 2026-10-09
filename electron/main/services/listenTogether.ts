@@ -98,7 +98,6 @@ let notInRoomStreak = 0;
 // 上一次见到的房间成员 id：有人进来时要把当前进度重报一次，
 // 否则新进来的人会按服务端存的旧进度对齐
 let knownMemberIds: string[] = [];
-let previousSongId = "";
 let rateLimitUntil = 0;
 /** 上一次已上报的播放态：只用来判断"播放态变了"，不参与 delta 计算 */
 let previousPlaying = false;
@@ -309,7 +308,6 @@ const reportFor = (changes: readonly string[], playing: boolean): ReportAction[]
 
 const reportCommand = async (
   type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE" | "PLAYMODE_CHANGE",
-  formerSongId: string,
   playing: boolean,
   state: TogetherLocalState,
 ): Promise<void> => {
@@ -322,9 +320,12 @@ const reportCommand = async (
   // 在这里重读会让请求内容与本次 delta 不再对应
   const targetSongId = state.songId || "0";
   if (issuing !== generation) return;
-  // 客户端直发：实测送达约 0.2 秒，而 HTTP 要等一轮同步周期再由服务端转发。
-  // 播放命令不落库（实测 report 返回 result=true，但快照 command 恒为 null），
-  // 所以直发成功就不必再发 HTTP —— 那一发只是白等一次往返
+  // 命令只走客户端直发。
+  //
+  // 官方客户端同样如此：APK 里几乎没有 /api/listen/together/* 端点，
+  // 播放命令不发 HTTP。实测直发送达约 0.2 秒，HTTP 那条要等一轮同步周期
+  // 再由服务端转发，且不落库（report 返回 result=true 但快照 command 恒为 null），
+  // 所以它从来只是拖慢速度的冗余路径
   const sent = sendPlaybackCommand({
     roomId,
     userId: session.userId,
@@ -335,20 +336,10 @@ const reportCommand = async (
     mode: state.playMode,
     seq,
   });
-  neteaseLog.info(
-    `[一起听] 上报 ${type} target=${targetSongId} former=${formerSongId || "-"}${sent ? "（直发）" : "（HTTP，实时通道未连接）"}`,
-  );
-  if (sent) return;
-  await callNetease("listen_together_play_command_report", {
-    roomId,
-    type,
-    progressMs: state.positionMs,
-    playing,
-    formerSongId: formerSongId || "0",
-    targetSongId,
-    clientSeq: seq,
-    playMode: type === "PLAYMODE_CHANGE" ? state.playMode : "",
-  });
+  // 发不出去必须抛：调用方按失败处理就不会提交本地基线，
+  // 状态差异会留到下一轮重试。静默返回等于这条命令永久丢失
+  if (!sent) throw new Error("实时通道未就绪，播放命令未发出");
+  neteaseLog.info(`[一起听] 上报 ${type} target=${targetSongId}`);
 };
 
 const reportQueue = async (songIds: readonly string[]): Promise<void> => {
@@ -586,7 +577,7 @@ const beat = async (doHeartbeat: boolean): Promise<boolean> => {
         }
         // 必须发 GOTO 而不是 PROGRESS：对端（尤其官方客户端）入场时
         // 需要一条真正的歌曲指令才会切歌，PROGRESS 只调整进度
-        await guarded(() => reportCommand("GOTO", "", lastState.playing, lastState), issuingBeat);
+        await guarded(() => reportCommand("GOTO", lastState.playing, lastState), issuingBeat);
       }
       knownMemberIds = ids;
       publishRoom(status.room);
@@ -709,10 +700,7 @@ const tick = async (realtime = false): Promise<void> => {
         claim("queue");
       }
       if (state.songId) {
-        const gotoSent = await guarded(
-          () => reportCommand("GOTO", "", state.playing, state),
-          issuing,
-        );
+        const gotoSent = await guarded(() => reportCommand("GOTO", state.playing, state), issuing);
         healthy = gotoSent && healthy;
         if (gotoSent) claim("songId");
       } else {
@@ -723,7 +711,7 @@ const tick = async (realtime = false): Promise<void> => {
       // 只有上报成功才登记为"已认领"：失败还登记的话，服务端之后真实返回的
       // 模式会被 claiming 当作"未回显"吞掉，而该值此后再无补报机会
       const modeReported = await guarded(
-        () => reportCommand("PLAYMODE_CHANGE", "", state.playing, state),
+        () => reportCommand("PLAYMODE_CHANGE", state.playing, state),
         issuing,
       );
       healthy = modeReported && healthy;
@@ -746,7 +734,7 @@ const tick = async (realtime = false): Promise<void> => {
       const ok = await guarded(async () => {
         applied = await applySnapshot(true);
         if (applied && mode === "restore") {
-          await reportCommand("PAUSE", state.songId, false, state);
+          await reportCommand("PAUSE", false, state);
         }
       }, issuing);
       if (ok && applied) adoptionTicks = ADOPT_CONFIRM_TICKS;
@@ -875,13 +863,7 @@ const tick = async (realtime = false): Promise<void> => {
         for (const action of actions) {
           if (action.type === "GOTO") leaderId = selfUserId;
           const sent = await guarded(
-            () =>
-              reportCommand(
-                action.type,
-                delta.changes.includes("track") ? previousSongId : "",
-                action.playing,
-                state,
-              ),
+            () => reportCommand(action.type, action.playing, state),
             issuing,
           );
           if (!sent) {
@@ -976,7 +958,6 @@ const endSession = (reason: "left" | "server" | "logout", expected?: number): vo
   notInRoomStreak = 0;
   knownMemberIds = [];
   tickCount = 0;
-  previousSongId = "";
   rateLimitUntil = 0;
   rateLimitFailures = 0;
   previousPlaying = false;
@@ -1065,7 +1046,7 @@ const announcePlayback = async (): Promise<void> => {
   if (!session || !lastState?.songId) return;
   const issuing = generation;
   const state = lastState;
-  await guarded(() => reportCommand("GOTO", "", state.playing, state), issuing);
+  await guarded(() => reportCommand("GOTO", state.playing, state), issuing);
   void refreshFromRealtime(issuing);
 };
 
@@ -1078,7 +1059,6 @@ const announcePlayback = async (): Promise<void> => {
 const emitPlayback = (event: {
   commandType: string;
   targetSongId: string;
-  formerSongId: string;
   progressMs: number;
   playStatus: string;
   serverSeq: number;
@@ -1105,7 +1085,6 @@ const emitPlayback = (event: {
         type,
         playing,
         targetSongId: event.targetSongId,
-        formerSongId: event.formerSongId,
         progressMs: event.progressMs,
         serverSeq: event.serverSeq,
         userId: "",
@@ -1155,7 +1134,6 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   tickCount = 0;
   baseline = null;
   hasLocalState = false;
-  previousSongId = "";
   rateLimitUntil = 0;
   rateLimitFailures = 0;
   previousPlaying = false;
@@ -1431,10 +1409,8 @@ export const updateLocal = (state: TogetherLocalState): void => {
       `[一起听] 本地状态 song=${state.songId || "-"} 队列=${state.queueSongIds.length}首 模式=${state.playMode}`,
     );
   }
-  if (state.songId !== previousId) previousSongId = previousId;
   if (!baseline) {
     baseline = baselineOf(state);
-    previousSongId = state.songId;
   }
   if (pendingAdvanceAt && state.songId !== previousId) pendingAdvanceAt = 0;
   // 渲染端真的把队列换成了我们下发的目标，这时才认账

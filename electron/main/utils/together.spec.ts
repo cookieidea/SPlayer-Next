@@ -53,7 +53,6 @@ const state = (patch: Partial<TogetherLocalState> = {}): TogetherLocalState => (
 const command = (patch: Partial<TogetherCommand> = {}): TogetherCommand => ({
   userId: "9",
   type: "GOTO",
-  formerSongId: "1",
   targetSongId: "2",
   progressMs: 0,
   playing: true,
