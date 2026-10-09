@@ -100,9 +100,16 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   const target = roomPositionMs(room);
   if (target < 0) return;
   const drift = target - getCurrentTime();
-  // 刚加载新曲：无论差多少都对齐（新曲从头播，不拉齐必然进度不准）
+  // 刚加载新曲：无论差多少都对齐（新曲从头播，不拉齐必然进度不准）。
+  // 加载中 seek 会被引擎丢弃（trackLoading 守卫），所以重试到加载完成后再落
   if (justLoaded) {
-    await player.seek(target);
+    for (let i = 0; i < 20; i++) {
+      if (!useStatusStore().trackLoading) {
+        await player.seek(target);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     return;
   }
   if (room.forceSync) {
@@ -496,6 +503,9 @@ export const createMultiRoom = (userId: string): Promise<unknown> =>
       throw new Error("当前是本地或云盘音乐，请先播放一首在线歌曲再创建多人房");
     }
     const songId = String(current.id);
+    // 建房先把本地进度归零：房间的权威进度来自创建者的 first GOTO，
+    // 带着旧进度建房，对端进来就会对齐到你点击创建那一刻的位置
+    await player.seek(0);
     const room = await window.api.togetherMulti.createRoom(songId, userId);
     roomQueueKey = "";
     await followRoom(room);

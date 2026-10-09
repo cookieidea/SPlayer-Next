@@ -459,6 +459,9 @@ export const createRoom = async (userId: string): Promise<boolean> => {
   beginBusy();
   try {
     await window.api.together.create(userId);
+    // 建房先把本地进度归零再上报：对端进来对齐的是创建者上报的进度，
+    // 带着旧进度建房会让对方从你"点击创建那一刻"的位置开始听
+    await player.seek(0);
     // 建房后自动起播：官方行为是创建即播放，否则对端进来听到的是静音
     const status = useStatusStore();
     if (status.currentTrack && !status.isPlaying) await player.play();
@@ -564,14 +567,8 @@ export const stopWatchInvites = (): void => {
 
 const pollInvites = async (): Promise<void> => {
   const cards = await loadInvites().catch(() => [] as TogetherInviteCard[]);
-  const fresh = cards.filter((card) => !knownInviteRooms.has(card.roomId));
-  if (!fresh.length) return;
-  for (const card of fresh) {
-    // 服务端对同一房间的邀请可能重复下发，弹过就不再弹
-    knownInviteRooms.add(card.roomId);
-    const who = card.inviterName || "好友";
-    toast.info(`${who} 邀请你一起听${card.multi ? "（多人房）" : ""}`);
-  }
+  // 只更新已知集合供面板红点/列表使用：邀请不再弹 toast（用户要求移除）
+  for (const card of cards) knownInviteRooms.add(card.roomId);
 };
 
 export const loadInvites = async (): Promise<TogetherInviteCard[]> => {
