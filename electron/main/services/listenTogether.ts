@@ -973,7 +973,10 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       }
       void refreshFromRealtime(issuing);
     });
+    neteaseLog.info("[一起听] 双人实时通道已连接");
   } catch (error) {
+    // 代次已变时本次连接属于旧房间，静默放弃即可；否则必须留痕，
+    // 否则"匹配成功但没声音"这类问题连日志都没有
     if (generation !== issuing) return;
     neteaseLog.warn(`一起听实时通道连接失败，稍后重连：${str(obj(error)?.message)}`);
     if (realtimeRetry) clearTimeout(realtimeRetry);

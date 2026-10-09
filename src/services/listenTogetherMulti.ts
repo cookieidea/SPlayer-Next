@@ -291,8 +291,13 @@ const pollMatch = async (userId: string): Promise<void> => {
       return;
     }
     // 配对成功后必须回一次 ack 才算真正进房。
-    // 少了它服务端会按 ACK 等待超时把账号踢出去——表现就是"匹配到了，过一会自己退出"
-    await window.api.togetherMulti.ackMatch(room.roomId);
+    // 少了它服务端会按 ACK 等待超时把账号踢出去——表现就是"匹配到了，过一会自己退出"。
+    // ack 请求偶发挂起（实测会卡死整个加入流程），20 秒兜底放行：
+    // 界面先进房，ack 的后续由服务端 ACK 超时兜底
+    await Promise.race([
+      window.api.togetherMulti.ackMatch(room.roomId),
+      new Promise((resolve) => setTimeout(resolve, 20_000)),
+    ]);
     // 匹配到就必须通知服务端结束匹配，否则账号会一直挂在匹配队列里
     finishMatch();
     toast.success("已找到听友");
@@ -382,8 +387,12 @@ const pollMultiMatch = async (): Promise<void> => {
       return;
     }
     // 必须回 ack 才算真正进房（MULTI_MATCH_WAIT_ACK_TIMEOUT 就是这条等待的超时）。
-    // 多人要用多人自己的 ack 端点，双人那条加入不了多人房
-    await window.api.togetherMulti.ackMultiMatch(room.roomId);
+    // 多人要用多人自己的 ack 端点，双人那条加入不了多人房。
+    // 同双人侧：ack 请求偶发挂起会卡死加入流程，20 秒兜底放行
+    await Promise.race([
+      window.api.togetherMulti.ackMultiMatch(room.roomId),
+      new Promise((resolve) => setTimeout(resolve, 20_000)),
+    ]);
     finishMatch();
     toast.success("已找到听友");
     try {
