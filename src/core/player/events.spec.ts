@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   onTrackEndedAutoClose: vi.fn(() => false),
   onTrackEndedStats: vi.fn(),
   isTogetherActive: vi.fn(() => false),
+  multiInRoom: vi.fn(() => false),
   waitForRoomAdvance: vi.fn(() => Promise.resolve(true)),
   countTogetherAction: vi.fn(),
   nextTrack: vi.fn(() => Promise.resolve()),
@@ -17,6 +18,9 @@ vi.mock("@/core/player/stats", () => ({ onTrackEnded: mocks.onTrackEndedStats })
 vi.mock("@/services/listenTogether", () => ({ isTogetherActive: mocks.isTogetherActive }));
 vi.mock("@/services/listenTogetherMulti", () => ({
   waitForRoomAdvance: mocks.waitForRoomAdvance,
+}));
+vi.mock("@/stores/togetherMulti", () => ({
+  useTogetherMultiStore: () => ({ inRoom: mocks.multiInRoom() }),
 }));
 vi.mock("@/services/togetherCounter", () => ({ countTogetherAction: mocks.countTogetherAction }));
 vi.mock("@/i18n", () => ({ default: { global: { t: (key: string) => key } } }));
@@ -82,13 +86,27 @@ describe("播放器事件收尾", () => {
     expect(mocks.onTrackEndedAutoClose).toHaveBeenCalled();
   });
 
-  it("一起听时不本地推进下一首", async () => {
+  it("多人房时不本地推进下一首，等房间决定", async () => {
     mocks.isTogetherActive.mockReturnValue(true);
+    // 只有多人房才等房间推进：双人房的推进由主进程负责
+    mocks.multiInRoom.mockReturnValue(true);
 
     await mods.handleEvent(endedEvent());
 
     expect(mocks.nextTrack).not.toHaveBeenCalled();
     expect(mocks.waitForRoomAdvance).toHaveBeenCalled();
+    mocks.multiInRoom.mockReturnValue(false);
+  });
+
+  it("双人房时不本地推进也不空等房间", async () => {
+    mocks.isTogetherActive.mockReturnValue(true);
+    mocks.multiInRoom.mockReturnValue(false);
+
+    await mods.handleEvent(endedEvent());
+
+    // 双人房的推进由主进程 handleEnded 负责，本地不推进也不等多人函数
+    expect(mocks.nextTrack).not.toHaveBeenCalled();
+    expect(mocks.waitForRoomAdvance).not.toHaveBeenCalled();
   });
 
   it("不在房间时正常推进下一首", async () => {

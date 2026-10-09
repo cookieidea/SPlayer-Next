@@ -55,15 +55,19 @@ const finishCurrentTrack = async (): Promise<void> => {
     // 一起听里下一首由房间决定，本地不推进；但上面这些与房间无关的收尾
     // （定时关闭、播放统计）必须照常执行，否则"播完这首就关"会失灵、听歌记录也会漏
     if (isTogetherActive()) {
-      // 多人房的曲目由房间决定。心跳 8 秒太长，这里短间隔重试几次主动拉，
-      // 服务端一换曲就立刻跟上；始终不本地推进——曲目必须由房间说了算
-      const advanced = await waitForRoomAdvance();
-      // 房间没动（比如房里就这一首）：单曲循环就重播，否则保持暂停，
-      // 绝不本地推进——曲目必须由房间决定
-      if (advanced || !useTogetherMultiStore().inRoom) return;
-      if (repeatOne) {
-        await seek(0);
-        await play();
+      // 只有多人房需要等房间推进：它的曲目完全由服务端决定。
+      // 双人房的推进由主进程 handleEnded 负责（leader 上报 GOTO），
+      // 在这里等多人函数会白等一整个窗口
+      if (useTogetherMultiStore().inRoom) {
+        const advanced = await waitForRoomAdvance();
+        // 房间没动（比如房里就这一首）：单曲循环就重播，否则保持暂停，
+        // 绝不本地推进——曲目必须由房间决定
+        if (advanced) return;
+        if (repeatOne) {
+          await seek(0);
+          await play();
+        }
+        return;
       }
       return;
     }

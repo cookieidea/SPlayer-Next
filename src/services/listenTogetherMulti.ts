@@ -453,9 +453,16 @@ export const refreshTogetherMulti = async (): Promise<void> => {
   }
 };
 
-/** 播完后重试的间隔与次数：心跳 8 秒太长，主动拉几次能明显缩短空档 */
-const ADVANCE_INTERVAL_MS = 700;
-const ADVANCE_RETRIES = 8;
+/**
+ * 播完后重试的间隔与次数。
+ *
+ * 实测：服务端在真实曲终后 ~3 秒才推进队列（它按自己的 playedTime 判定），
+ * 若本地进度略快，窗口起点会早于服务端推进时刻。窗口必须宽到覆盖
+ * 「本地提前量 + 服务端判定延迟 + 一次网络往返」，5.6 秒会错过；
+ * 取 18 秒（24 × 750ms）在体感上仍属于"立刻接上"
+ */
+const ADVANCE_INTERVAL_MS = 750;
+const ADVANCE_RETRIES = 24;
 
 /**
  * 播完一首后等房间的下一首。
@@ -466,15 +473,20 @@ const ADVANCE_RETRIES = 8;
 export const waitForRoomAdvance = async (): Promise<boolean> => {
   const store = useTogetherMultiStore();
   const before = store.room?.playSong?.songId ?? "";
+  console.info(`[一起听] 本曲结束，等房间推进（当前 ${before}）`);
   for (let i = 0; i < ADVANCE_RETRIES; i += 1) {
     // 先立刻拉一次再判断：播完就问，服务端已换曲的话这一下就能接上，没有空等
     await refreshTogetherMulti();
     if (!store.inRoom) return true;
     const now = store.room?.playSong?.songId ?? "";
-    if (now && now !== before) return true;
+    if (now && now !== before) {
+      console.info(`[一起听] 房间已推进 ${before} → ${now}（第 ${i + 1} 次拉取）`);
+      return true;
+    }
     // 还没换就稍等再问
     await new Promise((resolve) => setTimeout(resolve, ADVANCE_INTERVAL_MS));
   }
+  console.warn(`[一起听] 等待房间推进超时，仍是 ${before}（重试 ${ADVANCE_RETRIES} 次）`);
   return false;
 };
 
