@@ -528,6 +528,30 @@ export const fetchRoomMembers = async (): Promise<NimRoomMember[]> => {
   }
 };
 
+/**
+ * 等待聊天室连接就绪。
+ *
+ * 进房到长连接建立之间有几秒空档，这期间的上报不能丢：
+ * 丢了就是"我操作了但对面没反应"。调用方拿它等，而不是直接失败重试
+ */
+export const waitForRoomChannel = (timeoutMs: number): Promise<boolean> => {
+  if (chatroom && currentRoom) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (chatroom && currentRoom) {
+        clearInterval(timer);
+        resolve(true);
+        return;
+      }
+      if (Date.now() - started >= timeoutMs) {
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, 100);
+  });
+};
+
 export const disconnectNimRoom = (): void => {
   if (!chatroom || !currentRoom) return;
   try {

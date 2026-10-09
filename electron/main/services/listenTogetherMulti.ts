@@ -278,7 +278,19 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
     if (event.kind === "state") {
       const current = room;
       if (!current || event.roomId !== current.roomId) return;
+      neteaseLog.info(
+        `[一起听] 服务端推房间状态 曲=${event.songInfo.playSong ? "有" : "无"} 版本=${String(event.songInfo.version ?? "-")}`,
+      );
       publish({ ...current, ...multiPlaybackFromSongInfo(event.songInfo) }, issuing);
+      return;
+    }
+
+    // 播放命令（40001）：多人房同样会收到，走与双人一致的解析结果
+    if (event.kind === "playback") {
+      neteaseLog.info(
+        `[一起听] 收到播放命令 ${event.commandType} from=${event.senderId} target=${event.targetSongId || "-"}`,
+      );
+      void refreshMultiRoom();
       return;
     }
 

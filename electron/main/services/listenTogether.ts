@@ -5,6 +5,7 @@ import {
   fetchRoomMembers,
   sendPlaybackCommand,
   setNimListener,
+  waitForRoomChannel,
 } from "@main/services/nim/realtime";
 import { neteaseLog } from "@main/utils/logger";
 import { fetchWithProxy } from "@main/utils/proxy";
@@ -290,6 +291,9 @@ const pickLeader = (value: TogetherRoom, selfUserId: string): string => {
   return sorted[0] ?? selfUserId;
 };
 
+/** 等长连接就绪的上限：进房到连上实测最慢 7 秒，留一倍余量 */
+const CHANNEL_WAIT_MS = 15_000;
+
 type ReportAction = {
   type: "GOTO" | "PROGRESS" | "PLAY" | "PAUSE" | "PLAYMODE_CHANGE";
   playing: boolean;
@@ -326,7 +330,7 @@ const reportCommand = async (
   // 播放命令不发 HTTP。实测直发送达约 0.2 秒，HTTP 那条要等一轮同步周期
   // 再由服务端转发，且不落库（report 返回 result=true 但快照 command 恒为 null），
   // 所以它从来只是拖慢速度的冗余路径
-  const sent = sendPlaybackCommand({
+  const payload = {
     roomId,
     userId: session.userId,
     commandType: type,
@@ -335,9 +339,14 @@ const reportCommand = async (
     playing,
     mode: state.playMode,
     seq,
-  });
-  // 发不出去必须抛：调用方按失败处理就不会提交本地基线，
-  // 状态差异会留到下一轮重试。静默返回等于这条命令永久丢失
+  };
+  // 进房到长连接建立之间有几秒空档（实测最慢 7 秒），这期间发不出去。
+  // 短等一次把命令补上：直接丢弃就是"我操作了但对面没反应"
+  let sent = sendPlaybackCommand(payload);
+  if (!sent && (await waitForRoomChannel(CHANNEL_WAIT_MS))) {
+    sent = sendPlaybackCommand(payload);
+  }
+  // 仍然发不出去才抛：调用方按失败处理，不提交基线，下一轮继续重试
   if (!sent) throw new Error("实时通道未就绪，播放命令未发出");
   neteaseLog.info(`[一起听] 上报 ${type} target=${targetSongId}`);
 };
@@ -1000,6 +1009,9 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       // 播放命令直接下发渲染端：play/command 不落库，快照 command=null，
       // 拉取路径拿不到 PAUSE/PLAY/PROGRESS，IM 推送是唯一接收途径
       if (event.kind === "playback") {
+        neteaseLog.info(
+          `[一起听] 收到远端命令 ${event.commandType} from=${event.senderId} target=${event.targetSongId || "-"}`,
+        );
         emitPlayback(event);
         return;
       }
