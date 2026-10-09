@@ -527,21 +527,6 @@ export const joinRoomById = async (
   }
 };
 
-export const joinRoom = async (input: string, userId: string): Promise<boolean> => {
-  let resolved: ResolvedInvitation | null = null;
-  try {
-    resolved = await resolveInvitation(input);
-  } catch {
-    toast.error("邀请链接无法打开，请检查网络后重试");
-    return false;
-  }
-  if (!resolved) {
-    toast.error("邀请链接里没有房间信息");
-    return false;
-  }
-  return joinRoomById(resolved.roomId, resolved.inviterId, userId);
-};
-
 /**
  * 取待处理邀请。
  *

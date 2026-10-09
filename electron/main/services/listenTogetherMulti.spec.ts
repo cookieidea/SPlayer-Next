@@ -3,7 +3,6 @@ import {
   MULTI_HEARTBEAT_MS,
   addMultiSong,
   exitMultiRoom,
-  getMultiRoom,
   getMultiSession,
   joinMultiRoom,
   onMultiEnd,
@@ -132,7 +131,6 @@ describe("多人一起听", () => {
     expect(mocks.call).toHaveBeenCalledWith("listen_together_multi_heartbeat", { roomId: "R_1" });
     expect(pushed).toHaveLength(1);
     expect(pushed[0]).toMatchObject({ playSong: { songId: "999" } });
-    expect(getMultiRoom()?.playSong?.songId).toBe("999");
   });
 
   it("内容相同的心跳也照推：渲染端靠它周期对齐进度", async () => {
@@ -259,7 +257,6 @@ describe("多人一起听", () => {
       exitType: "NORMAL_END",
     });
     expect(getMultiSession()).toBeNull();
-    expect(getMultiRoom()).toBeNull();
   });
 
   it("心跳失败只报错不结束会话", async () => {

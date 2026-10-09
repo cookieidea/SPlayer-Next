@@ -85,7 +85,6 @@ describe("一起听实时消息解码", () => {
       playStatus: "PLAY",
       serverSeq: 1791500218472,
       clientSeq: 13,
-      hint: "对方刚刚切歌了",
     });
   });
 

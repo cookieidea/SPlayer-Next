@@ -452,7 +452,6 @@ const api = {
     resolveLink: (url: string) => ipcRenderer.invoke("together:resolveLink", url),
     pendingInvites: () => ipcRenderer.invoke("together:pendingInvites"),
     fetchInvitation: () => ipcRenderer.invoke("together:fetchInvitation"),
-    resetInvitationVersion: () => ipcRenderer.invoke("together:resetInvitationVersion"),
     friends: (userId: string) => ipcRenderer.invoke("together:friends", userId),
     invite: (acceptorId: string) => ipcRenderer.invoke("together:invite", acceptorId),
     rejectInvitation: (roomId: string) => ipcRenderer.invoke("together:rejectInvitation", roomId),

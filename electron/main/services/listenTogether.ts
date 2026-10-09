@@ -1256,8 +1256,8 @@ export interface TogetherInvitationInfo {
 /**
  * 拉取邀请。
  *
- * 官方靠云信 IM 推送获知邀请，我们没接 IM，改用这个 HTTP 端点轮询：
- * 实测它是增量设计（传入已知版本，服务端每次 +1 返回），
+ * 房间内的播放/成员事件已走云信推送，但"被邀请"这条仍靠 HTTP 增量轮询：
+ * 实测该端点传入已知版本、服务端每次 +1 返回，
  * 有新邀请时带 display:true 与 roomId
  */
 export const fetchInvitation = async (): Promise<TogetherInvitationInfo | null> => {
@@ -1277,11 +1277,6 @@ export const fetchInvitation = async (): Promise<TogetherInvitationInfo | null> 
     avatarUrl: str(data.avatarUrl),
     hadAutoChangeMulti: data.hadAutoChangeMulti === true,
   };
-};
-
-/** 退房/换房后重置，避免把上一个房间的版本号带过去 */
-export const resetInvitationVersion = (): void => {
-  invitationVersion = 0;
 };
 
 export const pendingInvites = async (): Promise<TogetherInviteCard[]> => {

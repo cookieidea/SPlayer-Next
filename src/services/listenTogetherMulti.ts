@@ -458,7 +458,7 @@ export const cancelStrangerMatch = (): Promise<void> =>
  * 本曲播完时立刻拉一次心跳：房间的下一首由服务端决定，
  * 不主动拉就要等 8 秒周期，中间是一段静音
  */
-export const refreshTogetherMulti = async (): Promise<void> => {
+const refreshTogetherMulti = async (): Promise<void> => {
   if (!useTogetherMultiStore().inRoom) return;
   try {
     await window.api.togetherMulti.refresh();
@@ -487,20 +487,15 @@ const ADVANCE_RETRIES = 24;
 export const waitForRoomAdvance = async (): Promise<boolean> => {
   const store = useTogetherMultiStore();
   const before = store.room?.playSong?.songId ?? "";
-  console.info(`[一起听] 本曲结束，等房间推进（当前 ${before}）`);
   for (let i = 0; i < ADVANCE_RETRIES; i += 1) {
     // 先立刻拉一次再判断：播完就问，服务端已换曲的话这一下就能接上，没有空等
     await refreshTogetherMulti();
     if (!store.inRoom) return true;
     const now = store.room?.playSong?.songId ?? "";
-    if (now && now !== before) {
-      console.info(`[一起听] 房间已推进 ${before} → ${now}（第 ${i + 1} 次拉取）`);
-      return true;
-    }
+    if (now && now !== before) return true;
     // 还没换就稍等再问
     await new Promise((resolve) => setTimeout(resolve, ADVANCE_INTERVAL_MS));
   }
-  console.warn(`[一起听] 等待房间推进超时，仍是 ${before}（重试 ${ADVANCE_RETRIES} 次）`);
   return false;
 };
 

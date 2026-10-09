@@ -30,8 +30,6 @@ export interface NimPlaybackEvent {
   playStatus: string;
   serverSeq: number;
   clientSeq: number;
-  /** 服务端准备好的可读提示，如「对方刚刚切歌了」 */
-  hint: string;
 }
 
 /** 播放列表变更（type=20001）：只带版本号，队列内容需重新拉取 */
@@ -39,7 +37,6 @@ export interface NimQueueEvent {
   kind: "queue";
   senderId: string;
   serverSeq: number;
-  hint: string;
 }
 
 /** 成员进入 / 退出（msg_type_=5） */
@@ -154,20 +151,6 @@ const parseAttach = (value: unknown): Record<string, unknown> => {
   return asRecord(value);
 };
 
-/**
- * 取服务端配好的可读提示。
- *
- * `operateMsg` 是「谁看到什么」的映射（键是观看者 uid），同一条消息对每个
- * 成员给的文案一样，所以取第一个非发送者的条目即可
- */
-const pickHint = (operateMsg: unknown, senderId: string): string => {
-  const map = asRecord(operateMsg);
-  for (const [uid, text] of Object.entries(map)) {
-    if (uid !== senderId) return readString(text);
-  }
-  return "";
-};
-
 /** 从通知里取被操作用户的 uid：进入/退出的 target 就是那个人 */
 const notifyUserId = (data: Record<string, unknown>): string => {
   const target = data.target;
@@ -200,7 +183,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
   const eventType = readNumber(content.type);
   const body = asRecord(content.content);
   const senderId = readString(message.from_id_);
-  const hint = pickHint(body.operateMsg, senderId);
 
   if (eventType === EVENT_PLAYBACK) {
     const commandType = readString(body.commandType).toUpperCase();
@@ -215,7 +197,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       playStatus: readString(body.playStatus).toUpperCase(),
       serverSeq: readNumber(body.serverSeq),
       clientSeq: readNumber(body.clientSeq),
-      hint,
     };
   }
 
@@ -233,7 +214,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       playStatus: info.playing === true ? "PLAY" : "PAUSE",
       serverSeq: readNumber(info.operateSeq) || readNumber(body.seq),
       clientSeq: readNumber(body.seq),
-      hint,
     };
   }
 
@@ -242,7 +222,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       kind: "queue",
       senderId: readString(body.sendUid) || senderId,
       serverSeq: readNumber(body.serverSeq),
-      hint,
     };
   }
 
