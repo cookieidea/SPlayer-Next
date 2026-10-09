@@ -30,6 +30,8 @@ export interface NimPlaybackEvent {
   /** 播放模式（ORDER_LOOP / SINGLE_LOOP / RANDOM …）。官方放在 playingInfo.mode 里，
    *  是唯一的 IM 侧模式通道；空串表示这条命令没带模式 */
   mode: string;
+  /** 服务端按观看者写好的文案（"对方暂停了歌曲播放"等），可直接显示 */
+  hint: string;
   serverSeq: number;
   clientSeq: number;
 }
@@ -259,6 +261,8 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       playStatus: readString(body.playStatus).toUpperCase(),
       // 20000 是早期自定义格式，载荷里没有 mode
       mode: "",
+      // 同样没有按观看者写好的文案
+      hint: "",
       serverSeq: readNumber(body.serverSeq),
       clientSeq: readNumber(body.clientSeq),
     };
@@ -268,6 +272,7 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
     const info = asRecord(body.playingInfo);
     const operation = readString(body.operation).toUpperCase();
     if (!operation) return null;
+    const operatorId = readString(body.operator) || senderId;
     return {
       kind: "playback",
       senderId: readString(body.operator) || senderId,
@@ -278,6 +283,9 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       // 官方把播放模式放在 playingInfo.mode 里，这是唯一的 IM 侧模式通道；
       // 只靠快照同步会慢一个周期
       mode: readString(info.mode).toUpperCase(),
+      // 服务端按观看者 uid 预先写好的文案（"对方暂停了歌曲播放"等）。
+      // 官方把它转成界面提示；我们同样透出，用户才知道对端做了什么
+      hint: readString(asRecord(body.operateMsg)[String(operatorId)]),
       serverSeq: readNumber(info.operateSeq) || readNumber(body.seq),
       clientSeq: readNumber(body.seq),
     };

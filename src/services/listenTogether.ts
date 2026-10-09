@@ -349,6 +349,11 @@ const handleEvent = async (next: TogetherSyncEvent): Promise<void> => {
     if (next.reason !== "left") toast.warning("一起听已结束");
     return;
   }
+  if (next.type === "notice") {
+    // 对端操作的提示（服务端文案）：轻量提示，不打断操作
+    toast.info(next.message);
+    return;
+  }
   if (next.type === "error") {
     toast.warning(`一起听同步失败：${next.message}`);
     return;

@@ -26,8 +26,8 @@ export const useTogetherStore = defineStore("together", () => {
 
   const apply = (next: TogetherSyncEvent): void => {
     // 旧会话的迟到事件必须丢弃：切房/退房后它会把新会话的状态覆盖掉
-    // error 不属于任何会话，直接放过
-    if (next.type === "error") return;
+    // error / notice 不属于任何会话，直接放过
+    if (next.type === "error" || next.type === "notice") return;
     const expected = session.value?.generation;
     const incoming =
       next.type === "session"

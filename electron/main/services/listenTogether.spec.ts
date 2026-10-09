@@ -1050,6 +1050,40 @@ describe("一起听房间状态机", () => {
     expect(modes).toContain("RANDOM");
   });
 
+  it("服务端文案透出为提示", async () => {
+    const service = await load();
+    const notices: string[] = [];
+    service.onNotice((text: string) => notices.push(text));
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    notices.length = 0;
+
+    // 服务端按观看者写好了文案（operateMsg 映射）
+    mocks.emit({
+      kind: "playback",
+      senderId: "88",
+      commandType: "PAUSE",
+      targetSongId: "100",
+      progressMs: 0,
+      playStatus: "PAUSE",
+      mode: "",
+      hint: "对方暂停了歌曲播放",
+      serverSeq: 5,
+      clientSeq: 5,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(notices).toContain("对方暂停了歌曲播放");
+  });
+
   it("在途旧快照不会向新会话派发同步事件", async () => {
     const service = await load();
     const applied: unknown[] = [];

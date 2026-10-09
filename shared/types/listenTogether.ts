@@ -169,6 +169,11 @@ export type TogetherSyncEvent =
   | {
       type: "error";
       message: string;
+    }
+  | {
+      /** 房间内的一句话提示（服务端按观看者写好的文案，如"对方暂停了歌曲播放"） */
+      type: "notice";
+      message: string;
     };
 
 export interface TogetherFriend {

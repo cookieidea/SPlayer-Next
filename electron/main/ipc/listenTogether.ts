@@ -96,6 +96,10 @@ export const registerTogetherIpc = (): void => {
     send({ type: "session-end", reason, generation });
   });
 
+  together.onNotice((text) => {
+    send({ type: "notice", message: text });
+  });
+
   together.onError((message) => {
     send({ type: "error", message });
   });

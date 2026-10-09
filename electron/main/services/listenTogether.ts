@@ -159,6 +159,21 @@ export const onAdvance = (listener: AdvanceListener): (() => void) => {
   return () => advanceListeners.delete(listener);
 };
 
+/** 房间内的一句话提示（服务端文案）：不需要用户操作，只是告知 */
+type NoticeListener = (text: string) => void;
+const noticeListeners = new Set<NoticeListener>();
+
+export const onNotice = (listener: NoticeListener): (() => void) => {
+  noticeListeners.add(listener);
+  return () => {
+    noticeListeners.delete(listener);
+  };
+};
+
+const noticeListener: NoticeListener = (text) => {
+  for (const listener of noticeListeners) listener(text);
+};
+
 export const onError = (listener: ErrorListener): (() => void) => {
   errorListeners.add(listener);
   return () => errorListeners.delete(listener);
@@ -1020,6 +1035,8 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
         neteaseLog.info(
           `[一起听] 收到远端命令 ${event.commandType} from=${event.senderId} target=${event.targetSongId || "-"}`,
         );
+        // 服务端给了按观看者写好的文案就透出：用户才知道对端做了什么
+        if (event.hint) noticeListener?.(event.hint);
         emitPlayback(event);
         return;
       }
