@@ -255,5 +255,6 @@ export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
     playProgress: num(songInfo?.playedTime),
     sampledAt: Date.now(),
     playDuration: num(songInfo?.songDuration),
+    forceSync: songInfo?.forceSync === true,
   };
 };

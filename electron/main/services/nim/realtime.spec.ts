@@ -96,7 +96,6 @@ describe("一起听实时消息解码", () => {
       senderId: "6294223883",
       serverSeq: 1791500377401,
     });
-    expect(event).toHaveProperty("version", [{ userId: "6294223883", version: 1 }]);
   });
 
   it("解出成员进入与退出", () => {

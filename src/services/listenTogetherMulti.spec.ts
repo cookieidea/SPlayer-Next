@@ -71,6 +71,7 @@ const room = (playSong: string | null, nextSongs: string[]): TogetherMultiRoom =
   playProgress: 0,
   sampledAt: 0,
   playDuration: 0,
+  forceSync: false,
 });
 
 const roomEvent = (value: TogetherMultiRoom): TogetherMultiEvent => ({
@@ -220,6 +221,7 @@ describe("多人一起听渲染端服务", () => {
       playProgress: 30000,
       sampledAt: Date.now(),
       playDuration: 200000,
+      forceSync: false,
     };
     mocks.getCurrentTime.mockReturnValue(500);
     mods.initTogetherMulti();
@@ -241,6 +243,7 @@ describe("多人一起听渲染端服务", () => {
       playProgress: 5000,
       sampledAt: Date.now(),
       playDuration: 200000,
+      forceSync: false,
     };
     mocks.getCurrentTime.mockReturnValue(60000);
     mods.initTogetherMulti();
@@ -585,5 +588,50 @@ describe("多人一起听渲染端服务", () => {
     // 立刻返回，不该先睡一个间隔
     expect(elapsed).toBeLessThan(500);
     expect(multi.refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("多人房 forceSync 对齐", () => {
+  it("forceSync 时无视容差双向对齐（服务端切歌后的强制同步）", async () => {
+    queue.setQueue([track("room1")]);
+    mediaMock.state.track = track("room1");
+    // 本地进度反而比房间靠前（服务端刚切歌重置了进度）：
+    // 普通路径只向前不倒带，forceSync 必须倒回去
+    mocks.getCurrentTime.mockReturnValue(120000);
+    mods.initTogetherMulti();
+
+    emit?.(
+      roomEvent({
+        ...room("room1", []),
+        playProgress: 30000,
+        sampledAt: Date.now(),
+        forceSync: true,
+      }),
+    );
+    await vi.waitFor(() => expect(mocks.seek).toHaveBeenCalled());
+
+    const target = (mocks.seek.mock.calls[0] as unknown[])[0] as number;
+    expect(target).toBeGreaterThanOrEqual(30000);
+    expect(target).toBeLessThan(31000);
+  });
+
+  it("forceSync 且进度接近时不 seek（<500ms 视为无漂移）", async () => {
+    queue.setQueue([track("room1")]);
+    mediaMock.state.track = track("room1");
+    mocks.getCurrentTime.mockReturnValue(30200);
+    mods.initTogetherMulti();
+
+    emit?.(
+      roomEvent({
+        ...room("room1", []),
+        playProgress: 30000,
+        sampledAt: Date.now(),
+        forceSync: true,
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mocks.seek).not.toHaveBeenCalled();
   });
 });

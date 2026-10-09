@@ -11,7 +11,6 @@ export const SYNC_INTERVAL_MS = 1000;
 
 /** 拉取房间播放列表（sync/playlist/get）的间隔：每 4 个 tick 一次。
  *  1 秒一次是每秒一个请求，参考实现用的是 4 秒——这是延迟与风控的取舍点 */
-export const SNAPSHOT_POLL_TICKS = 4;
 
 /** 心跳间隔：参考实现用 20s */
 export const HEARTBEAT_TICKS = 20;

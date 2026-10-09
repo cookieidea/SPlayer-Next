@@ -551,6 +551,7 @@ const applyOperateResult = (response: unknown): TogetherMultiRoom | null => {
     playProgress: Number(songInfo.playedTime) || room.playProgress,
     sampledAt: Date.now(),
     playDuration: Number(songInfo.songDuration) || room.playDuration,
+    forceSync: songInfo.forceSync === true,
   };
 };
 

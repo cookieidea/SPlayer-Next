@@ -54,6 +54,7 @@ describe("一起听播放守卫", () => {
       playProgress: 0,
       sampledAt: 0,
       playDuration: 0,
+      forceSync: false,
     };
     const guard = mountGuard();
 

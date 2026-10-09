@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  HEARTBEAT_TICKS,
-  SNAPSHOT_POLL_TICKS,
-  SYNC_INTERVAL_MS,
-} from "@main/utils/togetherProtocol";
+import { HEARTBEAT_TICKS, SYNC_INTERVAL_MS } from "@main/utils/togetherProtocol";
 import type { TogetherLocalState } from "@shared/types/listenTogether";
 
 const mocks = vi.hoisted(() => ({
@@ -25,8 +21,9 @@ vi.mock("@main/services/nim/realtime", () => ({
 }));
 
 // 与实现常量联动，避免测试把节奏写死；一个周期足以触发心跳与一次列表拉取
+// 轮询已移除：一个"周期"只影响心跳节奏；保留辅助给会话生命周期类测试用
 const cycle = async (): Promise<void> => {
-  await vi.advanceTimersByTimeAsync((HEARTBEAT_TICKS + SNAPSHOT_POLL_TICKS) * SYNC_INTERVAL_MS);
+  await vi.advanceTimersByTimeAsync((HEARTBEAT_TICKS + 4) * SYNC_INTERVAL_MS);
 };
 
 const localState = (patch: Partial<TogetherLocalState> = {}): TogetherLocalState => ({
@@ -1837,7 +1834,7 @@ describe("一起听房间状态机", () => {
     await service.create("7");
     service.updateLocal(localState());
     // 只推进时间、不发任何实时事件：旧的周期轮询已移除，快照不该被碰
-    await vi.advanceTimersByTimeAsync(SYNC_INTERVAL_MS * SNAPSHOT_POLL_TICKS * 3);
+    await vi.advanceTimersByTimeAsync(SYNC_INTERVAL_MS * 12);
     const idleCalls = snapshotCalls;
     expect(idleCalls).toBe(0);
 

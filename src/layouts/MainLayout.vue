@@ -5,7 +5,13 @@ import { useSettingsStore } from "@/stores/settings";
 import { useUserStore } from "@/stores/user";
 import { useOrpheusProtocol } from "@/composables/useOrpheusProtocol";
 import { useExternalFileHandler } from "@/composables/useExternalFileHandler";
-import { checkDeviceReconnect, initTogether, restoreRoom } from "@/services/listenTogether";
+import {
+  checkDeviceReconnect,
+  initTogether,
+  restoreRoom,
+  watchInvites,
+  stopWatchInvites,
+} from "@/services/listenTogether";
 import { initTogetherMulti, restoreTogetherMulti } from "@/services/listenTogetherMulti";
 
 const route = useRoute();
@@ -25,12 +31,20 @@ onMounted(() => {
   if (id) void restoreTogetherMulti(String(id));
   // 同一账号可能在另一台设备进房（手机先开了房），启动时问一次是否接管
   if (id) void checkDeviceReconnect();
+  // 被邀请时后台弹提示：收件箱只在打开面板时拉的话，用户永远不知道被邀请了
+  if (id) watchInvites();
 });
 
 watch(
   () => user.profile?.userId,
   (id) => {
-    if (id) void restoreRoom(String(id));
+    if (id) {
+      void restoreRoom(String(id));
+      // 登录后开启邀请监视；登出时停掉并清空已知列表，防止串号
+      watchInvites();
+    } else {
+      stopWatchInvites();
+    }
   },
 );
 

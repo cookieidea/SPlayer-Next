@@ -507,6 +507,46 @@ export const joinRoom = async (input: string, userId: string): Promise<boolean> 
  * 优先用官方的 invitation-info/get：它是服务端的权威回答（还会带房型自动升级标记），
  * 私信扫描作为兜底——它能补出邀请人的昵称与头像，而那个端点只有 id
  */
+/**
+ * 后台监视邀请：周期拉收件箱，出现新邀请就弹 toast。
+ *
+ * 收件箱本来只在打开一起听面板时拉一次，用户不主动开面板就永远不知道
+ * 被邀请了。这里常驻轮询；登录/登出切换账号时由调用方重启
+ */
+const INVITE_POLL_MS = 30_000;
+let inviteTimer: ReturnType<typeof setInterval> | null = null;
+let knownInviteRooms = new Set<string>();
+let inviteWatchStarted = false;
+
+export const watchInvites = (): void => {
+  if (inviteWatchStarted) return;
+  inviteWatchStarted = true;
+  // 启动时先把现有邀请记为"已知"，避免每次登录都对旧邀请弹一遍提示
+  void loadInvites().then((cards) => {
+    knownInviteRooms = new Set(cards.map((card) => card.roomId));
+  });
+  inviteTimer = setInterval(() => void pollInvites(), INVITE_POLL_MS);
+};
+
+export const stopWatchInvites = (): void => {
+  if (inviteTimer) clearInterval(inviteTimer);
+  inviteTimer = null;
+  inviteWatchStarted = false;
+  knownInviteRooms = new Set();
+};
+
+const pollInvites = async (): Promise<void> => {
+  const cards = await loadInvites().catch(() => [] as TogetherInviteCard[]);
+  const fresh = cards.filter((card) => !knownInviteRooms.has(card.roomId));
+  if (!fresh.length) return;
+  for (const card of fresh) {
+    // 服务端对同一房间的邀请可能重复下发，弹过就不再弹
+    knownInviteRooms.add(card.roomId);
+    const who = card.inviterName || "好友";
+    toast.info(`${who} 邀请你一起听${card.multi ? "（多人房）" : ""}`);
+  }
+};
+
 export const loadInvites = async (): Promise<TogetherInviteCard[]> => {
   const selfId = String(useUserStore().profile?.userId ?? "");
   // 收件箱是"会话列表"，把用户自己发出去的邀请也算在里面。

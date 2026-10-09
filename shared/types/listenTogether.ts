@@ -34,6 +34,8 @@ export interface TogetherMultiRoom {
   sampledAt: number;
   /** 当前曲总时长（毫秒） */
   playDuration: number;
+  /** 服务端要求强制对齐（切歌/顶歌等破坏性操作后）。此时忽略容差直接 seek */
+  forceSync: boolean;
 }
 
 export interface TogetherRoomOperateResult {

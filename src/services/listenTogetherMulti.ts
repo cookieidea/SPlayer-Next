@@ -87,10 +87,16 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
   }
   // 进度对齐：服务端在 roomPlaySongInfo 里给了 playedTime（已播毫秒）与
   // 采样时刻，心跳之间按「playedTime + 经过时间」推算真实位置。
-  // 只向前对齐：房间进度靠后说明那是旧采样，硬拉回去会把正在播的歌倒带
+  // 只向前对齐：房间进度靠后说明那是旧采样，硬拉回去会把正在播的歌倒带。
+  // forceSync 是服务端的强制对齐标记（切歌/顶歌等破坏性操作后置位），
+  // 此时双向对齐：服务端知道发生了什么，本地进度必须服从
   const target = roomPositionMs(room);
   if (target < 0) return;
   const drift = target - getCurrentTime();
+  if (room.forceSync) {
+    if (Math.abs(drift) > 500) await player.seek(target);
+    return;
+  }
   if (drift > PROGRESS_AHEAD_TOLERANCE_MS) await player.seek(target);
 };
 

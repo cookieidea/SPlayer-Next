@@ -1009,8 +1009,9 @@ const enterRoom = (nextRoom: TogetherRoom, userId: string, nextMode: RoomMode): 
   // 只留一个低频心跳维持在线与房间存活（服务端靠它算房间是否还在）
   timer = setInterval(() => void tick(), SYNC_INTERVAL_MS);
   const issuing = session.generation;
-  // 加入/建房后先拉一次权威状态：旧实现靠首轮轮询完成 adopt，
-  // 轮询移除后必须在进房时显式拉，否则加入者看不到房主现有队列
+  // 进房先同步一轮：此时渲染端还没上报本地状态（hasLocalState=false），
+  // 多数情况下这轮会被 tick 的守卫吞掉，真正的采纳发生在渲染端 updateLocal
+  // 之后的下一秒周期 tick —— 这里只是把"创建者即权威"的首帧上报尽早启动
   void refreshFromRealtime(issuing);
   void connectRealtime(nextRoom, issuing);
   return nextRoom;

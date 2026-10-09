@@ -42,7 +42,6 @@ export const requestNimTicket = async (request: NimTicketRequest): Promise<NimTi
   const scriptCandidates = [
     join(__dirname, "nim.ticketChild.js"),
     join(__dirname, "nim.ticketChild.cjs"),
-    join(__dirname, "nim", "ticketChild.js"),
     join(process.cwd(), "out", "main", "nim.ticketChild.js"),
   ];
   const script = scriptCandidates.find((candidate) => existsSync(candidate));

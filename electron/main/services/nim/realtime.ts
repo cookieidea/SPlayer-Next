@@ -39,8 +39,6 @@ export interface NimQueueEvent {
   kind: "queue";
   senderId: string;
   serverSeq: number;
-  /** 上报者的版本号；用它和本地已知版本比对可避免无意义拉取 */
-  version: Array<{ userId: string; version: number }>;
   hint: string;
 }
 
@@ -98,14 +96,6 @@ const parseAttach = (value: unknown): Record<string, unknown> => {
   }
   return asRecord(value);
 };
-
-const parseVersion = (value: unknown): Array<{ userId: string; version: number }> =>
-  (Array.isArray(value) ? value : [])
-    .map((item) => {
-      const entry = asRecord(item);
-      return { userId: readString(entry.userId), version: readNumber(entry.version) };
-    })
-    .filter((entry) => entry.userId);
 
 /**
  * 取服务端配好的可读提示。
@@ -177,7 +167,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       kind: "queue",
       senderId: readString(body.sendUid) || senderId,
       serverSeq: readNumber(body.serverSeq),
-      version: parseVersion(body.version),
       hint,
     };
   }
@@ -224,8 +213,6 @@ const ensureChatroom = async (): Promise<ChatRoomLike> => {
 export const setNimListener = (next: ((event: NimRoomEvent) => void) | null): void => {
   listener = next;
 };
-
-export const isNimAvailable = (): boolean => !unavailable;
 
 /**
  * 进入房间的聊天室。
