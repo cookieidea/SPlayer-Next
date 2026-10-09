@@ -59,8 +59,12 @@ const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
  * 拿它替换本地歌单会把用户的列表顶掉，所以只处理房间那一首：
  * 本地已有就地播放（不动列表顺序），没有才插进去
  */
-/** 落后房间这么多才追：太小会频繁 seek 抖动，太大则明显不同步 */
-const PROGRESS_AHEAD_TOLERANCE_MS = 3000;
+/**
+ * 与房间进度相差超过这个值就纠正。
+ * 参考实现（Music Party / Folium）用 1.5s：3s 会让"快 1.5 秒"这种偏差
+ * 永远落在死区内不被纠正
+ */
+const PROGRESS_AHEAD_TOLERANCE_MS = 1500;
 
 /** 房间当前曲应处的进度：采样值 + 从采样到现在经过的时间 */
 const roomPositionMs = (room: TogetherMultiRoom): number => {
@@ -123,7 +127,10 @@ const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
     if (Math.abs(drift) > 500) await player.seek(target);
     return;
   }
-  if (drift > PROGRESS_AHEAD_TOLERANCE_MS) await player.seek(target);
+  // 双向对齐：多人房的进度以服务端为准（房内也拦截了本地拖进度），
+  // 没有"用户在本地改了进度不该被拉回"这回事。只向前对齐会让本地
+  // 一直快着若干秒而不被纠正 —— 参考实现同样用双向（阈值 1.5s）
+  if (Math.abs(drift) > PROGRESS_AHEAD_TOLERANCE_MS) await player.seek(target);
 };
 
 const handleEvent = (): void => {

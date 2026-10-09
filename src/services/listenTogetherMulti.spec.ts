@@ -275,13 +275,15 @@ describe("多人一起听渲染端服务", () => {
     expect(target).toBeLessThan(31000);
   });
 
-  it("多人房不会因为旧采样把本地倒带", async () => {
+  it("多人房本地超前时会被拉回（双向对齐，服务端为准）", async () => {
     queue.setQueue([track("room1")]);
     mediaMock.state.track = track("room1");
-    // 本地已播 60 秒，房间采样的 5 秒是旧值：只向前对齐，不倒带
+    // 本地已播 60 秒，房间才 30 秒：本地超前必须纠正，
+    // 否则会一直快着若干秒 —— 房内不允许本地拖进度，没有"用户操作"要保护，
+    // 乱序的旧快照由版本门控挡掉，不靠"只向前"来防倒带
     const roomBehind: TogetherMultiRoom = {
       ...room("room1", []),
-      playProgress: 5000,
+      playProgress: 30000,
       sampledAt: Date.now(),
       playDuration: 200000,
       forceSync: false,
@@ -290,10 +292,11 @@ describe("多人一起听渲染端服务", () => {
     mods.initTogetherMulti();
 
     emit?.(roomEvent(roomBehind));
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(mocks.seek).toHaveBeenCalled());
 
-    expect(mocks.seek).not.toHaveBeenCalled();
+    const target = (mocks.seek.mock.calls[0] as unknown[])[0] as number;
+    expect(target).toBeGreaterThanOrEqual(30000);
+    expect(target).toBeLessThan(31000);
   });
 
   it("进度接近时不做 seek，避免反复抖动", async () => {
