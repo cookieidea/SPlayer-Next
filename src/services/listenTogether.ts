@@ -469,9 +469,8 @@ export const createRoom = async (userId: string): Promise<boolean> => {
   beginBusy();
   try {
     await window.api.together.create(userId);
-    // 建房先把本地进度归零再上报：对端进来对齐的是创建者上报的进度，
-    // 带着旧进度建房会让对方从你"点击创建那一刻"的位置开始听
-    await player.seek(0);
+    // 双人房不重置进度：创建者正在听什么、听到哪里，对端进来就跟着听那一段，
+    // 倒回开头会把"我在听什么对方就听什么"的语义破坏掉
     // 建房后自动起播：官方行为是创建即播放，否则对端进来听到的是静音
     const status = useStatusStore();
     if (status.currentTrack && !status.isPlaying) await player.play();
