@@ -6,6 +6,7 @@ import {
   disconnectPersonalChannel,
   fetchRoomMembers,
   setNimListener,
+  setRoomOwnerView,
 } from "@main/services/nim/realtime";
 import { setMultiRoomActive } from "@main/services/togetherPresence";
 import { neteaseLog } from "@main/utils/logger";
@@ -255,6 +256,8 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
   const credentials = await fetchImCredentials();
   if (!credentials) throw new Error("未取到云信凭据");
   if (generation !== issuing || !session) return;
+  // 房主身份决定取 operateMsg 的哪一份文案（官方 owner/follower 二选一）
+  setRoomOwnerView(room.creatorId !== "" && room.creatorId === session.userId);
   await connectNimRoom({
     chatRoomId: room.chatRoomId,
     accId: credentials.accId,

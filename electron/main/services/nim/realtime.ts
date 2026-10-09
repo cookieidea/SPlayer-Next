@@ -36,6 +36,23 @@ export interface NimPlaybackEvent {
   clientSeq: number;
 }
 
+/**
+ * 是否为房主视角。官方按这个身份决定取 operateMsg 的哪一份文案
+ * （FLTMultiPeopleAvatarComponent：房主取 owner、客态取 follower）
+ */
+let roomOwnerView = false;
+
+export const setRoomOwnerView = (owner: boolean): void => {
+  roomOwnerView = owner;
+};
+
+/** 取服务端预置文案：房主用 owner、客态用 follower（缺失就退回另一份） */
+const readOperateHint = (raw: unknown): string => {
+  const operate = asRecord(raw);
+  const primary = readString(roomOwnerView ? operate.owner : operate.follower);
+  return primary || readString(roomOwnerView ? operate.follower : operate.owner);
+};
+
 /** 播放列表变更（type=20001）：只带版本号，队列内容需重新拉取 */
 export interface NimQueueEvent {
   kind: "queue";
@@ -272,7 +289,6 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
     const info = asRecord(body.playingInfo);
     const operation = readString(body.operation).toUpperCase();
     if (!operation) return null;
-    const operatorId = readString(body.operator) || senderId;
     return {
       kind: "playback",
       senderId: readString(body.operator) || senderId,
@@ -285,7 +301,9 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       mode: readString(info.mode).toUpperCase(),
       // 服务端按观看者 uid 预先写好的文案（"对方暂停了歌曲播放"等）。
       // 官方把它转成界面提示；我们同样透出，用户才知道对端做了什么
-      hint: readString(asRecord(body.operateMsg)[String(operatorId)]),
+      // 服务端预置两份文案（FLTOperateMsg{owner, follower}）：房主看 owner、
+      // 客态看 follower。官方按"我是不是房主"二选一，不是按发送者映射
+      hint: readOperateHint(body.operateMsg),
       serverSeq: readNumber(info.operateSeq) || readNumber(body.seq),
       clientSeq: readNumber(body.seq),
     };

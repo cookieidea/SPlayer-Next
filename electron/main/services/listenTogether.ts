@@ -5,6 +5,7 @@ import {
   fetchRoomMembers,
   sendPlaybackCommand,
   setNimListener,
+  setRoomOwnerView,
   waitForRoomChannel,
 } from "@main/services/nim/realtime";
 import { neteaseLog } from "@main/utils/logger";
@@ -1016,6 +1017,8 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
   try {
     const credentials = await fetchImCredentials();
     if (generation !== issuing || !session) return;
+    // 房主身份决定取 operateMsg 的哪一份文案（官方 owner/follower 二选一）
+    setRoomOwnerView(nextRoom.creatorId !== "" && nextRoom.creatorId === session?.userId);
     await connectNimRoom({
       chatRoomId: nextRoom.chatRoomId,
       accId: credentials.accId,

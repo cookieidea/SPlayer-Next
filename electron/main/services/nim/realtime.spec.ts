@@ -409,3 +409,47 @@ describe("房间挂起通知与心跳间隔", () => {
     expect(decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" })).toBeNull();
   });
 });
+
+describe("operateMsg 视角文案", () => {
+  const playSync = (operateMsg: unknown) => {
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 40001,
+        bizType: 3,
+        content: {
+          operation: "PAUSE",
+          operator: 88,
+          seq: 7,
+          operateMsg,
+          playingInfo: { playingSongId: 100, progress: 0, playing: false, operateSeq: 7 },
+        },
+      },
+    });
+    return { msg_type_: 100, msg_attach_: attach, from_id_: "88" };
+  };
+
+  it("客态取 follower，房主取 owner", async () => {
+    const { decodeNimMessage, setRoomOwnerView } = await import("./realtime");
+    const msg = playSync({ owner: "你暂停了播放", follower: "对方暂停了播放" });
+
+    // 官方按"我是不是房主"二选一，不是按发送者映射
+    setRoomOwnerView(false);
+    const follower = decodeNimMessage(msg);
+    expect(follower?.kind === "playback" && follower.hint).toBe("对方暂停了播放");
+
+    setRoomOwnerView(true);
+    const owner = decodeNimMessage(msg);
+    expect(owner?.kind === "playback" && owner.hint).toBe("你暂停了播放");
+
+    setRoomOwnerView(false);
+  });
+
+  it("缺少对应视角文案时退回另一份", async () => {
+    const { decodeNimMessage, setRoomOwnerView } = await import("./realtime");
+    setRoomOwnerView(true);
+    const event = decodeNimMessage(playSync({ follower: "只有客态文案" }));
+    expect(event?.kind === "playback" && event.hint).toBe("只有客态文案");
+    setRoomOwnerView(false);
+  });
+});

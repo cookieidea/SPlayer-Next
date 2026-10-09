@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   // 直发是否成功：默认 true（通道可用），个别测试再关掉验证失败处理
   directSent: vi.fn(() => true),
+  /** setRoomOwnerView 的调用记录：验证连接时按 creatorId 判定房主视角 */
+  ownerView: [] as boolean[],
   sending: [] as Record<string, unknown>[],
 }));
 
@@ -29,6 +31,10 @@ vi.mock("@main/services/nim/realtime", () => ({
   setNimListener: (listener: (event: unknown) => void) => {
     mocks.emit.mockImplementation((event: unknown) => listener(event));
   },
+  setRoomOwnerView: (owner: boolean) => {
+    mocks.ownerView.push(owner);
+  },
+  waitForRoomChannel: () => Promise.resolve(true),
 }));
 
 // 与实现常量联动，避免测试把节奏写死；一个周期足以触发心跳与一次列表拉取
