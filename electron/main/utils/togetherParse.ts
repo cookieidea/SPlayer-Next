@@ -252,6 +252,19 @@ export const multiPlaybackFromSongInfo = (
   };
 };
 
+/**
+ * 房间状态（官方 MultiRoomStatusEnum）：1=Normal 2=Close 3=End。
+ * 心跳响应里 roomInfoDTO.roomStatus 是权威的"房间是否还活着"，
+ * 只靠 488 判断会漏掉"服务端主动关闭"这种情况
+ */
+export const multiRoomStatusOf = (value: unknown): number => {
+  const body = obj(unwrap(value)) ?? {};
+  const data = obj(body.data) ?? body;
+  const root = obj(data.multiLtRoomSnapshot) ?? data;
+  const dto = obj(root.multiRoomInfoDTO) ?? obj(data.roomInfoDTO) ?? root;
+  return num(dto.roomStatus);
+};
+
 export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
   const body = obj(unwrap(value)) ?? {};
   const data = obj(body.data) ?? body;

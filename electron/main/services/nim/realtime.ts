@@ -61,6 +61,21 @@ export interface NimStateEvent {
   songInfo: Record<string, unknown>;
 }
 
+/**
+ * 房间操作事件（type=30008，官方 LTMultiRoomOptMsg）。
+ *
+ * 加歌/顶歌/切歌/删歌都会推这一条，载荷里有操作类型、目标歌曲与房间版本，
+ * 是"队列变了"的正式信号；本地据此立刻刷新，不必等心跳
+ */
+export interface NimRoomOperateEvent {
+  kind: "roomOperate";
+  roomId: string;
+  operateType: number;
+  songId: string;
+  version: number;
+  operatorId: string;
+}
+
 /** 服务端推送的成员与文案（type=30005） */
 export interface NimMembersEvent {
   kind: "members";
@@ -90,7 +105,8 @@ export type NimRoomEvent =
   | NimMemberEvent
   | NimStateEvent
   | NimMembersEvent
-  | NimMatchLockEvent;
+  | NimMatchLockEvent
+  | NimRoomOperateEvent;
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -152,6 +168,11 @@ const EVENT_PLAY_SYNC = 40_001;
 const EVENT_ROOM_STATE = 30_000;
 const EVENT_ROOM_MEMBERS = 30_005;
 const EVENT_ROOM_TAGS = 30_006;
+// 房间操作事件：官方 LTMultiRoomOptMsg，携带 {operateType, songId, songBizId,
+// version, opUid, playedTime, ...}。加歌/顶歌/切歌都会推，是"队列变了"的正式信号
+const EVENT_ROOM_OPERATE = 30_008;
+// 单曲通知：官方 LTMultiRoomSingleMsg
+const EVENT_ROOM_SINGLE = 30_004;
 const MSG_TYPE_NOTIFICATION = 5;
 // 业务消息统一用 msgType=120 包一层 content.type，与官方客户端一致
 const MSG_TYPE_BUSINESS = 100;
@@ -268,6 +289,20 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       eventId: readString(body.eventId),
     };
   }
+
+  if (eventType === EVENT_ROOM_OPERATE) {
+    return {
+      kind: "roomOperate",
+      roomId: readString(body.roomId),
+      operateType: readNumber(body.operateType),
+      songId: readString(body.songId),
+      version: readNumber(body.version),
+      operatorId: readString(body.opUid),
+    };
+  }
+
+  // 单曲通知不改变跟随目标，明确忽略而不是落到默认分支
+  if (eventType === EVENT_ROOM_SINGLE) return null;
 
   if (eventType === EVENT_ROOM_STATE) {
     return { kind: "state", roomId: readString(body.roomId), songInfo: body };

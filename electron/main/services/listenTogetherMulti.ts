@@ -13,6 +13,7 @@ import {
   list,
   multiPlaybackFromSongInfo,
   multiRoomFromBody,
+  multiRoomStatusOf,
   obj,
   str,
   toRoomSong,
@@ -284,6 +285,16 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
       return;
     }
 
+    // 房间操作（30008）：加歌/顶歌/切歌/删歌的正式信号，立刻拉一次权威状态。
+    // 心跳要等 15 秒，只靠它的话队列变更会明显滞后
+    if (event.kind === "roomOperate") {
+      neteaseLog.info(
+        `[一起听] 房间操作 type=${event.operateType} song=${event.songId} 版本=${event.version}`,
+      );
+      void refreshMultiRoom();
+      return;
+    }
+
     // 播放命令（40001）：多人房同样会收到，走与双人一致的解析结果
     if (event.kind === "playback") {
       neteaseLog.info(
@@ -336,6 +347,14 @@ const tick = async (): Promise<void> => {
       roomId: session.roomId,
     });
     if (!session || generation !== issuing) return;
+    // 房间状态：Close(2)/End(3) 是服务端主动关房。只等 488 的话，
+    // 房间结束后本地还会继续跑心跳与跟随
+    const roomStatus = multiRoomStatusOf(response);
+    if (roomStatus === 2 || roomStatus === 3) {
+      neteaseLog.info(`[一起听] 房间已关闭（status=${roomStatus}）`);
+      stop("server");
+      return;
+    }
     const next = roomFromResponse(response);
     if (next) publish(next, issuing);
   } catch (error) {

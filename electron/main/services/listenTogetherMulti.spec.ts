@@ -259,6 +259,30 @@ describe("多人一起听", () => {
     expect(getMultiSession()).toBeNull();
   });
 
+  it("心跳返回房间已关闭时结束会话", async () => {
+    const reasons: string[] = [];
+    onMultiEnd((reason) => reasons.push(reason));
+
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_multi_room_create") return multiBody();
+      // roomStatus=2（Close）：服务端主动关房
+      if (name === "listen_together_multi_heartbeat") {
+        return {
+          status: 200,
+          body: { code: 200, data: { roomInfoDTO: { roomStatus: 2 }, roomPlaySongInfo: null } },
+        };
+      }
+      return multiBody();
+    });
+
+    await createMultiRoom("100", "77");
+    await vi.advanceTimersByTimeAsync(MULTI_HEARTBEAT_MS);
+
+    // 只等 488 的话，房间结束后本地还会继续跑心跳与跟随
+    expect(reasons).toContain("server");
+    expect(getMultiSession()).toBeNull();
+  });
+
   it("心跳失败只报错不结束会话", async () => {
     mocks.call.mockResolvedValue(multiBody());
     await joinMultiRoom("R_1", "77", "88", "d");
