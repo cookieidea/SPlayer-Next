@@ -1010,13 +1010,10 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
     setNimListener((event) => {
       if (!session || generation !== issuing) return;
       // 服务端会把事件也推给发送者本人：自己的操作本地已生效，拉了只会制造回声
-      if (
-        event.kind === "member"
-          ? event.userId === session.userId
-          : event.senderId === session.userId
-      ) {
-        return;
-      }
+      // 只有带发送者的事件才需要过滤回声；服务端生成的状态推送没有 senderId
+      const sender =
+        event.kind === "member" ? event.userId : "senderId" in event ? event.senderId : "";
+      if (sender && sender === session.userId) return;
       // 播放命令直接下发渲染端：play/command 不落库，快照 command=null，
       // 拉取路径拿不到 PAUSE/PLAY/PROGRESS，IM 推送是唯一接收途径
       if (event.kind === "playback") {
@@ -1028,6 +1025,13 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       if (event.kind === "member") {
         void refreshMembersFromIm(issuing);
         if (event.joined) void announcePlayback();
+        return;
+      }
+      // 服务端主动推的房间状态：直接触发一次对齐（双人房靠命令驱动播放，
+      // 这里用拉取路径复用既有的采纳状态机，不另写一套）
+      if (event.kind === "state" || event.kind === "members") {
+        if (event.kind === "members") void refreshMembersFromIm(issuing);
+        void refreshFromRealtime(issuing);
         return;
       }
       void refreshFromRealtime(issuing);

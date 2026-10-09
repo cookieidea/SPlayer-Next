@@ -7,7 +7,14 @@ import {
 } from "@main/services/nim/realtime";
 import { setMultiRoomActive } from "@main/services/togetherPresence";
 import { neteaseLog } from "@main/utils/logger";
-import { list, multiRoomFromBody, obj, str, toRoomSong } from "@main/utils/togetherParse";
+import {
+  list,
+  multiPlaybackFromSongInfo,
+  multiRoomFromBody,
+  obj,
+  str,
+  toRoomSong,
+} from "@main/utils/togetherParse";
 import type {
   TogetherMultiEndReason,
   TogetherMultiRoom,
@@ -244,14 +251,47 @@ const openRealtime = async (room: TogetherMultiRoom, issuing: number): Promise<v
   if (generation !== issuing) return;
   setNimListener((event) => {
     if (!session || generation !== issuing) return;
-    // 服务端会把事件也推给发送者本人：自己的操作本地已生效，拉了只会制造回声
     // 成员变动即便是自己的也刷新名单：进来的是别人，只是在事件里标了"谁触发的"
     if (event.kind === "member") void refreshMembersFromIm(issuing);
-    if (
-      event.kind === "member" ? event.userId === session.userId : event.senderId === session.userId
-    ) {
+
+    // 服务端推的房间状态是权威全量：直接就地发布。
+    // 这条路径取代了"等 8 秒心跳"或"再拉一次心跳"，房间一变界面立刻跟上，
+    // 也是"播完自动接下一首"的可靠来源
+    if (event.kind === "state") {
+      const current = room;
+      if (!current || event.roomId !== current.roomId) return;
+      publish({ ...current, ...multiPlaybackFromSongInfo(event.songInfo) }, issuing);
       return;
     }
+
+    // 服务端推的成员名单比心跳的聚合更新，直接换掉昵称/头像
+    if (event.kind === "members") {
+      const current = room;
+      if (!current || event.roomId !== current.roomId) return;
+      const byId = new Map(event.members.map((member) => [member.userId, member]));
+      publish(
+        {
+          ...current,
+          members: current.members.map((member) => {
+            const live = byId.get(member.userId);
+            return live
+              ? {
+                  ...member,
+                  nickname: live.nickname || member.nickname,
+                  avatarUrl: live.avatarUrl || member.avatarUrl,
+                }
+              : member;
+          }),
+        },
+        issuing,
+      );
+      return;
+    }
+
+    // 服务端生成的状态推送没有 senderId，不能当作回声过滤掉
+    const sender =
+      event.kind === "member" ? event.userId : "senderId" in event ? event.senderId : "";
+    if (sender && sender === session.userId) return;
     void refreshMultiRoom();
   });
   neteaseLog.info("[一起听] 实时通道已连接");

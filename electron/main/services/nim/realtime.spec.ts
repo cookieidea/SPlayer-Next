@@ -150,3 +150,69 @@ describe("聊天室直发与成员列表", () => {
     await expect(mod.fetchRoomMembers()).resolves.toEqual([]);
   });
 });
+
+describe("服务端推送的房间状态与成员", () => {
+  it("解析 type=30000 房间状态全量", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 30000,
+        bizType: 3,
+        content: {
+          serverSeq: 1791581299416,
+          roomId: "dd4e3c7507d45e59c2ca341cdfecdda3_1791581200161",
+          startTime: 1791581200161,
+          playedTime: 45000,
+          songDuration: 200000,
+          playSong: { songId: 1345872140, songBizId: 1259413279 },
+          nextSongs: [{ songId: 405998765, songBizId: 0 }],
+          version: 5,
+          forceSync: true,
+        },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "6294223883" });
+    expect(event?.kind).toBe("state");
+    if (event?.kind !== "state") return;
+    expect(event.roomId).toBe("dd4e3c7507d45e59c2ca341cdfecdda3_1791581200161");
+    // 载荷原样带出，由 togetherParse 统一解析，避免结构知识分叉
+    expect(event.songInfo.playedTime).toBe(45000);
+    expect(event.songInfo.version).toBe(5);
+  });
+
+  it("解析 type=30005 成员名单", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: {
+        type: 30005,
+        bizType: 3,
+        content: {
+          roomId: "R1",
+          onlineNums: 2,
+          onlineUserInfos: [
+            { uid: 6294223883, nickname: "猫盒小可爱", avatar: "http://a.jpg" },
+            { uid: 9152873371, nickname: "B", avatar: "http://b.jpg" },
+          ],
+        },
+      },
+    });
+    const event = decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "6294223883" });
+    expect(event?.kind).toBe("members");
+    if (event?.kind !== "members") return;
+    expect(event.members).toEqual([
+      { userId: "6294223883", nickname: "猫盒小可爱", avatarUrl: "http://a.jpg" },
+      { userId: "9152873371", nickname: "B", avatarUrl: "http://b.jpg" },
+    ]);
+  });
+
+  it("type=30006 标签变更被忽略", async () => {
+    const { decodeNimMessage } = await import("./realtime");
+    const attach = JSON.stringify({
+      msgType: 120,
+      content: { type: 30006, bizType: 3, content: { roomId: "R1", tagList: [], version: 5 } },
+    });
+    expect(decodeNimMessage({ msg_type_: 100, msg_attach_: attach, from_id_: "1" })).toBeNull();
+  });
+});

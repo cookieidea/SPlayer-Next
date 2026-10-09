@@ -220,6 +220,39 @@ export const joinableFromBody = (value: unknown): boolean => roomCheckFromBody(v
  * 房间信息、成员、房间当前歌曲都裹在 multiLtRoomSnapshot 里，
  * 与双人的 roomUsers / playCommand 是两套结构
  */
+/**
+ * 只解析房间播放状态（roomPlaySongInfo）。
+ *
+ * 服务端推送的 type=30000 与心跳响应的这块结构完全一致，
+ * 抽出来共用，避免两处各写一份字段映射后逐渐分叉
+ */
+export const multiPlaybackFromSongInfo = (
+  raw: unknown,
+): Pick<
+  TogetherMultiRoom,
+  | "playSong"
+  | "nextSongs"
+  | "playProgress"
+  | "sampledAt"
+  | "playDuration"
+  | "forceSync"
+  | "playVersion"
+> => {
+  const songInfo = obj(raw);
+  const playSong = obj(songInfo?.playSong);
+  return {
+    playSong: playSong ? toRoomSong(playSong) : null,
+    nextSongs: list(songInfo?.nextSongs)
+      .map(toRoomSong)
+      .filter((song) => song.songId),
+    playProgress: num(songInfo?.playedTime),
+    sampledAt: Date.now(),
+    playDuration: num(songInfo?.songDuration),
+    forceSync: songInfo?.forceSync === true,
+    playVersion: num(songInfo?.version),
+  };
+};
+
 export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
   const body = obj(unwrap(value)) ?? {};
   const data = obj(body.data) ?? body;
@@ -239,23 +272,11 @@ export const multiRoomFromBody = (value: unknown): TogetherMultiRoom | null => {
       : list(root.roomUsers);
   // 实测 multiLtRoomUserAgg 在 snapshot 顶层，不在 multiRoomInfoDTO 里
 
-  const songInfo = obj(root.roomPlaySongInfo);
-  const playSong = obj(songInfo?.playSong);
   return {
     roomId,
     creatorId: str(dto.creatorId) || str(root.creatorId) || str(root.creatorUid),
     chatRoomId: str(dto.chatRoomId) || str(root.chatRoomId) || str(obj(root.imRoomInfo)?.roomId),
     members: users.map(toMember).filter((member) => member.userId),
-    playSong: playSong ? toRoomSong(playSong) : null,
-    nextSongs: list(songInfo?.nextSongs)
-      .map(toRoomSong)
-      .filter((song) => song.songId),
-    // 官方字段是 playedTime（已播毫秒），不是 startTime。
-    // 记下采样时刻，心跳之间用 playProgress + (now - sampledAt) 推算真实位置
-    playProgress: num(songInfo?.playedTime),
-    sampledAt: Date.now(),
-    playDuration: num(songInfo?.songDuration),
-    forceSync: songInfo?.forceSync === true,
-    playVersion: num(songInfo?.version),
+    ...multiPlaybackFromSongInfo(root.roomPlaySongInfo),
   };
 };

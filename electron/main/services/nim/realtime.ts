@@ -49,7 +49,28 @@ export interface NimMemberEvent {
   joined: boolean;
 }
 
-export type NimRoomEvent = NimPlaybackEvent | NimQueueEvent | NimMemberEvent;
+/**
+ * 服务端推送的房间状态全量（type=30000）。
+ *
+ * 载荷与心跳响应的 roomPlaySongInfo 同构，可直接交给多人房解析；
+ * 房间每次变化都会推一条，是"播完自动跟下一首"的可靠来源
+ */
+export interface NimStateEvent {
+  kind: "state";
+  roomId: string;
+  /** 未解析的 songInfo：交给 togetherParse 的解析器，避免两处结构知识分叉 */
+  songInfo: Record<string, unknown>;
+}
+
+/** 服务端推送的成员与文案（type=30005） */
+export interface NimMembersEvent {
+  kind: "members";
+  roomId: string;
+  members: NimRoomMember[];
+}
+
+export type NimRoomEvent =
+  NimPlaybackEvent | NimQueueEvent | NimMemberEvent | NimStateEvent | NimMembersEvent;
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -93,6 +114,13 @@ interface NodeNimModule {
 const ENTER_TIMEOUT_MS = 15_000;
 const EVENT_PLAYBACK = 20_000;
 const EVENT_QUEUE = 20_001;
+// 服务端在房间状态变化时主动推送（实测加歌/顶歌/切歌/成员进出都会触发）：
+//   30000 房间播放状态全量（与心跳响应的 roomPlaySongInfo 结构一致）
+//   30005 成员与文案，30006 标签
+// 这三条把"等 8 秒心跳"变成"零延迟跟随"，是多人房跟随的权威来源
+const EVENT_ROOM_STATE = 30_000;
+const EVENT_ROOM_MEMBERS = 30_005;
+const EVENT_ROOM_TAGS = 30_006;
 const MSG_TYPE_NOTIFICATION = 5;
 // 业务消息统一用 msgType=120 包一层 content.type，与官方客户端一致
 const MSG_TYPE_BUSINESS = 100;
@@ -194,6 +222,26 @@ export const decodeNimMessage = (raw: unknown): NimRoomEvent | null => {
       hint,
     };
   }
+
+  if (eventType === EVENT_ROOM_STATE) {
+    return { kind: "state", roomId: readString(body.roomId), songInfo: body };
+  }
+
+  if (eventType === EVENT_ROOM_MEMBERS) {
+    const raw = Array.isArray(body.onlineUserInfos) ? body.onlineUserInfos : [];
+    return {
+      kind: "members",
+      roomId: readString(body.roomId),
+      members: raw.map((item) => ({
+        userId: readString(asRecord(item).uid),
+        nickname: readString(asRecord(item).nickname),
+        avatarUrl: readString(asRecord(item).avatar),
+      })),
+    };
+  }
+
+  // 标签变更（30006）不影响跟随，明确忽略而不是落到默认分支
+  if (eventType === EVENT_ROOM_TAGS) return null;
 
   return null;
 };
