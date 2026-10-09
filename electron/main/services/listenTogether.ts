@@ -322,8 +322,9 @@ const reportCommand = async (
   // 在这里重读会让请求内容与本次 delta 不再对应
   const targetSongId = state.songId || "0";
   if (issuing !== generation) return;
-  // 先走客户端直发：实测送达约 0.2 秒，而 HTTP 要等一轮同步周期再转发。
-  // HTTP 仍然照发——快照的歌单与播放模式靠它落库，两者互补
+  // 客户端直发：实测送达约 0.2 秒，而 HTTP 要等一轮同步周期再由服务端转发。
+  // 播放命令不落库（实测 report 返回 result=true，但快照 command 恒为 null），
+  // 所以直发成功就不必再发 HTTP —— 那一发只是白等一次往返
   const sent = sendPlaybackCommand({
     commandType: type,
     targetSongId,
@@ -335,8 +336,9 @@ const reportCommand = async (
     serverSeq: seq,
   });
   neteaseLog.info(
-    `[一起听] 上报 ${type} target=${targetSongId} former=${formerSongId || "-"}${sent ? "（已直发）" : ""}`,
+    `[一起听] 上报 ${type} target=${targetSongId} former=${formerSongId || "-"}${sent ? "（直发）" : "（HTTP，实时通道未连接）"}`,
   );
+  if (sent) return;
   await callNetease("listen_together_play_command_report", {
     roomId,
     type,

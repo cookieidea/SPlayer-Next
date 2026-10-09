@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   warn: vi.fn(),
   emit: vi.fn(),
   connect: vi.fn(),
+  // 直发是否成功：默认 false，让既有测试继续走 HTTP 那条路
+  directSent: vi.fn(() => false),
+  sending: [] as Record<string, unknown>[],
 }));
 
 vi.mock("@main/apis/netease", () => ({ callNetease: mocks.call }));
@@ -16,7 +19,10 @@ vi.mock("@main/services/nim/realtime", () => ({
   connectNimRoom: mocks.connect,
   disconnectNimRoom: vi.fn(),
   // 测试里没有真实聊天室连接：直发按"未连接"处理，走 HTTP 那条路
-  sendPlaybackCommand: () => false,
+  sendPlaybackCommand: (payload: Record<string, unknown>) => {
+    mocks.sending.push(payload);
+    return mocks.directSent();
+  },
   fetchRoomMembers: () => Promise.resolve([]),
   setNimListener: (listener: (event: unknown) => void) => {
     mocks.emit.mockImplementation((event: unknown) => listener(event));
@@ -942,6 +948,62 @@ describe("一起听房间状态机", () => {
 
     const pause = reports.filter((item) => item.type === "PAUSE");
     expect(pause.length).toBeGreaterThan(0);
+  });
+
+  it("直发成功时不再发 HTTP：播放命令不落库，那一发只是白等一次往返", async () => {
+    const service = await load();
+    const posts: string[] = [];
+    mocks.call.mockImplementation(async (name: string) => {
+      posts.push(name);
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], playing: true }));
+    await vi.advanceTimersByTimeAsync(1000);
+    mocks.sending.length = 0;
+    posts.length = 0;
+
+    // 实时通道可用：这一轮直发成功
+    mocks.directSent.mockReturnValue(true);
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], playing: false }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // 命令确实通过直发发出去了
+    expect(mocks.sending.some((item) => item.commandType === "PAUSE")).toBe(true);
+    // 直发成功就不该再有 HTTP 上报，否则等于白等一次往返
+    expect(posts).not.toContain("listen_together_play_command_report");
+    mocks.directSent.mockReturnValue(false);
+  });
+
+  it("实时通道未连接时回退到 HTTP 上报", async () => {
+    const service = await load();
+    const posts: string[] = [];
+    mocks.call.mockImplementation(async (name: string) => {
+      posts.push(name);
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      if (name === "listen_together_play_command_report") {
+        return { body: { code: 200, data: { result: true } } };
+      }
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], playing: true }));
+    await vi.advanceTimersByTimeAsync(1000);
+    posts.length = 0;
+
+    mocks.directSent.mockReturnValue(false);
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], playing: false }));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // 直发发不出去时必须补 HTTP，否则对方完全收不到这条暂停
+    expect(posts).toContain("listen_together_play_command_report");
   });
 
   it("在途旧快照不会向新会话派发同步事件", async () => {

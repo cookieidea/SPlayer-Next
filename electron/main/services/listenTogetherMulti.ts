@@ -22,9 +22,14 @@ import type {
   TogetherRoomOperateResult,
 } from "@shared/types/listenTogether";
 
-// 多人群房的心跳是「拉取」：房间当前歌曲与队列来自响应，不像双人那样靠心跳上报。
-// 跟随完全依赖它，所以间隔比双人短
-export const MULTI_HEARTBEAT_MS = 8000;
+/**
+ * 多人房心跳间隔。
+ *
+ * 它只负责保活与失效检测——房间状态现在由服务端推的 type=30000 实时下发，
+ * 跟随不再依赖心跳。服务端自己给的 heartBeatDuration 是 30 秒，
+ * 这里取 15 秒：既把请求量降到原来的一半以下，又保证断线时能较快发现
+ */
+export const MULTI_HEARTBEAT_MS = 15_000;
 
 const ROOM_GONE_CODE = 488;
 
