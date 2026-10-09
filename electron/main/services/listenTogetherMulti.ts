@@ -552,6 +552,7 @@ const applyOperateResult = (response: unknown): TogetherMultiRoom | null => {
     sampledAt: Date.now(),
     playDuration: Number(songInfo.songDuration) || room.playDuration,
     forceSync: songInfo.forceSync === true,
+    playVersion: Number(songInfo.version) || room.playVersion,
   };
 };
 

@@ -72,6 +72,7 @@ const room = (playSong: string | null, nextSongs: string[]): TogetherMultiRoom =
   sampledAt: 0,
   playDuration: 0,
   forceSync: false,
+  playVersion: 0,
 });
 
 const roomEvent = (value: TogetherMultiRoom): TogetherMultiEvent => ({

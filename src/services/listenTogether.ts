@@ -134,8 +134,11 @@ const tracksForIds = async (songIds: readonly string[]): Promise<Track[]> => {
 
 /** 只向前对齐的阈值：落后这么多才追，超前一律不动 */
 const FORWARD_SEEK_THRESHOLD_MS = 5000;
-/** 与房间进度相差超过这个毫秒数才纠正：太小会不停 seek，反而听感抖动 */
-const PROGRESS_TOLERANCE_MS = 3000;
+/**
+ * 与房间进度相差超过这个毫秒数才纠正。
+ * Reference impls use 1.5s (they align on every apply); 3s 会造成肉眼可见的错位
+ */
+const PROGRESS_TOLERANCE_MS = 1500;
 
 const respondCommand = async (
   command: TogetherCommand,
@@ -267,9 +270,16 @@ const applyRemote = async (
       reapplyLocalShuffle();
       return;
     }
+    // PAUSE/PLAY 是纯状态命令：当前曲一致时只改播放态与进度，
+    // 绝不能重新 playFrom（那会把进度打回 0 并先播一下再停，
+    // 表现就是"对方暂停了但我这边还在响/进度跳了"）
+    if (useStatusStore().currentTrack?.id === command.targetSongId) {
+      await respondCommand(command, index, tracks);
+      return;
+    }
     pendingLoad = true;
     try {
-      await player.playFrom(tracks, index, TOGETHER_CONTEXT, true);
+      await player.playFrom(tracks, index, TOGETHER_CONTEXT, command.playing);
     } finally {
       pendingLoad = false;
     }

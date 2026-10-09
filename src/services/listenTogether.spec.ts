@@ -583,6 +583,43 @@ describe("一起听渲染端服务", () => {
     expect(mocks.seek).not.toHaveBeenCalled();
   });
 
+  it("远端暂停当前曲时不重新加载也不重置进度", async () => {
+    queue.setQueue([track("100")]);
+    // playIndex 指向当前曲，currentTrack 才会推导出来（否则会被当成换曲）
+    const { useStatusStore } = await import("@/stores/status");
+    useStatusStore().playIndex = 0;
+    mods.initTogether();
+    emit?.(sessionEvent());
+    mocks.playFrom.mockClear();
+    mocks.pause.mockClear();
+
+    // 本地正在播 100，对端发来同一首的 PAUSE
+    mocks.currentTime = 30000;
+    emit?.({
+      type: "command",
+      session: { roomId: "R1", userId: "7", generation: 1 },
+      command: {
+        userId: "8",
+        type: "PAUSE",
+        formerSongId: "100",
+        targetSongId: "100",
+        progressMs: 30000,
+        playing: false,
+        serverSeq: 11,
+      },
+      // 必须带歌单：songIds 为空会绕过「按队列定位后再决定是否加载」那段，
+      // 那样测的就不是出问题的那条路径
+      songIds: ["100", "200"],
+      playMode: "",
+      initial: false,
+      autoPlay: false,
+    });
+
+    await vi.waitFor(() => expect(mocks.pause).toHaveBeenCalled());
+    // 同曲暂停绝不能重新加载：那会把进度打回 0 并先播一下再停
+    expect(mocks.playFrom).not.toHaveBeenCalled();
+  });
+
   it("远端进度明显靠前时会追上", async () => {
     queue.setQueue([track("100")]);
     mods.initTogether();

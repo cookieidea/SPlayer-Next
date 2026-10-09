@@ -70,7 +70,13 @@ const roomPositionMs = (room: TogetherMultiRoom): number => {
   return room.playDuration > 0 ? Math.min(target, Math.max(0, room.playDuration - 100)) : target;
 };
 
+/** 已接受过的房间版本：旧版本到达时直接丢弃，避免进度被乱序快照拉回去 */
+let acceptedVersion = -1;
+
 const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
+  // 版本门控：心跳与 IM 事件可能乱序到达，旧快照会把进度与歌曲拽回上一状态
+  if (room.playVersion > 0 && room.playVersion < acceptedVersion) return;
+  if (room.playVersion > 0) acceptedVersion = room.playVersion;
   // 房间内正播不可共享曲目时先跳走：同步锚是歌曲 id，本地播它没有意义
   await skipUnshareableCurrent();
   const roomSongId = room.playSong?.songId ?? "";
@@ -203,6 +209,7 @@ const withBusy = async <T>(run: () => Promise<T>): Promise<T | null> => {
 const enterMultiRoom = async (room: TogetherMultiRoom): Promise<TogetherMultiRoom> => {
   knownMemberIds = [];
   roomQueueKey = "";
+  acceptedVersion = -1;
   await followRoom(room);
   await syncRoomQueue(room);
   return room;

@@ -689,6 +689,7 @@ describe("多人房响应解析", () => {
       sampledAt: undefined,
       playDuration: 0,
       forceSync: false,
+      playVersion: 0,
     });
   });
 
@@ -786,6 +787,7 @@ describe("多人房邀请链接", () => {
       sampledAt: undefined,
       playDuration: 0,
       forceSync: false,
+      playVersion: 0,
     });
   });
 });

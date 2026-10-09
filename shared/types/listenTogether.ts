@@ -36,6 +36,8 @@ export interface TogetherMultiRoom {
   playDuration: number;
   /** 服务端要求强制对齐（切歌/顶歌等破坏性操作后）。此时忽略容差直接 seek */
   forceSync: boolean;
+  /** 房间歌曲版本号（单调递增）。用它丢弃乱序到达的旧快照 */
+  playVersion: number;
 }
 
 export interface TogetherRoomOperateResult {
