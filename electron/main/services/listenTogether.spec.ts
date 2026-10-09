@@ -1959,6 +1959,41 @@ describe("一起听房间状态机", () => {
     expect(gotoAfterReplace).toBe(true);
   });
 
+  // —— 对端进房时的进度播报 ——
+  it("对端进房时主动播报本机当前播放状态", async () => {
+    const service = await load();
+    mocks.call.mockImplementation(async (name: string) => {
+      if (name === "listen_together_room_create") return createBody();
+      if (name === "listen_together_status") return statusBody(true, "R1", [7]);
+      if (name === "middle_im_token_get") return imTokenBody();
+      if (name === "listen_together_play_command_report")
+        return { body: { code: 200, data: { result: true } } };
+      return snapshotBody(["100"]);
+    });
+
+    await service.create("7");
+    service.updateLocal(localState({ songId: "100", queueSongIds: ["100"], playing: true }));
+    await vi.advanceTimersByTimeAsync(1000);
+    mocks.call.mockClear();
+
+    // 对端进来：join 事件（我自己的事件会被过滤，这里用对端 id）
+    mocks.emit({
+      kind: "member",
+      userId: "88",
+      joined: true,
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    // 快照里的 playCommand 恒为 null，对端拿不到进度，只能靠本机主动播报
+    const calls = mocks.call.mock.calls.filter(
+      (call) => call[0] === "listen_together_play_command_report",
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    const payload = calls[0][1] as { type: string; targetSongId: string };
+    expect(payload.type).toBe("GOTO");
+    expect(payload.targetSongId).toBe("100");
+  });
+
   it("拒绝邀请调用官方 rejection 端点", async () => {
     const service = await load();
     mocks.call.mockResolvedValue({ status: 200, body: { code: 200 } });

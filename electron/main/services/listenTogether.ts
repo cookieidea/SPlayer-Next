@@ -972,6 +972,12 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
         emitPlayback(event);
         return;
       }
+      // 有新成员进来：对方需要知道我现在听到哪，而快照里没有 progress，
+      // 只能由本机主动播报一次（join 事件同时带进入与退出，只认进入）
+      if (event.kind === "member" && event.joined) {
+        void announcePlayback();
+        return;
+      }
       void refreshFromRealtime(issuing);
     });
     neteaseLog.info("[一起听] 双人实时通道已连接");
@@ -986,6 +992,21 @@ const connectRealtime = async (nextRoom: TogetherRoom, issuing: number): Promise
       if (session && generation === issuing) void connectRealtime(nextRoom, issuing);
     }, REALTIME_RETRY_MS);
   }
+};
+
+/**
+ * 对端进房时主动播报本机当前状态。
+ *
+ * 快照的 playCommand 恒为 null（play/command 不落库），所以对端进来时
+ * 拉取拿不到任何进度；而它要跟随的正是"我此刻在听哪首、听到哪"。
+ * 这里把本机状态作为一次 GOTO 报出去，由 IM 推给对方
+ */
+const announcePlayback = async (): Promise<void> => {
+  if (!session || !lastState?.songId) return;
+  const issuing = generation;
+  const state = lastState;
+  await guarded(() => reportCommand("GOTO", "", state.playing, state), issuing);
+  void refreshFromRealtime(issuing);
 };
 
 /**

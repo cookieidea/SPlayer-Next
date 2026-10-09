@@ -275,6 +275,24 @@ describe("多人一起听渲染端服务", () => {
     expect(target).toBeLessThan(31000);
   });
 
+  it("换房间后版本门控必须复位，否则新房间不再跟随", async () => {
+    queue.setQueue([track("mine1")]);
+    mocks.songsByIds.mockResolvedValue([track("room2")]);
+    mods.initTogetherMulti();
+
+    // 上一间房：本地就在播它的曲子，且它已经走到 version=9
+    mediaMock.state.track = track("room1");
+    emit?.(roomEvent({ ...room("room1", []), playVersion: 9 }));
+    await Promise.resolve();
+
+    // 新房（roomId 不同、version 从 1 开始、曲子也不同）：版本号跨房间不可比。
+    // 拿旧房的 version=9 当门槛会把这条更新判成过期，新房间永远不跟随
+    emit?.(roomEvent({ ...room("room2", []), roomId: "R_2", playVersion: 1 }));
+    await vi.waitFor(() => expect(loadCount()).toBeGreaterThan(0));
+
+    expect(queue.queue.value.map((item) => item.id)).toContain("room2");
+  });
+
   it("多人房本地超前时会被拉回（双向对齐，服务端为准）", async () => {
     queue.setQueue([track("room1")]);
     mediaMock.state.track = track("room1");

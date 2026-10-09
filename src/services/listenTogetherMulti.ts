@@ -77,8 +77,16 @@ const roomPositionMs = (room: TogetherMultiRoom): number => {
 
 /** 已接受过的房间版本：旧版本到达时直接丢弃，避免进度被乱序快照拉回去 */
 let acceptedVersion = -1;
+/** 上次接受版本所属的房间；换房必须复位门控 */
+let acceptedRoomId = "";
 
 const followRoom = async (room: TogetherMultiRoom): Promise<void> => {
+  // 版本号只在单个房间内单调。跨房间比较会让新房间（version 从 1 开始）
+  // 被上一间房的高版本永久判成"过期"，整个房间都不再跟随——按房间号复位
+  if (room.roomId !== acceptedRoomId) {
+    acceptedRoomId = room.roomId;
+    acceptedVersion = -1;
+  }
   // 版本门控：心跳与 IM 事件可能乱序到达，旧快照会把进度与歌曲拽回上一状态
   if (room.playVersion > 0 && room.playVersion < acceptedVersion) return;
   if (room.playVersion > 0) acceptedVersion = room.playVersion;
@@ -219,7 +227,6 @@ const withBusy = async <T>(run: () => Promise<T>): Promise<T | null> => {
 const enterMultiRoom = async (room: TogetherMultiRoom): Promise<TogetherMultiRoom> => {
   knownMemberIds = [];
   roomQueueKey = "";
-  acceptedVersion = -1;
   await followRoom(room);
   await syncRoomQueue(room);
   return room;
@@ -532,12 +539,13 @@ export const createMultiRoom = (userId: string): Promise<unknown> =>
       throw new Error("当前是本地或云盘音乐，请先播放一首在线歌曲再创建多人房");
     }
     const songId = String(current.id);
-    // 建房先把本地进度归零：房间的权威进度来自创建者的 first GOTO，
-    // 带着旧进度建房，对端进来就会对齐到你点击创建那一刻的位置
-    await player.seek(0);
     const room = await window.api.togetherMulti.createRoom(songId, userId);
     roomQueueKey = "";
     await followRoom(room);
+    // 房间才是权威进度。创建请求要一个来回，这段时间本地已经播了出去，
+    // 不按房间位置重新对齐，两端从一开始就差着这半个来回（实测约两秒）
+    const target = roomPositionMs(room);
+    if (target >= 0) await player.seek(target);
     // 建房后必须起播：多人一起听里播放态由房间决定，停在暂停态等同于"房间没声音"
     if (!useStatusStore().isPlaying) await player.play();
     await syncRoomQueue(room);
