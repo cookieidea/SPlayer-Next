@@ -520,7 +520,7 @@ describe("播放命令的序号语义", () => {
     sent.length = 0;
   });
 
-  it("operateSeq 用毫秒时间戳，且两序号字段一致", async () => {
+  it("序号与官方抓包样本一致", async () => {
     const mod = await import("./realtime");
     // 先进房：未进房时 sendPlaybackCommand 直接返回 false
     await mod.connectNimRoom({ chatRoomId: "7767245868", accId: "a", token: "t" });
@@ -540,9 +540,10 @@ describe("播放命令的序号语义", () => {
 
     const attach = JSON.parse(String(sent[0].msg_attach_));
     const info = attach.content.content.playingInfo;
-    // 官方这两个序号是毫秒时间戳（实测 1791500218472）。发自增小整数的话，
-    // 官方接收侧判据「>= lastOperateSeq」恒假，我们发的每一条都会被对面丢弃
-    expect(info.operateSeq).toBeGreaterThan(1_000_000_000_000);
-    expect(info.listOperateSeq).toBe(info.operateSeq);
+    // 官方抓包样本：operateSeq 与外层 seq 同为自增序号，listOperateSeq 恒为 0。
+    // 曾用毫秒时间戳（那是 20000 格式 serverSeq 的量级），与官方格式不符
+    expect(info.operateSeq).toBe(1);
+    expect(info.listOperateSeq).toBe(0);
+    expect(attach.content.content.seq).toBe(1);
   });
 });
