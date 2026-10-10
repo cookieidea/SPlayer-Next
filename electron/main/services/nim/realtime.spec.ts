@@ -213,6 +213,7 @@ describe("聊天室直发与成员列表", () => {
         playing: false,
         mode: "ORDER_LOOP",
         seq: 1,
+        listVersion: 1,
       }),
     ).toBe(false);
   });
@@ -534,16 +535,18 @@ describe("播放命令的序号语义", () => {
       playing: false,
       mode: "ORDER_LOOP",
       seq: 1,
+      listVersion: 3,
     });
     expect(ok).toBe(true);
     expect(sent).toHaveLength(1);
 
     const attach = JSON.parse(String(sent[0].msg_attach_));
     const info = attach.content.content.playingInfo;
-    // 官方抓包样本：operateSeq 与外层 seq 同为自增序号，listOperateSeq 恒为 0。
-    // 曾用毫秒时间戳（那是 20000 格式 serverSeq 的量级），与官方格式不符
+    // 官方抓包样本：operateSeq 与外层 seq 同为自增序号。
+    // listOperateSeq 带房间队列版本：恒发 0 会被官方客户端的
+    // 「listOperateSeq >= 本地列表锚」判据全部丢弃
     expect(info.operateSeq).toBe(1);
-    expect(info.listOperateSeq).toBe(0);
+    expect(info.listOperateSeq).toBe(3);
     expect(attach.content.content.seq).toBe(1);
   });
 });

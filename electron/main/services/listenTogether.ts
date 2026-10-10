@@ -362,6 +362,9 @@ const reportCommand = async (
     playing,
     mode: state.playMode,
     seq,
+    // 官方接收侧要求 listOperateSeq 不小于它的列表锚；我们上报过队列
+    // （版本>=1），恒发 0 会让官方客户端丢弃我们全部命令
+    listVersion: Math.max(1, playlistVersion),
   };
   // 进房到长连接建立之间有几秒空档（实测最慢 7 秒），这期间发不出去。
   // 短等一次把命令补上：直接丢弃就是"我操作了但对面没反应"

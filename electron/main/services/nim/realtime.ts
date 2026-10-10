@@ -557,6 +557,9 @@ export const sendPlaybackCommand = (payload: {
   playing: boolean;
   mode: string;
   seq: number;
+  /** 房间队列版本。官方接收判据要求 listOperateSeq >= 它的列表锚，
+   *  恒发 0 会被任何上报过队列的官方客户端全部丢弃 */
+  listVersion: number;
 }): boolean => {
   if (!chatroom || !currentRoom) return false;
   // 用官方客户端的 40001 载荷：对方若是官方客户端也能正确解析这条同步
@@ -578,11 +581,13 @@ export const sendPlaybackCommand = (payload: {
           playingSongId: Number(payload.targetSongId) || 0,
           progress: Math.max(0, Math.round(payload.progressMs)),
           mode: payload.mode,
-          // 按官方抓包样本：operateSeq 与外层 seq 同为自增序号，listOperateSeq 为 0。
-          // 曾误把这两个字段当毫秒时间戳（那是 20000 格式的 serverSeq），
-          // 改成时间戳后反而与官方格式不符
+          // 按官方抓包样本：operateSeq 与外层 seq 同为自增序号。
+          // listOperateSeq 必须带房间队列版本：官方接收判据是
+          // 「operateSeq >= 本地锚 && listOperateSeq >= 本地列表锚」，
+          // 恒发 0 会被任何上报过队列的官方客户端全部丢弃
+          // （表现为"我改官方不同步，官方改我跟"）
           operateSeq: payload.seq,
-          listOperateSeq: 0,
+          listOperateSeq: Math.max(1, payload.listVersion),
         },
       },
     },
