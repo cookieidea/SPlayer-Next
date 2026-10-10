@@ -559,6 +559,9 @@ export const sendPlaybackCommand = (payload: {
   seq: number;
 }): boolean => {
   if (!chatroom || !currentRoom) return false;
+  // 两个序号字段用同一时间戳：分开取会出现 listOperateSeq 落后于 operateSeq，
+  // 让对面的判据用两个不同基准比较
+  const now = Date.now();
   // 用官方客户端的 40001 载荷：对方若是官方客户端也能正确解析这条同步
   const attach = JSON.stringify({
     msgType: WRAPPER_MSG_TYPE,
@@ -578,8 +581,13 @@ export const sendPlaybackCommand = (payload: {
           playingSongId: Number(payload.targetSongId) || 0,
           progress: Math.max(0, Math.round(payload.progressMs)),
           mode: payload.mode,
-          operateSeq: payload.seq,
-          listOperateSeq: 0,
+          // 官方这两个序号是毫秒时间戳（实测 1791500218472 = 2026-10-08）。
+          // 早先我们发自增小整数、listOperateSeq 硬编码 0，而官方接收侧判据是
+          // 「operateSeq >= lastOperateSeq && listOperateSeq >= lastListOperateSeq」，
+          // 小序号永远小于对面已记录的大时间戳，于是我们发的每一条都被对面丢弃——
+          // 表现为"我能同步对面，对面不同步我"
+          operateSeq: now,
+          listOperateSeq: now,
         },
       },
     },

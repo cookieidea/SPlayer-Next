@@ -1,5 +1,66 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeNimMessage } from "./realtime";
+
+/** 捕获直发的载荷：序号语义只有在这里才验得出来 */
+const sent: Record<string, unknown>[] = [];
+const enterCbs: ((...a: unknown[]) => void)[] = [];
+
+vi.mock("./ticket", () => ({
+  requestNimTicket: () => Promise.resolve({ ticket: "T", code: 200 }),
+}));
+
+vi.mock("node-nim", () => ({
+  default: {
+    ChatRoom: class {
+      init(): boolean {
+        return true;
+      }
+      initEventHandlers(): void {
+        void 0;
+      }
+      on(event: string, cb?: unknown): void {
+        if (event === "enter" && typeof cb === "function") {
+          enterCbs.push(cb as (...a: unknown[]) => void);
+        }
+      }
+      // 返回真值表示请求已受理；随后异步回调 step=5 code=200 表示进房成功
+      enter(room: number): boolean {
+        setTimeout(() => {
+          for (const cb of enterCbs) cb(room, 5, 200);
+        }, 0);
+        return true;
+      }
+      exit(): void {
+        void 0;
+      }
+      sendMsg(_room: unknown, msg: Record<string, unknown>): void {
+        sent.push(msg);
+      }
+      getMembersOnlineAsync(): void {
+        void 0;
+      }
+    },
+    NIMClient: class {
+      init(): boolean {
+        return true;
+      }
+      initEventHandlers(): void {
+        void 0;
+      }
+      login(): Promise<unknown> {
+        return Promise.resolve([{ res_code_: 200 }]);
+      }
+    },
+    NIMTalk: class {
+      initEventHandlers(): void {
+        void 0;
+      }
+      on(): void {
+        void 0;
+      }
+    },
+  },
+}));
 
 /**
  * 样例全部取自真实聊天室抓包（双人房 GOTO 命令 + 队列上报 + 成员进出）。
@@ -451,5 +512,37 @@ describe("operateMsg 视角文案", () => {
     const event = decodeNimMessage(playSync({ follower: "只有客态文案" }));
     expect(event?.kind === "playback" && event.hint).toBe("只有客态文案");
     setRoomOwnerView(false);
+  });
+});
+
+describe("播放命令的序号语义", () => {
+  beforeEach(() => {
+    sent.length = 0;
+  });
+
+  it("operateSeq 用毫秒时间戳，且两序号字段一致", async () => {
+    const mod = await import("./realtime");
+    // 先进房：未进房时 sendPlaybackCommand 直接返回 false
+    await mod.connectNimRoom({ chatRoomId: "7767245868", accId: "a", token: "t" });
+
+    const ok = mod.sendPlaybackCommand({
+      roomId: "R1",
+      userId: "7",
+      commandType: "PAUSE",
+      targetSongId: "100",
+      progressMs: 1000,
+      playing: false,
+      mode: "ORDER_LOOP",
+      seq: 1,
+    });
+    expect(ok).toBe(true);
+    expect(sent).toHaveLength(1);
+
+    const attach = JSON.parse(String(sent[0].msg_attach_));
+    const info = attach.content.content.playingInfo;
+    // 官方这两个序号是毫秒时间戳（实测 1791500218472）。发自增小整数的话，
+    // 官方接收侧判据「>= lastOperateSeq」恒假，我们发的每一条都会被对面丢弃
+    expect(info.operateSeq).toBeGreaterThan(1_000_000_000_000);
+    expect(info.listOperateSeq).toBe(info.operateSeq);
   });
 });
