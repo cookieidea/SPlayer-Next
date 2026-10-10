@@ -51,7 +51,27 @@ const syncRoomQueue = async (room: TogetherMultiRoom): Promise<void> => {
   if (signature === roomQueueKey) return;
   roomQueueKey = signature;
   const store = useTogetherMultiStore();
-  store.queueTracks = await resolveTracks(ids);
+  // 增量解析 + 先行占位：全量重查会让 UI 在 await 期间用旧列表渲染新 ids
+  // （加到第三首时前面几首的位置就会错乱）。占位 Track 让列表行数立刻与
+  // 服务端同构，详情到达后原位补齐
+  const known = new Map(store.queueTracks.map((track) => [track.id, track]));
+  const placeholder = (id: string): Track => ({
+    id,
+    title: `#${id}`,
+    artists: [],
+    duration: 0,
+    cover: "",
+    source: "netease",
+  });
+  store.queueTracks = ids.map((id) => known.get(id) ?? placeholder(id));
+  const missing = ids.filter((id) => !known.has(id));
+  if (missing.length === 0) return;
+  const resolved = await songsByIds(missing).catch(() => [] as Track[]);
+  // 只有 signature 仍一致才回写：期间又加了歌的话，让下一轮 room 事件重走
+  const byId = new Map(store.queueTracks.map((track) => [track.id, track]));
+  for (const track of resolved) byId.set(track.id, track);
+  if (store.queueTracks.map((track) => track.id).join(",") !== ids.join(",")) return;
+  store.queueTracks = ids.map((id) => byId.get(id)).filter((t): t is Track => t !== undefined);
 };
 
 /**
