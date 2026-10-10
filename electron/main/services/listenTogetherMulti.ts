@@ -704,6 +704,21 @@ export const inviteToMultiRoom = async (uids: readonly string[]): Promise<void> 
   if (body.code !== 200) {
     throw new Error(str(body.message) || "邀请失败");
   }
+  // multi/invite 只在服务端登记邀请关系，不投递任何消息给被邀请人——
+  // 对方收件箱里什么都没有，界面自然"不显示多人一起听的邀请"。
+  // 双人邀请能显示靠的就是 invite/send 的私信卡片，这里逐个补发同款
+  for (const uid of uids) {
+    try {
+      await callNetease("listen_together_invite_send", {
+        roomId: session.roomId,
+        acceptorId: uid,
+        ltType: 2,
+      });
+    } catch (error) {
+      // 单个失败不中断其余的邀请投递
+      neteaseLog.warn(`[一起听] 邀请私信投递失败 uid=${uid}: ${String(error)}`);
+    }
+  }
 };
 
 export const exitMultiRoom = async (): Promise<void> => {

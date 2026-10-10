@@ -83,6 +83,31 @@ beforeEach(async () => {
 });
 
 describe("多人一起听", () => {
+  it("多人邀请补发私信卡片（ltType=2），双人不带 ltType", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    mocks.call.mockImplementation(async (name: string, payload: Record<string, unknown>) => {
+      if (name === "listen_together_multi_invite") {
+        return { status: 200, body: { code: 200 } };
+      }
+      if (name === "listen_together_invite_send") {
+        seen.push({ ...payload });
+        return { status: 200, body: { code: 200, data: { result: true } } };
+      }
+      if (name === "listen_together_multi_room_create") return multiBody();
+      return { status: 200, body: { code: 200 } };
+    });
+
+    await createMultiRoom("100", "77");
+    seen.length = 0;
+    await inviteToMultiRoom(["9152873371", "6294223883"]);
+
+    // multi/invite 只在服务端登记，被邀请人收不到任何消息；
+    // 必须逐个补发 invite/send 私信卡片，且 ltType 标记多人大厅
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toMatchObject({ roomId: "R_1", acceptorId: "9152873371", ltType: 2 });
+    expect(seen[1]).toMatchObject({ roomId: "R_1", acceptorId: "6294223883", ltType: 2 });
+  });
+
   it("加入时 ack 带上 inviterUid 并推出房间", async () => {
     const seen: unknown[] = [];
     onMultiRoom((room) => seen.push(room));

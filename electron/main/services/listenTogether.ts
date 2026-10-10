@@ -1142,17 +1142,26 @@ const emitPlayback = (event: {
   }
   lastDirectSignature = signature;
   lastRemoteSeq = Math.max(lastRemoteSeq, event.serverSeq);
+  // 回声按维度"替换"而不是累积：B 先暂停再播放时若留下两条 playState 回声，
+  // A 之后自己按播放会命中 B 的 PAUSE 残留回声以外的那条旧值，被误吞不转发，
+  // 对面就永远看不到 A 的操作（"进房同步、之后不同步"）。旧回声只是待确认的
+  // 期望值，同一维度来了新命令，旧值即作废
+  const replaceEcho = (dim: string, value: string): void => {
+    const index = adoptionEcho.findIndex((entry) => entry.dim === dim);
+    if (index >= 0) adoptionEcho.splice(index, 1);
+    adoptionEcho.push({ dim, value });
+  };
   if (hasMode) {
     lastRemotePlayMode = event.mode;
-    adoptionEcho.push({ dim: "playMode", value: event.mode });
+    replaceEcho("playMode", event.mode);
   }
   if (type === "GOTO") {
-    adoptionEcho.push({ dim: "track", value: event.targetSongId });
+    replaceEcho("track", event.targetSongId);
   }
   if (type === "PAUSE" || type === "PLAY") {
-    adoptionEcho.push({ dim: "playState", value: String(playing) });
+    replaceEcho("playState", String(playing));
   } else if (type === "PROGRESS") {
-    adoptionEcho.push({ dim: "seek", value: "*" });
+    replaceEcho("seek", "*");
   }
   adoptionTicks = Math.max(adoptionTicks, ADOPT_CONFIRM_TICKS);
   for (const listener of commandListeners) {
