@@ -135,6 +135,7 @@ import listen_together_heartbeat from "./listen_together_heartbeat";
 import listen_together_end from "./listen_together_end";
 import listen_together_invite_send from "./listen_together_invite_send";
 import listen_together_inbox from "./listen_together_inbox";
+import msg_private_send from "./msg_private_send";
 
 export const modules: Record<string, NeteaseModule> = {
   captcha_sent,
@@ -256,4 +257,5 @@ export const modules: Record<string, NeteaseModule> = {
   listen_together_end,
   listen_together_invite_send,
   listen_together_inbox,
+  msg_private_send,
 };

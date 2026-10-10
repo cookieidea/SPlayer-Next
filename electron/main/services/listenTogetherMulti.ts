@@ -8,6 +8,7 @@ import {
   setNimListener,
   setRoomOwnerView,
 } from "@main/services/nim/realtime";
+import { buildMultiInvitation } from "@shared/utils/togetherInvitation";
 import { setMultiRoomActive } from "@main/services/togetherPresence";
 import { neteaseLog } from "@main/utils/logger";
 import {
@@ -704,16 +705,15 @@ export const inviteToMultiRoom = async (uids: readonly string[]): Promise<void> 
   if (body.code !== 200) {
     throw new Error(str(body.message) || "邀请失败");
   }
-  // multi/invite 只在服务端登记邀请关系，不投递任何消息给被邀请人——
-  // 对方收件箱里什么都没有，界面自然"不显示多人一起听的邀请"。
-  // 双人邀请能显示靠的就是 invite/send 的私信卡片，这里逐个补发同款
+  // multi/invite 只在服务端登记邀请关系。官方的站内邀请通知走系统推送
+  // （LTInvitationNoticeReceiver → invitationVersion → invitation-info/get），
+  // 腾讯云信私信端点 invite/send 对多人房 ID 直接 488（实测），不存在"补发私信"。
+  // 与官方 N1() 同语义的替代：给被邀请人发一条站内私信，正文是 multishare
+  // 链接——收件端 invitesFromInbox 已经能解析这个链接成多人卡片
+  const link = buildMultiInvitation(session.roomId, session.userId);
   for (const uid of uids) {
     try {
-      await callNetease("listen_together_invite_send", {
-        roomId: session.roomId,
-        acceptorId: uid,
-        ltType: 2,
-      });
+      await callNetease("msg_private_send", { userIds: uid, msg: link });
     } catch (error) {
       // 单个失败不中断其余的邀请投递
       neteaseLog.warn(`[一起听] 邀请私信投递失败 uid=${uid}: ${String(error)}`);
