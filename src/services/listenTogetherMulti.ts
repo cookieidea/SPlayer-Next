@@ -190,7 +190,9 @@ const notifyNewMembers = (room: TogetherMultiRoom): void => {
       toast.info(`一起听：${names} 加入了`);
     }
   }
-  knownMemberIds = ids;
+  // 已知集只增不缩：IM 在线名单与协议快照会在两份名单间交替，
+  // 若每次都整表替换，名单回缩后再恢复会把老成员误报成"加入"
+  knownMemberIds = [...new Set([...knownMemberIds, ...ids])];
 };
 
 export const initTogetherMulti = (): void => {
