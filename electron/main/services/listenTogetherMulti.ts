@@ -705,15 +705,27 @@ export const inviteToMultiRoom = async (uids: readonly string[]): Promise<void> 
   if (body.code !== 200) {
     throw new Error(str(body.message) || "邀请失败");
   }
-  // multi/invite 只在服务端登记邀请关系。官方的站内邀请通知走系统推送
-  // （LTInvitationNoticeReceiver → invitationVersion → invitation-info/get），
-  // 腾讯云信私信端点 invite/send 对多人房 ID 直接 488（实测），不存在"补发私信"。
-  // 与官方 N1() 同语义的替代：给被邀请人发一条站内私信，正文是 multishare
-  // 链接——收件端 invitesFromInbox 已经能解析这个链接成多人卡片
+  // 官方对 MULTI_MATCH_SONG 房从不发站内卡片（invite/send 对多人房 488，实测；
+  // 反编译确认官方的站内邀请卡只用于双人/新建房，服务端在人多时自动升级）。
+  // 与官方 C0736w 同语义的替代：对每个好友发一条 general 卡片私信
+  // （msg/private/send + generalInfo），nativeUrl 用 multishare 链接——
+  // 我们自己的收件端 invitesFromInbox 能解析它，官方客户端点开链接也能进房
   const link = buildMultiInvitation(session.roomId, session.userId);
+  // 官方 GeneralResource 顶层字段（j30/c.java: generalInfo=JSON(generalResource)）
+  const card = JSON.stringify({
+    title: "邀请你一起听歌",
+    content: "来和我一起听吧",
+    nativeUrl: link,
+    webUrl: link,
+    subType: "listen_together",
+  });
   for (const uid of uids) {
     try {
-      await callNetease("msg_private_send", { userIds: uid, msg: link });
+      await callNetease("msg_private_send", {
+        userIds: uid,
+        type: "general",
+        generalInfo: card,
+      });
     } catch (error) {
       // 单个失败不中断其余的邀请投递
       neteaseLog.warn(`[一起听] 邀请私信投递失败 uid=${uid}: ${String(error)}`);

@@ -93,6 +93,11 @@ describe("多人一起听", () => {
         seen.push({ ...payload });
         return { status: 200, body: { code: 200 } };
       }
+      // 旧字段（防回退）
+      if (name === "send_text") {
+        seen.push({ ...payload, __legacy: true });
+        return { status: 200, body: { code: 200 } };
+      }
       if (name === "listen_together_multi_room_create") return multiBody();
       return { status: 200, body: { code: 200 } };
     });
@@ -101,14 +106,15 @@ describe("多人一起听", () => {
     seen.length = 0;
     await inviteToMultiRoom(["9152873371", "6294223883"]);
 
-    // invite/send 对多人房 488（实测），官方站内通知走推送我们没有；
-    // 与官方 N1() 同语义：发一条正文为 multishare 链接的私信，
-    // 收件端 invitesFromInbox 已能解析该链接为多人卡片
+    // invite/send 对多人房 488（实测）；官方站内卡片走 general 类型。
+    // generalInfo.nativeUrl 用 multishare 链接：我们的收件端能解析，
+    // 官方客户端点开链接也能进房
     expect(seen).toHaveLength(2);
-    expect(seen[0]).toMatchObject({ userIds: "9152873371" });
-    expect(String(seen[0].msg)).toContain("multishare");
-    expect(String(seen[0].msg)).toContain("R_1");
-    expect(seen[1]).toMatchObject({ userIds: "6294223883" });
+    expect(seen[0]).toMatchObject({ userIds: "9152873371", type: "general" });
+    const info0 = JSON.parse(String(seen[0].generalInfo));
+    expect(info0.nativeUrl).toContain("multishare");
+    expect(info0.nativeUrl).toContain("R_1");
+    expect(seen[1]).toMatchObject({ userIds: "6294223883", type: "general" });
   });
 
   it("加入时 ack 带上 inviterUid 并推出房间", async () => {

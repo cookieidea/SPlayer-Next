@@ -581,12 +581,14 @@ export const sendPlaybackCommand = (payload: {
           playingSongId: Number(payload.targetSongId) || 0,
           progress: Math.max(0, Math.round(payload.progressMs)),
           mode: payload.mode,
-          // 按官方抓包样本：operateSeq 与外层 seq 同为自增序号。
-          // listOperateSeq 必须带房间队列版本：官方接收判据是
-          // 「operateSeq >= 本地锚 && listOperateSeq >= 本地列表锚」，
-          // 恒发 0 会被任何上报过队列的官方客户端全部丢弃
-          // （表现为"我改官方不同步，官方改我跟"）
-          operateSeq: payload.seq,
+          // 官方接收判据（r0.e0）：两条锚比较 ——
+          //   operateSeq      >= 它的 SONG 锚（它自己每发一条命令就 +1，历史越久越高）
+          //   listOperateSeq  >= 它的 PLAYLIST 锚（只吸收它收到的列表命令值）
+          // 我们的小自增序号永远追不上它涨起来的 SONG 锚 → 全部被丢。
+          // operateSeq 用毫秒时间戳：远大于任何自增锚，保证恒过；
+          // listOperateSeq 用真实队列版本（不能也用时间戳——否则把官方的
+          // PLAYLIST 锚顶到天文数字，我们后续的小版本号反而全过不了）
+          operateSeq: Date.now(),
           listOperateSeq: Math.max(1, payload.listVersion),
         },
       },

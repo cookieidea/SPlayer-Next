@@ -542,10 +542,11 @@ describe("播放命令的序号语义", () => {
 
     const attach = JSON.parse(String(sent[0].msg_attach_));
     const info = attach.content.content.playingInfo;
-    // 官方抓包样本：operateSeq 与外层 seq 同为自增序号。
-    // listOperateSeq 带房间队列版本：恒发 0 会被官方客户端的
-    // 「listOperateSeq >= 本地列表锚」判据全部丢弃
-    expect(info.operateSeq).toBe(1);
+    // operateSeq 用毫秒时间戳：官方 SONG 锚随它自己的操作单调上涨，
+    // 小自增序号永远小于锚被整批丢弃；时间戳远大于任何锚恒过。
+    // listOperateSeq 用真实队列版本（时间戳会把官方 PLAYLIST 锚顶上天，
+    // 后续小版本反而过不了）
+    expect(info.operateSeq).toBeGreaterThan(1_000_000_000_000);
     expect(info.listOperateSeq).toBe(3);
     expect(attach.content.content.seq).toBe(1);
   });
